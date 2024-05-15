@@ -1,7 +1,7 @@
 {
   "name": "prisma-generator-express",
   "description": "Prisma generator of Express CRUD API",
-  "version": "1.0.5",
+  "version": "1.2.0",
   "main": "dist/generator.js",
   "license": "MIT",
   "bin": {

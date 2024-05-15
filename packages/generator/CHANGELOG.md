@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.1.0...v1.2.0) (2024-05-15)
+
+
+### Features
+
+* add MIT License file and README.md ([420a80d](https://github.com/multipliedtwice/prisma-generator-express/commit/420a80dff01ccd61594e387abe7083a9fa75af68))
+
 # [1.1.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.0.0...v1.1.0) (2024-05-15)
 
 
