@@ -33,6 +33,6 @@ export function generateImportPrismaStatement(
   generatorOptions: GeneratorOptions,
 ): string {
   const options = getImportGeneratorOptions(generatorOptions)
-  console.log('options.outputPath :>> ', options.outputPath)
+  // console.log('options.outputPath :>> ', options.outputPath)
   return `import type { Prisma } from '${options.outputPath}';\nimport type { PrismaClient } from '${options.outputPath}';\n`
 }
