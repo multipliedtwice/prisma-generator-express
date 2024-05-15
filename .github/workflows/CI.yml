@@ -25,9 +25,11 @@ jobs:
         run: yarn install --frozen-lockfile
       - name: Check git config
         run: git remote -v
+      - name: Set Git Remote
+        run: git remote set-url origin https://github.com/multipliedtwice/prisma-generator-express
       - name: Publish 🚀
         working-directory: ./packages/generator
         run: npx semantic-release
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
