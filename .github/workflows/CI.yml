@@ -23,10 +23,6 @@ jobs:
           key: ${{ runner.os }}-modules-${{ hashFiles('**/yarn.lock') }}
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Check git config
-        run: git remote -v
-      - name: Set Git Remote
-        run: git remote set-url origin https://github.com/multipliedtwice/prisma-generator-express
       - name: Publish 🚀
         working-directory: ./packages/generator
         run: npx semantic-release
