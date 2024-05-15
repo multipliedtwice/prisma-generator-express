@@ -8,7 +8,7 @@
     "prisma-generator-express": "dist/bin.js"
   },
   "engines": {
-    "node": ">=14.0"
+    "node": ">=20.0"
   },
   "scripts": {
     "start": "node dist/bin.js",
@@ -38,20 +38,21 @@
     "ts-jest": "29.1.2",
     "typescript": "5.4.5"
   },
-  "homepage": "Link to homepage or github readme here",
+  "homepage": "https://github.com/multipliedtwice/prisma-generator-express/readme.mds",
   "repository": {
     "type": "git",
-    "url": "Repo link here"
+    "url": "https://github.com/multipliedtwice/prisma-generator-express"
   },
-  "author": "Your Name <Your Email>",
+  "author": "multipliedtwice",
   "keywords": [
     "prisma",
-    "prisma2",
+    "express",
+    "crud",
     "generator"
   ],
   "release": {
     "branches": [
-      "main"
+      "master"
     ],
     "plugins": [
       "@semantic-release/commit-analyzer",
