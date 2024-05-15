@@ -13,30 +13,41 @@ export const generateFindUniqueFunction = (options: {
   const { model, prismaImportStatement } = options
   const modelName = model.name
   const functionName = `${modelName}FindUnique`
-  const queryTypeName = `Prisma.${modelName}WhereUniqueInput`
+  const queryTypeName = `Prisma.${modelName}FindUniqueArgs`
 
   return `
-${prismaImportStatement}
-import { Request, Response, NextFunction } from 'express';
+${prismaImportStatement.replace('{ Prisma }', `{ Prisma, ${modelName} }`)}
+import { Request, Response, NextFunction } from 'express'
+import {
+  RequestHandler,
+  ParamsDictionary,
+} from 'express-serve-static-core' 
 import { ParsedQs } from 'qs';
-import { PrismaClient } from '@prisma/client'
 import { ZodTypeAny } from 'zod';
 
-interface PrismaRequest extends Request {
+export interface FindUniqueRequest extends Request {
   prisma: PrismaClient;
   query: ${queryTypeName} & ParsedQs;
   outputValidation?: ZodTypeAny;
   omitOutputValidation?: boolean;
+  passToNext?: boolean;
+  locals: {
+    data?: ${modelName} | null
+  }
 }
+export type FindUniqueMiddleware = RequestHandler<ParamsDictionary, any, any, ${queryTypeName} & ParsedQs, Record<string, any>>
 
-export async function ${functionName}(req: PrismaRequest, res: Response, next: NextFunction) {
+export async function ${functionName}(req: FindUniqueRequest, res: Response, next: NextFunction) {
   try {
-    if (req.outputValidation === undefined && req.omitOutputValidation === undefined) {
+    if (!req.outputValidation && !req.omitOutputValidation) {
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
-    const data = await req.prisma.${modelName.toLowerCase()}.findUnique(req.query);
-    if (!req.omitOutputValidation && req.outputValidation) {
+    const data = await req.prisma.${modelName.toLowerCase()}.findUnique(req.query as ${queryTypeName});
+    if (req.passToNext) {
+      req.locals.data = data;
+      next();
+    } else if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data);
       if (validationResult.success) {
         res.status(200).json(validationResult.data);

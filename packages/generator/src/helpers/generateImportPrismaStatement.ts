@@ -12,14 +12,17 @@ function getImportGeneratorOptions(
     (gen) => gen.name === 'client',
   )
 
-  if (!clientGenerator) {
+  if (!clientGenerator || !clientGenerator.output?.value) {
     throw new Error('Prisma client generator not found.')
   }
 
-  const relativeImportPath = path.relative(
-    options.generator.output?.value || './generated',
-    clientGenerator.output?.value || './generated/types',
+  const modelDirPath = path.join(
+    options.generator.output?.value!,
+    'modelFolder', // workaround for saving with /modelName/operation structure
   )
+  const clientOutputPath = clientGenerator.output.value
+
+  const relativeImportPath = path.relative(modelDirPath, clientOutputPath)
 
   return {
     outputPath: relativeImportPath.split(path.sep).join(path.posix.sep),
@@ -30,6 +33,6 @@ export function generateImportPrismaStatement(
   generatorOptions: GeneratorOptions,
 ): string {
   const options = getImportGeneratorOptions(generatorOptions)
-
-  return `import type { Prisma } from '${options.outputPath}';\n\n`
+  console.log('options.outputPath :>> ', options.outputPath)
+  return `import type { Prisma } from '${options.outputPath}';\nimport type { PrismaClient } from '${options.outputPath}';\n`
 }
