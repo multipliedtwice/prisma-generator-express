@@ -15,9 +15,10 @@ When you run `npx prisma generate`, it automatically creates two things:
 ## Table of Contents
 
 - [Installation](#installation)
-- [Usage](#usage)
-- [Customizations](#customizations)
+- [Basic Usage](#basic-usage)
+- [Router Generator Usage](#router-generator-usage)
 - [Request Object Properties](#request-object-properties)
+- [Roadmap](#roadmap)
 
 # Installation
 

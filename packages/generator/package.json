@@ -1,7 +1,7 @@
 {
   "name": "prisma-generator-express",
   "description": "Prisma generator of Express CRUD API",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "main": "dist/generator.js",
   "license": "MIT",
   "bin": {
@@ -38,7 +38,7 @@
     "ts-jest": "29.1.2",
     "typescript": "5.4.5"
   },
-  "homepage": "https://github.com/multipliedtwice/prisma-generator-express/readme.mds",
+  "homepage": "https://github.com/multipliedtwice/prisma-generator-express/blob/master/README.md",
   "repository": {
     "type": "git",
     "url": "https://github.com/multipliedtwice/prisma-generator-express"
