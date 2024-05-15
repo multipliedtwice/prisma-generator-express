@@ -1,0 +1,9 @@
+module.exports = {
+  branches: ['master'], // Ensure this matches your branch names
+  plugins: [
+    '@semantic-release/commit-analyzer',
+    '@semantic-release/release-notes-generator',
+    '@semantic-release/npm',
+    '@semantic-release/github',
+  ],
+}
