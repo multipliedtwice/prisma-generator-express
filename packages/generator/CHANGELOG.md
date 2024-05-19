@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.2.0...v1.3.0) (2024-05-19)
+
+
+### Features
+
+* **generateAggregate.ts, generateCount.ts, generateCreate.ts, generateCreateMany.ts, generateDelete.ts, generateDeleteMany.ts, generateFindFirst.ts, generateFindMany.ts, generateFindUnique.ts:** add support for dynamic model name capitalization in generated functions to improve code readability and maintain consistency ([1824f58](https://github.com/multipliedtwice/prisma-generator-express/commit/1824f5816cdd3e5b74ef7ed8098314ba04395662))
+
 # [1.2.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.1.0...v1.2.0) (2024-05-15)
 
 
