@@ -1,4 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
+import { capitalize, lowercaseFirstLetter } from '../utils/strings'
 
 /**
  * Generates an Express middleware function that handles aggregation queries
@@ -14,22 +15,23 @@ export const generateAggregateFunction = (options: {
   const { model, prismaImportStatement } = options
   const modelName = model.name
   const functionName = `${modelName}Aggregate`
-  const argsTypeName = `Prisma.${modelName}AggregateArgs`
+  const argsTypeName = `Prisma.${capitalize(modelName)}AggregateArgs`
 
   return `
 ${prismaImportStatement}
 import { Request, Response, NextFunction } from 'express';
 import { RequestHandler, ParamsDictionary } from 'express-serve-static-core'
+import { ParsedQs } from 'qs'
 import { ZodTypeAny } from 'zod';
 
 interface AggregateRequest extends Request {
   prisma: PrismaClient;
-  body: ${argsTypeName};
+  query: Partial<${argsTypeName}> & ParsedQs;
   outputValidation?: ZodTypeAny;
   omitOutputValidation?: boolean;
 }
 
-export type AggregateMiddleware = RequestHandler<ParamsDictionary, any, ${argsTypeName}, Record<string, any>>;
+export type AggregateMiddleware = RequestHandler<ParamsDictionary, any, Partial<${argsTypeName}>, Record<string, any>>;
 
 export async function ${functionName}(req: AggregateRequest, res: Response, next: NextFunction) {
   try {
@@ -37,7 +39,7 @@ export async function ${functionName}(req: AggregateRequest, res: Response, next
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
-    const result = await req.prisma.${modelName.toLowerCase()}.aggregate(req.body);
+    const result = await req.prisma.${lowercaseFirstLetter(modelName)}.aggregate(req.query as ${argsTypeName});
 
     if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(result);

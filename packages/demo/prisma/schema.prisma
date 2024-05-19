@@ -1,11 +1,11 @@
 generator generator_express {
   provider = "node ../../node_modules/prisma-generator-express"
-  output   = "../express"
+  output   = "./generated/express"
 }
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../client"
+  output   = "./generated/client"
 }
 
 datasource db {
@@ -13,27 +13,41 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id    Int     @id @default(autoincrement())
-  email String  @unique
-  name  String?
+model UserAccount {
+  ID           Int         @id @default(autoincrement())
+  full_name    String
+  emailAddress String      @unique
+  createdAt    DateTime    @default(now())
+  orders       orderItem[]
 }
 
-enum NotificationType {
-  newPosts
-  newComments
-  newFollowers
-  reply
-  heartOnPost
-  heartOnComment
-  heartOnReply
+model orderItem {
+  id              Int               @id @default(autoincrement())
+  ProductName     String
+  quantity        Int
+  userID          Int
+  userAccount     UserAccount       @relation(fields: [userID], references: [ID])
+  created_at      DateTime          @default(now())
+  INVOICE_RECORDS INVOICE_RECORDS[]
 }
 
-enum Language {
-  Typescript
-  Javascript
-  Rust
-  Go
-  Python
-  Cpp
+model PRODUCT_CATALOG {
+  product_id  Int             @id @default(autoincrement())
+  productname String
+  price       Float
+  category    productCategory
+}
+
+enum productCategory {
+  ELECTRONICS
+  FURNITURE
+  CLOTHING
+}
+
+model INVOICE_RECORDS {
+  invoiceID Int       @id @default(autoincrement())
+  ORDER_ID  Int
+  orderItem orderItem @relation(fields: [ORDER_ID], references: [id])
+  amount    Float
+  issuedAt  DateTime  @default(now())
 }

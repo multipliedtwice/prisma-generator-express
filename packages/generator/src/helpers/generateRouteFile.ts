@@ -102,7 +102,7 @@ export function ${routerFunctionName}(config: RouteConfig) {
     if (config.createNextMiddleware) {
       middlewares.push(...config.createNextMiddleware);
     }
-    router.post('/', ...middlewares);
+    router.post('/', ...middlewares as CreateMiddleware[]);
   }
 
   if (config?.createManyMiddleware && config?.createManyMiddleware.length) {
@@ -110,7 +110,7 @@ export function ${routerFunctionName}(config: RouteConfig) {
     if (config.createManyNextMiddleware) {
       middlewares.push(...config.createManyNextMiddleware);
     }
-    router.post('/many', ...middlewares);
+    router.post('/many', ...middlewares as CreateManyMiddleware[]);
   }
 
   if (config?.updateMiddleware && config?.updateMiddleware.length) {
@@ -118,7 +118,7 @@ export function ${routerFunctionName}(config: RouteConfig) {
     if (config.updateNextMiddleware) {
       middlewares.push(...config.updateNextMiddleware);
     }
-    router.put('/', ...middlewares);
+    router.put('/', ...middlewares as UpdateMiddleware[]);
   }
 
   if (config?.updateManyMiddleware && config?.updateManyMiddleware.length) {
@@ -126,7 +126,7 @@ export function ${routerFunctionName}(config: RouteConfig) {
     if (config.updateManyNextMiddleware) {
       middlewares.push(...config.updateManyNextMiddleware);
     }
-    router.put('/many', ...middlewares);
+    router.put('/many', ...middlewares as UpdateManyMiddleware[]);
   }
 
   if (config?.upsertMiddleware && config?.upsertMiddleware.length) {
@@ -134,7 +134,7 @@ export function ${routerFunctionName}(config: RouteConfig) {
     if (config.upsertNextMiddleware) {
       middlewares.push(...config.upsertNextMiddleware);
     }
-    router.patch('/', ...middlewares);
+    router.patch('/', ...middlewares as UpsertMiddleware[]);
   }
 
   if (config?.deleteMiddleware && config?.deleteMiddleware.length) {
@@ -142,7 +142,7 @@ export function ${routerFunctionName}(config: RouteConfig) {
     if (config.deleteNextMiddleware) {
       middlewares.push(...config.deleteNextMiddleware);
     }
-    router.delete('/', ...middlewares);
+    router.delete('/', ...middlewares as DeleteMiddleware[]);
   }
 
   if (config?.deleteManyMiddleware && config?.deleteManyMiddleware.length) {
@@ -150,7 +150,7 @@ export function ${routerFunctionName}(config: RouteConfig) {
     if (config.deleteManyNextMiddleware) {
       middlewares.push(...config.deleteManyNextMiddleware);
     }
-    router.delete('/many', ...middlewares);
+    router.delete('/many', ...middlewares as DeleteManyMiddleware[]);
   }
 
   if (config?.aggregateMiddleware && config?.aggregateMiddleware.length) {
@@ -158,7 +158,7 @@ export function ${routerFunctionName}(config: RouteConfig) {
     if (config.aggregateNextMiddleware) {
       middlewares.push(...config.aggregateNextMiddleware);
     }
-    router.get('/aggregate', ...middlewares);
+    router.get('/aggregate', ...middlewares as AggregateMiddleware[]);
   }
 
   if (config?.countMiddleware && config?.countMiddleware.length) {
@@ -166,7 +166,7 @@ export function ${routerFunctionName}(config: RouteConfig) {
     if (config.countNextMiddleware) {
       middlewares.push(...config.countNextMiddleware);
     }
-    router.get('/count', ...middlewares);
+    router.get('/count', ...middlewares as CountMiddleware[]);
   }
 
   if (config?.groupByMiddleware && config?.groupByMiddleware.length) {
@@ -174,7 +174,7 @@ export function ${routerFunctionName}(config: RouteConfig) {
     if (config.groupByNextMiddleware) {
       middlewares.push(...config.groupByNextMiddleware);
     }
-    router.get('/groupby', ...middlewares);
+    router.get('/groupby', ...middlewares as GroupByMiddleware[]);
   }
 
   return router;

@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-
+import { lowercaseFirstLetter } from '../utils/strings'
 /**
  * Generates an Express middleware function that handles batch deleting records
  * and includes conditional output validation with Zod.
@@ -37,7 +37,7 @@ export async function ${functionName}(req: DeleteManyRequest, res: Response, nex
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
-    const result = await req.prisma.${modelName.toLowerCase()}.deleteMany(req.body);
+    const result = await req.prisma.${lowercaseFirstLetter(modelName)}.deleteMany(req.body);
 
     if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(result);

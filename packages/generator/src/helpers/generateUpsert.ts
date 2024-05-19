@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-
+import { lowercaseFirstLetter } from '../utils/strings'
 /**
  * Generates an Express middleware function that handles the upsert operation (create or update)
  * and includes conditional output validation with Zod.
@@ -37,7 +37,7 @@ export async function ${functionName}(req: UpsertRequest, res: Response, next: N
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
-    const data = await req.prisma.${modelName.toLowerCase()}.upsert(req.body);
+    const data = await req.prisma.${lowercaseFirstLetter(modelName)}.upsert(req.body);
 
     if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data);

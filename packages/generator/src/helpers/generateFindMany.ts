@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-
+import { lowercaseFirstLetter } from '../utils/strings'
 /**
  * Generates an Express middleware function that handles multiple record retrieval with optional output validation using Zod.
  * This version dynamically includes the correct type for the query parameter based on the Prisma model.
@@ -43,7 +43,7 @@ export async function ${functionName}(req: FindManyRequest, res: Response, next:
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
-    const data = await req.prisma.${modelName.toLowerCase()}.findMany(req.query as ${queryTypeName});
+    const data = await req.prisma.${lowercaseFirstLetter(modelName)}.findMany(req.query as ${queryTypeName});
     if (req.passToNext) {
       req.locals.data = data;
       next();

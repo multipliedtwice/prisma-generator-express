@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-
+import { lowercaseFirstLetter } from '../utils/strings'
 /**
  * Generates an Express middleware function that handles updating records and includes conditional output validation with Zod.
  * This version dynamically includes the correct type for the arguments based on the Prisma model.
@@ -36,10 +36,7 @@ export async function ${functionName}(req: UpdateRequest, res: Response, next: N
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
-    const data = await req.prisma.${modelName.toLowerCase()}.update({
-      where: { id: parseInt(req.params.id) },
-      data: req.body
-    });
+    const data = await req.prisma.${lowercaseFirstLetter(modelName)}.update(req.body);
 
     if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data);

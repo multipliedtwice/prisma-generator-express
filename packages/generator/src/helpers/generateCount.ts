@@ -1,4 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
+import { lowercaseFirstLetter } from '../utils/strings'
 
 /**
  * Generates an Express middleware function that handles count queries
@@ -19,17 +20,18 @@ export const generateCountFunction = (options: {
   return `
 ${prismaImportStatement}
 import { Request, Response, NextFunction } from 'express';
-import { RequestHandler, ParamsDictionary } from 'express-serve-static-core'
+import { RequestHandler, ParamsDictionary } from 'express-serve-static-core';
+import { ParsedQs } from 'qs';
 import { ZodTypeAny } from 'zod';
 
 interface CountRequest extends Request {
   prisma: PrismaClient;
-  body: ${argsTypeName};
+  query: Partial<${argsTypeName}> & ParsedQs;
   outputValidation?: ZodTypeAny;
   omitOutputValidation?: boolean;
 }
 
-export type CountMiddleware = RequestHandler<ParamsDictionary, any, ${argsTypeName}, Record<string, any>>;
+export type CountMiddleware = RequestHandler<ParamsDictionary, any, {}, ParsedQs>;
 
 export async function ${functionName}(req: CountRequest, res: Response, next: NextFunction) {
   try {
@@ -37,7 +39,7 @@ export async function ${functionName}(req: CountRequest, res: Response, next: Ne
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
-    const result = await req.prisma.${modelName.toLowerCase()}.count(req.body);
+    const result = await req.prisma.${lowercaseFirstLetter(modelName)}.count(req.query as ${argsTypeName});
 
     if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(result);

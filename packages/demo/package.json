@@ -5,12 +5,12 @@
   "main": "src/app.js",
   "license": "MIT",
   "dependencies": {
-    "@prisma/client": "5.13.0"
+    "@prisma/client": "5.14.0"
   },
   "devDependencies": {
-    "@types/node": "20.12.11",
-    "prisma": "5.13.0",
-    "prisma-generator-express": "1.0.0",
+    "@types/node": "20.12.12",
+    "prisma": "5.14.0",
+    "prisma-generator-express": "1.2.0",
     "typescript": "5.4.5"
   }
 }

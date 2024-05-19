@@ -1,4 +1,6 @@
 import { DMMF } from '@prisma/generator-helper'
+import { lowercaseFirstLetter } from '../utils/strings'
+import { PrismaClient, Prisma } from '@prisma/client'
 
 /**
  * Generates an Express middleware function that handles groupBy queries
@@ -19,17 +21,18 @@ export const generateGroupByFunction = (options: {
   return `
 ${prismaImportStatement}
 import { Request, Response, NextFunction } from 'express';
-import { RequestHandler, ParamsDictionary } from 'express-serve-static-core'
+import { RequestHandler, ParamsDictionary } from 'express-serve-static-core';
+import { ParsedQs } from 'qs';
 import { ZodTypeAny } from 'zod';
 
 interface GroupByRequest extends Request {
   prisma: PrismaClient;
-  body: ${argsTypeName};
+  query: Partial<${argsTypeName}> & ParsedQs;
   outputValidation?: ZodTypeAny;
   omitOutputValidation?: boolean;
 }
 
-export type GroupByMiddleware = RequestHandler<ParamsDictionary, any, ${argsTypeName}, Record<string, any>>;
+export type GroupByMiddleware = RequestHandler<ParamsDictionary, any, {}, ParsedQs>;
 
 export async function ${functionName}(req: GroupByRequest, res: Response, next: NextFunction) {
   try {
@@ -37,7 +40,8 @@ export async function ${functionName}(req: GroupByRequest, res: Response, next: 
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
-    const result = await req.prisma.${modelName.toLowerCase()}.groupBy(req.body);
+    // @ts-ignore
+    const result = await req.prisma.${lowercaseFirstLetter(modelName)}.groupBy(req.query);
 
     if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(result);
