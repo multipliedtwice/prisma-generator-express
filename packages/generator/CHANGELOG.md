@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.3.0...v1.4.0) (2024-05-22)
+
+
+### Features
+
+* **generator:** fix async loop logic ([5c5221f](https://github.com/multipliedtwice/prisma-generator-express/commit/5c5221f68d0e63edb2ced39181fa8e8e416c34e0))
+
 # [1.3.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.2.0...v1.3.0) (2024-05-19)
 
 
