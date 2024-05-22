@@ -55,11 +55,12 @@ generator express {
 ```ts
 import { PrismaClient } from '@prisma/client'
 import express from 'express'
+import bodyParser from 'body-parser'
 
 const prisma = new PrismaClient()
 const app = express()
 
-app.use(express.json()) // for parsing application/json
+app.use(bodyparser.json()) // for parsing application/json
 
 // Attach Prisma to every request
 app.use((req, res, next) => {
