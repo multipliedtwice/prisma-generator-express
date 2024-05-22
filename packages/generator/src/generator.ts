@@ -32,7 +32,7 @@ generatorHandler({
   onGenerate: async (options: GeneratorOptions) => {
     const prismaImportStatement = generateImportPrismaStatement(options)
 
-    options.dmmf.datamodel.models.forEach(async (model) => {
+    for await (const model of options.dmmf.datamodel.models) {
       await writeFileSafely({
         content: generateFindUniqueFunction({
           model,
@@ -169,6 +169,6 @@ generatorHandler({
         model,
         operation: 'index',
       })
-    })
+    }
   },
 })
