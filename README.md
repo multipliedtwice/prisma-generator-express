@@ -161,21 +161,21 @@ The following properties can be attached to the `req` object to control the beha
 | `outputValidation`     | ZodTypeAny   | (Optional) A Zod schema used to validate the data returned from the Prisma query before sending it to the client. This helps ensure the response adheres to expected data formats. |
 | `omitOutputValidation` | Boolean      | (Optional) A flag that, if set to `true`, disables output validation even if a Zod schema is provided.                                                                             |
 
-## Roadmap
+## Router Schema
 
-| Function       | Supported          | Notes      |
-| -------------- | ------------------ | ---------- |
-| `Model router` | :white_check_mark: | Available. |
-| `findUnique`   | :white_check_mark: | Available. |
-| `findFirst`    | :white_check_mark: | Available. |
-| `findMany`     | :white_check_mark: | Available. |
-| `create`       | :white_check_mark: | Available. |
-| `createMany`   | :white_check_mark: | Available. |
-| `update`       | :white_check_mark: | Available. |
-| `updateMany`   | :white_check_mark: | Available. |
-| `upsert`       | :white_check_mark: | Available. |
-| `delete`       | :white_check_mark: | Available. |
-| `deleteMany`   | :white_check_mark: | Available. |
-| `aggregate`    | :white_check_mark: | Available. |
-| `count`        | :white_check_mark: | Available. |
-| `groupBy`      | :white_check_mark: | Available. |
+| Function       | Method | URL          |
+| -------------- | ------ | ------------ |
+| `Model router` | -      | -            |
+| `findUnique`   | GET    | `/:id`       |
+| `findFirst`    | GET    | `/first`     |
+| `findMany`     | GET    | `/`          |
+| `create`       | POST   | `/`          |
+| `createMany`   | POST   | `/many`      |
+| `update`       | PUT    | `/`          |
+| `updateMany`   | PUT    | `/many`      |
+| `upsert`       | PATCH  | `/`          |
+| `delete`       | DELETE | `/`          |
+| `deleteMany`   | DELETE | `/many`      |
+| `aggregate`    | GET    | `/aggregate` |
+| `count`        | GET    | `/count`     |
+| `groupBy`      | GET    | `/groupby`   |
