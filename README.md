@@ -163,19 +163,18 @@ The following properties can be attached to the `req` object to control the beha
 
 ## Router Schema
 
-| Function       | Method | URL          |
-| -------------- | ------ | ------------ |
-| `Model router` | -      | -            |
-| `findUnique`   | GET    | `/:id`       |
-| `findFirst`    | GET    | `/first`     |
-| `findMany`     | GET    | `/`          |
-| `create`       | POST   | `/`          |
-| `createMany`   | POST   | `/many`      |
-| `update`       | PUT    | `/`          |
-| `updateMany`   | PUT    | `/many`      |
-| `upsert`       | PATCH  | `/`          |
-| `delete`       | DELETE | `/`          |
-| `deleteMany`   | DELETE | `/many`      |
-| `aggregate`    | GET    | `/aggregate` |
-| `count`        | GET    | `/count`     |
-| `groupBy`      | GET    | `/groupby`   |
+| Function     | Method   | URL          |
+| ------------ | -------- | ------------ |
+| `findUnique` | `GET`    | `/:id`       |
+| `findFirst`  | `GET`    | `/first`     |
+| `findMany`   | `GET`    | `/`          |
+| `create`     | `POST`   | `/`          |
+| `createMany` | `POST`   | `/many`      |
+| `update`     | `PUT`    | `/`          |
+| `updateMany` | `PUT`    | `/many`      |
+| `upsert`     | `PATCH`  | `/`          |
+| `delete`     | `DELETE` | `/`          |
+| `deleteMany` | `DELETE` | `/many`      |
+| `aggregate`  | `GET`    | `/aggregate` |
+| `count`      | `GET`    | `/count`     |
+| `groupBy`    | `GET`    | `/groupby`   |
