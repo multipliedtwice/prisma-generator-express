@@ -40,19 +40,17 @@ export async function UserAccountFindMany(
       req.query as Prisma.UserAccountFindManyArgs,
     )
     if (req.passToNext) {
-      req.locals.data = data
+      req.locals?.data = data
       next()
     } else if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data)
       if (validationResult.success) {
         res.status(200).json(validationResult.data)
       } else {
-        res
-          .status(400)
-          .json({
-            error: 'Invalid data format',
-            details: validationResult.error,
-          })
+        res.status(400).json({
+          error: 'Invalid data format',
+          details: validationResult.error,
+        })
       }
     } else if (!req.omitOutputValidation) {
       throw new Error(

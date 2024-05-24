@@ -45,7 +45,7 @@ export async function ${functionName}(req: FindFirstRequest, res: Response, next
 
     const data = await req.prisma.${lowercaseFirstLetter(modelName)}.findFirst(req.query as ${queryTypeName});
     if (req.passToNext) {
-      req.locals.data = data;
+      req.locals?.data = data;
       next();
     } else if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data);
