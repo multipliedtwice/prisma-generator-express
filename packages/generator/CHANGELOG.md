@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.6.0...v1.7.0) (2024-05-24)
+
+
+### Features
+
+* add possibly undefined locals.data check ([261f5b0](https://github.com/multipliedtwice/prisma-generator-express/commit/261f5b02ca6696c2f39017e73ac7a28d180bd10f))
+
 # [1.6.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.5.0...v1.6.0) (2024-05-24)
 
 
