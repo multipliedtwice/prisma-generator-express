@@ -49,9 +49,13 @@ export async function ${functionName}(req: DeleteManyRequest, res: Response, nex
     } else {
       res.status(200).json(result);
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error in handling batch delete request:', error);
-    res.status(500).json({ error: error.message });
+    if (error instanceof Error) {
+      res.status(500).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: "Unknown error occurred" });
+    }
     next(error);
   }
 }`

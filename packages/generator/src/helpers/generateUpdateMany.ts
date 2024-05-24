@@ -50,9 +50,13 @@ export async function ${functionName}(req: UpdateManyRequest, res: Response, nex
     } else {
       res.status(200).json({ count: data.count });
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error in handling updateMany request:', error);
-    res.status(500).json({ error: error.message });
+    if (error instanceof Error) {
+      res.status(500).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: "Unknown error occurred" });
+    }
     next(error);
   }
 }`

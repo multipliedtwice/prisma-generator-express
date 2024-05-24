@@ -47,10 +47,12 @@ export async function orderItemFindUnique(
       if (validationResult.success) {
         res.status(200).json(validationResult.data)
       } else {
-        res.status(400).json({
-          error: 'Invalid data format',
-          details: validationResult.error,
-        })
+        res
+          .status(400)
+          .json({
+            error: 'Invalid data format',
+            details: validationResult.error,
+          })
       }
     } else if (!req.omitOutputValidation) {
       throw new Error(
@@ -59,9 +61,13 @@ export async function orderItemFindUnique(
     } else {
       res.status(200).json(data)
     }
-  } catch (error) {
-    console.error('Error in handling request:', error)
-    res.status(500).json({ error: error.message })
+  } catch (error: unknown) {
+    console.error('Error in handling findUnique request:', error)
+    if (error instanceof Error) {
+      res.status(500).json({ error: error.message })
+    } else {
+      res.status(500).json({ error: 'Unknown error occurred' })
+    }
     next(error)
   }
 }

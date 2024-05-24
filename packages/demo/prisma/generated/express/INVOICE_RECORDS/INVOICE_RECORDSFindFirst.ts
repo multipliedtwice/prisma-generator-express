@@ -40,7 +40,7 @@ export async function INVOICE_RECORDSFindFirst(
       req.query as Prisma.INVOICE_RECORDSFindFirstArgs,
     )
     if (req.passToNext) {
-      req.locals.data = data
+      if (req.locals) req.locals.data = data
       next()
     } else if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data)
@@ -61,9 +61,13 @@ export async function INVOICE_RECORDSFindFirst(
     } else {
       res.status(200).json(data)
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error in handling request:', error)
-    res.status(500).json({ error: error.message })
+    if (error instanceof Error) {
+      res.status(500).json({ error: error.message })
+    } else {
+      res.status(500).json({ error: 'Unknown error occurred' })
+    }
     next(error)
   }
 }
