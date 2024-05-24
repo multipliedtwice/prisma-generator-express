@@ -12,7 +12,7 @@ export interface FindManyRequest extends Request {
   outputValidation?: ZodTypeAny
   omitOutputValidation?: boolean
   passToNext?: boolean
-  locals: {
+  locals?: {
     data?: INVOICE_RECORDS[]
   }
 }

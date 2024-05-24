@@ -12,7 +12,7 @@ export interface FindUniqueRequest extends Request {
   outputValidation?: ZodTypeAny
   omitOutputValidation?: boolean
   passToNext?: boolean
-  locals: {
+  locals?: {
     data?: INVOICE_RECORDS | null
   }
 }
