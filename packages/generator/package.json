@@ -13,7 +13,7 @@
   "scripts": {
     "start": "node dist/bin.js",
     "dev": "npx tsc -w",
-    "build": "npx tsc --project ../../tsconfig.json",
+    "build": "npx tsc",
     "prepack": "yarn build",
     "test": "jest",
     "prepublishOnly": "node copy.js "
