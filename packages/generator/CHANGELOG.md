@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.5.0...v1.6.0) (2024-05-24)
+
+
+### Features
+
+* improve request typings ([f0f2c53](https://github.com/multipliedtwice/prisma-generator-express/commit/f0f2c539d1ee17ed94baba2bf8061135c89fe7d5))
+
 # [1.5.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.4.0...v1.5.0) (2024-05-22)
 
 
