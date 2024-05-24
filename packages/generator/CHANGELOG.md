@@ -1,3 +1,10 @@
+## [1.7.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.7.1...v1.7.2) (2024-05-24)
+
+
+### Bug Fixes
+
+* error unknown type warning ([8a46a85](https://github.com/multipliedtwice/prisma-generator-express/commit/8a46a85101db27b05647be0551ef6b27759065a5))
+
 ## [1.7.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.7.0...v1.7.1) (2024-05-24)
 
 
