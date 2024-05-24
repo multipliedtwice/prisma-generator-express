@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.7.2...v1.8.0) (2024-05-24)
+
+
+### Features
+
+* **README.md:** add Prisma client middleware to attach Prisma client instance to request object for subsequent middleware and route handlers ([e2466b9](https://github.com/multipliedtwice/prisma-generator-express/commit/e2466b99fe3652948277e3d1d1133d416a11fa85))
+
 ## [1.7.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.7.1...v1.7.2) (2024-05-24)
 
 
