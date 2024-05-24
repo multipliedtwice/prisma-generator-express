@@ -40,7 +40,7 @@ export async function orderItemFindFirst(
       req.query as Prisma.orderItemFindFirstArgs,
     )
     if (req.passToNext) {
-      req.locals?.data = data
+      if (req.locals) req.locals.data = data
       next()
     } else if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data)

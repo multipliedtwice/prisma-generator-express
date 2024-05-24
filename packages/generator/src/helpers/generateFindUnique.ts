@@ -45,7 +45,7 @@ export async function ${functionName}(req: FindUniqueRequest, res: Response, nex
 
     const data = await req.prisma.${lowercaseFirstLetter(modelName)}.findUnique(req.query as ${queryTypeName});
     if (req.passToNext) {
-      req.locals?.data = data;
+      if (req.locals) req.locals.data = data;
       next();
     } else if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data);

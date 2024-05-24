@@ -40,7 +40,7 @@ export async function PRODUCT_CATALOGFindUnique(
       req.query as Prisma.PRODUCT_CATALOGFindUniqueArgs,
     )
     if (req.passToNext) {
-      req.locals?.data = data
+      if (req.locals) req.locals.data = data
       next()
     } else if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data)

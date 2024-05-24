@@ -40,7 +40,7 @@ export async function orderItemFindUnique(
       req.query as Prisma.orderItemFindUniqueArgs,
     )
     if (req.passToNext) {
-      req.locals?.data = data
+      if (req.locals) req.locals.data = data
       next()
     } else if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data)

@@ -40,7 +40,7 @@ export async function INVOICE_RECORDSFindUnique(
       req.query as Prisma.INVOICE_RECORDSFindUniqueArgs,
     )
     if (req.passToNext) {
-      req.locals?.data = data
+      if (req.locals) req.locals.data = data
       next()
     } else if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data)
