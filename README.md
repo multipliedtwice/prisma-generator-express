@@ -111,38 +111,67 @@ The `UserFindUnique` function will fetch the user details from the database, val
 The library will create functions to generate routers per each model in schema. Each route can accept middleware that will be injected right before generated handler is invoked. You can use it to modify/remove/validate request payload. The output validation can be also attached to `req` object on this step.
 
 ```ts
-import express from 'express'
-import { UserRouter } from './path/to/generated/UserRouter' // Adjust the path as necessary
-import { UserFindManyArgs } from './prisma-zod-generator/schemas/UserFindManyArgs.schema' // Adjust the path as necessary
+import express, { json } from 'express'
+import type { Response, Request, NextFunction, RequestHandler } from 'express'
+
+import { orderItemRouter } from '../prisma/generated/express/orderItem'
+import RouteConfig from '../prisma/generated/express/RouteConfig'
+import { PrismaClient } from '../prisma/generated/client'
 
 const app = express()
 
-export const validateUserQuery = (
+const prisma = new PrismaClient()
+
+/**
+ * Middleware to attach Prisma client instance to the request object.
+ * This ensures that Prisma client is available in all subsequent middleware and route handlers.
+ */
+const addPrisma: RequestHandler = (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
-  try {
-    UserFindManyArgs.parse(req.query)
-    next()
-  } catch (error) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        message: 'Validation failed',
-        errors: error.errors,
-      })
-    }
-    next(error)
-  }
+  req.prisma = prisma
+  req.omitOutputValidation = true
+  next()
 }
 
-const userRouterConfig = {
-  findManyMiddleware: [validateUserQuery], // Add other middleware as needed
-  findUniqueMiddleware: undefined, // This can be omitted, route won't be generated if middleware is not provided
+/**
+ * Before middleware to set a custom property on the request object.
+ * Demonstrates how to add custom properties to the request object to be used in later middleware or route handlers.
+ */
+const beforeFindMany: RequestHandler = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  ;(req as any).passToNext = true
+  next()
 }
 
-// Use the router in your application
-app.use('/users', UserRouter(userRouterConfig))
+/**
+ * After middleware placeholder for any post-processing after the main route handler.
+ * This example just calls next() but can be extended to perform actions like logging or response modification.
+ */
+const afterFindMany: RequestHandler = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  console.log('req.locals?.data :>> ', req.locals?.data)
+  next()
+}
+
+const someRouterConfig: RouteConfig<RequestHandler> = {
+  findMany: {
+    before: [beforeFindMany],
+    after: [afterFindMany],
+  },
+  addModelPrefix: true,
+  enableAll: true,
+}
+
+app.use(addPrisma, orderItemRouter(someRouterConfig))
 
 app.listen(3000, () => {
   console.log('Server is running on http://localhost:3000')

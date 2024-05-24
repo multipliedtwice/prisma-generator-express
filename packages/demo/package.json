@@ -4,6 +4,10 @@
   "version": "1.0.0",
   "main": "src/app.js",
   "license": "MIT",
+  "scripts": {
+    "build": "npx tsc --project tsconfig.json",
+    "dev": "ts-node-dev --project tsconfig.json --respawn --transpile-only src/index.ts"
+  },
   "dependencies": {
     "@prisma/client": "5.14.0"
   },
@@ -11,6 +15,7 @@
     "@types/node": "20.12.12",
     "prisma": "5.14.0",
     "prisma-generator-express": "1.2.0",
+    "ts-node-dev": "^2.0.0",
     "typescript": "5.4.5"
   }
 }

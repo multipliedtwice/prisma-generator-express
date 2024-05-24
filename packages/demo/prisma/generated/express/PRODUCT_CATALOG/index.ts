@@ -1,96 +1,22 @@
 import express, { RequestHandler } from 'express'
-import {
-  PRODUCT_CATALOGFindFirst,
-  type FindFirstMiddleware,
-} from './PRODUCT_CATALOGFindFirst'
-import {
-  PRODUCT_CATALOGFindMany,
-  type FindManyMiddleware,
-} from './PRODUCT_CATALOGFindMany'
-import {
-  PRODUCT_CATALOGFindUnique,
-  type FindUniqueMiddleware,
-} from './PRODUCT_CATALOGFindUnique'
-import {
-  PRODUCT_CATALOGCreate,
-  type CreateMiddleware,
-} from './PRODUCT_CATALOGCreate'
-import {
-  PRODUCT_CATALOGCreateMany,
-  type CreateManyMiddleware,
-} from './PRODUCT_CATALOGCreateMany'
-import {
-  PRODUCT_CATALOGUpdate,
-  type UpdateMiddleware,
-} from './PRODUCT_CATALOGUpdate'
-import {
-  PRODUCT_CATALOGUpdateMany,
-  type UpdateManyMiddleware,
-} from './PRODUCT_CATALOGUpdateMany'
-import {
-  PRODUCT_CATALOGUpsert,
-  type UpsertMiddleware,
-} from './PRODUCT_CATALOGUpsert'
-import {
-  PRODUCT_CATALOGDelete,
-  type DeleteMiddleware,
-} from './PRODUCT_CATALOGDelete'
-import {
-  PRODUCT_CATALOGDeleteMany,
-  type DeleteManyMiddleware,
-} from './PRODUCT_CATALOGDeleteMany'
-import {
-  PRODUCT_CATALOGAggregate,
-  type AggregateMiddleware,
-} from './PRODUCT_CATALOGAggregate'
-import {
-  PRODUCT_CATALOGCount,
-  type CountMiddleware,
-} from './PRODUCT_CATALOGCount'
-import {
-  PRODUCT_CATALOGGroupBy,
-  type GroupByMiddleware,
-} from './PRODUCT_CATALOGGroupBy'
+import { PRODUCT_CATALOGFindFirst } from './PRODUCT_CATALOGFindFirst'
+import { PRODUCT_CATALOGFindMany } from './PRODUCT_CATALOGFindMany'
+import { PRODUCT_CATALOGFindUnique } from './PRODUCT_CATALOGFindUnique'
+import { PRODUCT_CATALOGCreate } from './PRODUCT_CATALOGCreate'
+import { PRODUCT_CATALOGCreateMany } from './PRODUCT_CATALOGCreateMany'
+import { PRODUCT_CATALOGUpdate } from './PRODUCT_CATALOGUpdate'
+import { PRODUCT_CATALOGUpdateMany } from './PRODUCT_CATALOGUpdateMany'
+import { PRODUCT_CATALOGUpsert } from './PRODUCT_CATALOGUpsert'
+import { PRODUCT_CATALOGDelete } from './PRODUCT_CATALOGDelete'
+import { PRODUCT_CATALOGDeleteMany } from './PRODUCT_CATALOGDeleteMany'
+import { PRODUCT_CATALOGAggregate } from './PRODUCT_CATALOGAggregate'
+import { PRODUCT_CATALOGCount } from './PRODUCT_CATALOGCount'
+import { PRODUCT_CATALOGGroupBy } from './PRODUCT_CATALOGGroupBy'
+import { RouteConfig } from '../RouteConfig'
 
-interface RouteConfig {
-  findFirstMiddleware?: FindFirstMiddleware[]
-  findFirstNextMiddleware?: RequestHandler[]
-
-  findManyMiddleware?: FindManyMiddleware[]
-  findManyNextMiddleware?: RequestHandler[]
-
-  findUniqueMiddleware?: FindUniqueMiddleware[]
-  findUniqueNextMiddleware?: RequestHandler[]
-
-  createMiddleware?: CreateMiddleware[]
-  createNextMiddleware?: RequestHandler[]
-
-  createManyMiddleware?: CreateManyMiddleware[]
-  createManyNextMiddleware?: RequestHandler[]
-
-  updateMiddleware?: UpdateMiddleware[]
-  updateNextMiddleware?: RequestHandler[]
-
-  updateManyMiddleware?: UpdateManyMiddleware[]
-  updateManyNextMiddleware?: RequestHandler[]
-
-  upsertMiddleware?: UpsertMiddleware[]
-  upsertNextMiddleware?: RequestHandler[]
-
-  deleteMiddleware?: DeleteMiddleware[]
-  deleteNextMiddleware?: RequestHandler[]
-
-  deleteManyMiddleware?: DeleteManyMiddleware[]
-  deleteManyNextMiddleware?: RequestHandler[]
-
-  aggregateMiddleware?: AggregateMiddleware[]
-  aggregateNextMiddleware?: RequestHandler[]
-
-  countMiddleware?: CountMiddleware[]
-  countNextMiddleware?: RequestHandler[]
-
-  groupByMiddleware?: GroupByMiddleware[]
-  groupByNextMiddleware?: RequestHandler[]
+const defaultBeforeAfter = {
+  before: [] as RequestHandler[],
+  after: [] as RequestHandler[],
 }
 
 /**
@@ -98,129 +24,159 @@ interface RouteConfig {
  * @param config Contains optional middleware to enable routes.
  * @returns {express.Router}
  */
-export function PRODUCT_CATALOGRouter(config: RouteConfig) {
+export function PRODUCT_CATALOGRouter(config: RouteConfig<RequestHandler>) {
   const router = express.Router()
+  const basePath = config.addModelPrefix ? '/product_catalog' : ''
 
-  if (config?.findFirstMiddleware && config?.findFirstMiddleware.length) {
-    const middlewares = [
-      ...config.findFirstMiddleware,
-      PRODUCT_CATALOGFindFirst,
-    ]
-    if (config.findFirstNextMiddleware) {
-      middlewares.push(...config.findFirstNextMiddleware)
-    }
-    router.get('/first', ...(middlewares as FindFirstMiddleware[]))
+  const setupRoute = (
+    path: string,
+    method:
+      | 'all'
+      | 'get'
+      | 'post'
+      | 'put'
+      | 'delete'
+      | 'patch'
+      | 'options'
+      | 'head',
+    middlewares: RequestHandler[],
+    handler: RequestHandler,
+  ) => {
+    router[method](basePath + path, ...middlewares, handler)
   }
 
-  if (config?.findManyMiddleware && config?.findManyMiddleware.length) {
-    const middlewares = [...config.findManyMiddleware, PRODUCT_CATALOGFindMany]
-    if (config.findManyNextMiddleware) {
-      middlewares.push(...config.findManyNextMiddleware)
+  if (config.enableAll || config?.findFirst) {
+    const { before = [], after = [] } = config.findFirst || defaultBeforeAfter
+    setupRoute(
+      '/first',
+      'get',
+      before,
+      PRODUCT_CATALOGFindFirst as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/first', ...after)
     }
-    router.get('/', ...(middlewares as FindManyMiddleware[]))
   }
 
-  if (config?.findUniqueMiddleware && config?.findUniqueMiddleware.length) {
-    const middlewares = [
-      ...config.findUniqueMiddleware,
-      PRODUCT_CATALOGFindUnique,
-    ]
-    if (config.findUniqueNextMiddleware) {
-      middlewares.push(...config.findUniqueNextMiddleware)
+  if (config.enableAll || config?.findMany) {
+    const { before = [], after = [] } = config.findMany || defaultBeforeAfter
+    setupRoute('/', 'get', before, PRODUCT_CATALOGFindMany as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.get('/:id', ...(middlewares as FindUniqueMiddleware[]))
   }
 
-  if (config?.createMiddleware && config?.createMiddleware.length) {
-    const middlewares = [...config.createMiddleware, PRODUCT_CATALOGCreate]
-    if (config.createNextMiddleware) {
-      middlewares.push(...config.createNextMiddleware)
+  if (config.enableAll || config?.findUnique) {
+    const { before = [], after = [] } = config.findUnique || defaultBeforeAfter
+    setupRoute('/:id', 'get', before, PRODUCT_CATALOGFindUnique as any)
+    if (after.length) {
+      router.use(basePath + '/:id', ...after)
     }
-    router.post('/', ...(middlewares as CreateMiddleware[]))
   }
 
-  if (config?.createManyMiddleware && config?.createManyMiddleware.length) {
-    const middlewares = [
-      ...config.createManyMiddleware,
-      PRODUCT_CATALOGCreateMany,
-    ]
-    if (config.createManyNextMiddleware) {
-      middlewares.push(...config.createManyNextMiddleware)
+  if (config.enableAll || config?.create) {
+    const { before = [], after = [] } = config.create || defaultBeforeAfter
+    setupRoute('/', 'post', before, PRODUCT_CATALOGCreate as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.post('/many', ...(middlewares as CreateManyMiddleware[]))
   }
 
-  if (config?.updateMiddleware && config?.updateMiddleware.length) {
-    const middlewares = [...config.updateMiddleware, PRODUCT_CATALOGUpdate]
-    if (config.updateNextMiddleware) {
-      middlewares.push(...config.updateNextMiddleware)
+  if (config.enableAll || config?.createMany) {
+    const { before = [], after = [] } = config.createMany || defaultBeforeAfter
+    setupRoute(
+      '/many',
+      'post',
+      before,
+      PRODUCT_CATALOGCreateMany as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.put('/', ...(middlewares as UpdateMiddleware[]))
   }
 
-  if (config?.updateManyMiddleware && config?.updateManyMiddleware.length) {
-    const middlewares = [
-      ...config.updateManyMiddleware,
-      PRODUCT_CATALOGUpdateMany,
-    ]
-    if (config.updateManyNextMiddleware) {
-      middlewares.push(...config.updateManyNextMiddleware)
+  if (config.enableAll || config?.update) {
+    const { before = [], after = [] } = config.update || defaultBeforeAfter
+    setupRoute('/', 'put', before, PRODUCT_CATALOGUpdate as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.put('/many', ...(middlewares as UpdateManyMiddleware[]))
   }
 
-  if (config?.upsertMiddleware && config?.upsertMiddleware.length) {
-    const middlewares = [...config.upsertMiddleware, PRODUCT_CATALOGUpsert]
-    if (config.upsertNextMiddleware) {
-      middlewares.push(...config.upsertNextMiddleware)
+  if (config.enableAll || config?.updateMany) {
+    const { before = [], after = [] } = config.updateMany || defaultBeforeAfter
+    setupRoute(
+      '/many',
+      'put',
+      before,
+      PRODUCT_CATALOGUpdateMany as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.patch('/', ...(middlewares as UpsertMiddleware[]))
   }
 
-  if (config?.deleteMiddleware && config?.deleteMiddleware.length) {
-    const middlewares = [...config.deleteMiddleware, PRODUCT_CATALOGDelete]
-    if (config.deleteNextMiddleware) {
-      middlewares.push(...config.deleteNextMiddleware)
+  if (config.enableAll || config?.upsert) {
+    const { before = [], after = [] } = config.upsert || defaultBeforeAfter
+    setupRoute('/', 'patch', before, PRODUCT_CATALOGUpsert as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.delete('/', ...(middlewares as DeleteMiddleware[]))
   }
 
-  if (config?.deleteManyMiddleware && config?.deleteManyMiddleware.length) {
-    const middlewares = [
-      ...config.deleteManyMiddleware,
-      PRODUCT_CATALOGDeleteMany,
-    ]
-    if (config.deleteManyNextMiddleware) {
-      middlewares.push(...config.deleteManyNextMiddleware)
+  if (config.enableAll || config?.delete) {
+    const { before = [], after = [] } = config.delete || defaultBeforeAfter
+    setupRoute('/', 'delete', before, PRODUCT_CATALOGDelete as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.delete('/many', ...(middlewares as DeleteManyMiddleware[]))
   }
 
-  if (config?.aggregateMiddleware && config?.aggregateMiddleware.length) {
-    const middlewares = [
-      ...config.aggregateMiddleware,
-      PRODUCT_CATALOGAggregate,
-    ]
-    if (config.aggregateNextMiddleware) {
-      middlewares.push(...config.aggregateNextMiddleware)
+  if (config.enableAll || config?.deleteMany) {
+    const { before = [], after = [] } = config.deleteMany || defaultBeforeAfter
+    setupRoute(
+      '/many',
+      'delete',
+      before,
+      PRODUCT_CATALOGDeleteMany as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.get('/aggregate', ...(middlewares as AggregateMiddleware[]))
   }
 
-  if (config?.countMiddleware && config?.countMiddleware.length) {
-    const middlewares = [...config.countMiddleware, PRODUCT_CATALOGCount]
-    if (config.countNextMiddleware) {
-      middlewares.push(...config.countNextMiddleware)
+  if (config.enableAll || config?.aggregate) {
+    const { before = [], after = [] } = config.aggregate || defaultBeforeAfter
+    setupRoute(
+      '/aggregate',
+      'get',
+      before,
+      PRODUCT_CATALOGAggregate as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/aggregate', ...after)
     }
-    router.get('/count', ...(middlewares as CountMiddleware[]))
   }
 
-  if (config?.groupByMiddleware && config?.groupByMiddleware.length) {
-    const middlewares = [...config.groupByMiddleware, PRODUCT_CATALOGGroupBy]
-    if (config.groupByNextMiddleware) {
-      middlewares.push(...config.groupByNextMiddleware)
+  if (config.enableAll || config?.count) {
+    const { before = [], after = [] } = config.count || defaultBeforeAfter
+    setupRoute('/count', 'get', before, PRODUCT_CATALOGCount as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/count', ...after)
     }
-    router.get('/groupby', ...(middlewares as GroupByMiddleware[]))
+  }
+
+  if (config.enableAll || config?.groupBy) {
+    const { before = [], after = [] } = config.groupBy || defaultBeforeAfter
+    setupRoute(
+      '/groupby',
+      'get',
+      before,
+      PRODUCT_CATALOGGroupBy as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/groupby', ...after)
+    }
   }
 
   return router

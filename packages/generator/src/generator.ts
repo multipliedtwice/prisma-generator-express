@@ -17,6 +17,7 @@ import { generateDeleteManyFunction } from './helpers/generateDeleteMany'
 import { generateAggregateFunction } from './helpers/generateAggregate'
 import { generateCountFunction } from './helpers/generateCount'
 import { generateGroupByFunction } from './helpers/generateGroupBy'
+import { generateRouteConfigType } from './helpers/generateRouteConfigType'
 
 const { version } = require('../package.json')
 
@@ -170,5 +171,11 @@ generatorHandler({
         operation: 'index',
       })
     }
+
+    await writeFileSafely({
+      content: generateRouteConfigType(),
+      options,
+      operation: 'RouteConfig',
+    })
   },
 })

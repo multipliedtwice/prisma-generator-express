@@ -1,81 +1,22 @@
 import express, { RequestHandler } from 'express'
-import {
-  UserAccountFindFirst,
-  type FindFirstMiddleware,
-} from './UserAccountFindFirst'
-import {
-  UserAccountFindMany,
-  type FindManyMiddleware,
-} from './UserAccountFindMany'
-import {
-  UserAccountFindUnique,
-  type FindUniqueMiddleware,
-} from './UserAccountFindUnique'
-import { UserAccountCreate, type CreateMiddleware } from './UserAccountCreate'
-import {
-  UserAccountCreateMany,
-  type CreateManyMiddleware,
-} from './UserAccountCreateMany'
-import { UserAccountUpdate, type UpdateMiddleware } from './UserAccountUpdate'
-import {
-  UserAccountUpdateMany,
-  type UpdateManyMiddleware,
-} from './UserAccountUpdateMany'
-import { UserAccountUpsert, type UpsertMiddleware } from './UserAccountUpsert'
-import { UserAccountDelete, type DeleteMiddleware } from './UserAccountDelete'
-import {
-  UserAccountDeleteMany,
-  type DeleteManyMiddleware,
-} from './UserAccountDeleteMany'
-import {
-  UserAccountAggregate,
-  type AggregateMiddleware,
-} from './UserAccountAggregate'
-import { UserAccountCount, type CountMiddleware } from './UserAccountCount'
-import {
-  UserAccountGroupBy,
-  type GroupByMiddleware,
-} from './UserAccountGroupBy'
+import { UserAccountFindFirst } from './UserAccountFindFirst'
+import { UserAccountFindMany } from './UserAccountFindMany'
+import { UserAccountFindUnique } from './UserAccountFindUnique'
+import { UserAccountCreate } from './UserAccountCreate'
+import { UserAccountCreateMany } from './UserAccountCreateMany'
+import { UserAccountUpdate } from './UserAccountUpdate'
+import { UserAccountUpdateMany } from './UserAccountUpdateMany'
+import { UserAccountUpsert } from './UserAccountUpsert'
+import { UserAccountDelete } from './UserAccountDelete'
+import { UserAccountDeleteMany } from './UserAccountDeleteMany'
+import { UserAccountAggregate } from './UserAccountAggregate'
+import { UserAccountCount } from './UserAccountCount'
+import { UserAccountGroupBy } from './UserAccountGroupBy'
+import { RouteConfig } from '../RouteConfig'
 
-interface RouteConfig {
-  findFirstMiddleware?: FindFirstMiddleware[]
-  findFirstNextMiddleware?: RequestHandler[]
-
-  findManyMiddleware?: FindManyMiddleware[]
-  findManyNextMiddleware?: RequestHandler[]
-
-  findUniqueMiddleware?: FindUniqueMiddleware[]
-  findUniqueNextMiddleware?: RequestHandler[]
-
-  createMiddleware?: CreateMiddleware[]
-  createNextMiddleware?: RequestHandler[]
-
-  createManyMiddleware?: CreateManyMiddleware[]
-  createManyNextMiddleware?: RequestHandler[]
-
-  updateMiddleware?: UpdateMiddleware[]
-  updateNextMiddleware?: RequestHandler[]
-
-  updateManyMiddleware?: UpdateManyMiddleware[]
-  updateManyNextMiddleware?: RequestHandler[]
-
-  upsertMiddleware?: UpsertMiddleware[]
-  upsertNextMiddleware?: RequestHandler[]
-
-  deleteMiddleware?: DeleteMiddleware[]
-  deleteNextMiddleware?: RequestHandler[]
-
-  deleteManyMiddleware?: DeleteManyMiddleware[]
-  deleteManyNextMiddleware?: RequestHandler[]
-
-  aggregateMiddleware?: AggregateMiddleware[]
-  aggregateNextMiddleware?: RequestHandler[]
-
-  countMiddleware?: CountMiddleware[]
-  countNextMiddleware?: RequestHandler[]
-
-  groupByMiddleware?: GroupByMiddleware[]
-  groupByNextMiddleware?: RequestHandler[]
+const defaultBeforeAfter = {
+  before: [] as RequestHandler[],
+  after: [] as RequestHandler[],
 }
 
 /**
@@ -83,111 +24,139 @@ interface RouteConfig {
  * @param config Contains optional middleware to enable routes.
  * @returns {express.Router}
  */
-export function UserAccountRouter(config: RouteConfig) {
+export function UserAccountRouter(config: RouteConfig<RequestHandler>) {
   const router = express.Router()
+  const basePath = config.addModelPrefix ? '/useraccount' : ''
 
-  if (config?.findFirstMiddleware && config?.findFirstMiddleware.length) {
-    const middlewares = [...config.findFirstMiddleware, UserAccountFindFirst]
-    if (config.findFirstNextMiddleware) {
-      middlewares.push(...config.findFirstNextMiddleware)
-    }
-    router.get('/first', ...(middlewares as FindFirstMiddleware[]))
+  const setupRoute = (
+    path: string,
+    method:
+      | 'all'
+      | 'get'
+      | 'post'
+      | 'put'
+      | 'delete'
+      | 'patch'
+      | 'options'
+      | 'head',
+    middlewares: RequestHandler[],
+    handler: RequestHandler,
+  ) => {
+    router[method](basePath + path, ...middlewares, handler)
   }
 
-  if (config?.findManyMiddleware && config?.findManyMiddleware.length) {
-    const middlewares = [...config.findManyMiddleware, UserAccountFindMany]
-    if (config.findManyNextMiddleware) {
-      middlewares.push(...config.findManyNextMiddleware)
+  if (config.enableAll || config?.findFirst) {
+    const { before = [], after = [] } = config.findFirst || defaultBeforeAfter
+    setupRoute('/first', 'get', before, UserAccountFindFirst as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/first', ...after)
     }
-    router.get('/', ...(middlewares as FindManyMiddleware[]))
   }
 
-  if (config?.findUniqueMiddleware && config?.findUniqueMiddleware.length) {
-    const middlewares = [...config.findUniqueMiddleware, UserAccountFindUnique]
-    if (config.findUniqueNextMiddleware) {
-      middlewares.push(...config.findUniqueNextMiddleware)
+  if (config.enableAll || config?.findMany) {
+    const { before = [], after = [] } = config.findMany || defaultBeforeAfter
+    setupRoute('/', 'get', before, UserAccountFindMany as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.get('/:id', ...(middlewares as FindUniqueMiddleware[]))
   }
 
-  if (config?.createMiddleware && config?.createMiddleware.length) {
-    const middlewares = [...config.createMiddleware, UserAccountCreate]
-    if (config.createNextMiddleware) {
-      middlewares.push(...config.createNextMiddleware)
+  if (config.enableAll || config?.findUnique) {
+    const { before = [], after = [] } = config.findUnique || defaultBeforeAfter
+    setupRoute('/:id', 'get', before, UserAccountFindUnique as any)
+    if (after.length) {
+      router.use(basePath + '/:id', ...after)
     }
-    router.post('/', ...(middlewares as CreateMiddleware[]))
   }
 
-  if (config?.createManyMiddleware && config?.createManyMiddleware.length) {
-    const middlewares = [...config.createManyMiddleware, UserAccountCreateMany]
-    if (config.createManyNextMiddleware) {
-      middlewares.push(...config.createManyNextMiddleware)
+  if (config.enableAll || config?.create) {
+    const { before = [], after = [] } = config.create || defaultBeforeAfter
+    setupRoute('/', 'post', before, UserAccountCreate as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.post('/many', ...(middlewares as CreateManyMiddleware[]))
   }
 
-  if (config?.updateMiddleware && config?.updateMiddleware.length) {
-    const middlewares = [...config.updateMiddleware, UserAccountUpdate]
-    if (config.updateNextMiddleware) {
-      middlewares.push(...config.updateNextMiddleware)
+  if (config.enableAll || config?.createMany) {
+    const { before = [], after = [] } = config.createMany || defaultBeforeAfter
+    setupRoute('/many', 'post', before, UserAccountCreateMany as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.put('/', ...(middlewares as UpdateMiddleware[]))
   }
 
-  if (config?.updateManyMiddleware && config?.updateManyMiddleware.length) {
-    const middlewares = [...config.updateManyMiddleware, UserAccountUpdateMany]
-    if (config.updateManyNextMiddleware) {
-      middlewares.push(...config.updateManyNextMiddleware)
+  if (config.enableAll || config?.update) {
+    const { before = [], after = [] } = config.update || defaultBeforeAfter
+    setupRoute('/', 'put', before, UserAccountUpdate as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.put('/many', ...(middlewares as UpdateManyMiddleware[]))
   }
 
-  if (config?.upsertMiddleware && config?.upsertMiddleware.length) {
-    const middlewares = [...config.upsertMiddleware, UserAccountUpsert]
-    if (config.upsertNextMiddleware) {
-      middlewares.push(...config.upsertNextMiddleware)
+  if (config.enableAll || config?.updateMany) {
+    const { before = [], after = [] } = config.updateMany || defaultBeforeAfter
+    setupRoute('/many', 'put', before, UserAccountUpdateMany as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.patch('/', ...(middlewares as UpsertMiddleware[]))
   }
 
-  if (config?.deleteMiddleware && config?.deleteMiddleware.length) {
-    const middlewares = [...config.deleteMiddleware, UserAccountDelete]
-    if (config.deleteNextMiddleware) {
-      middlewares.push(...config.deleteNextMiddleware)
+  if (config.enableAll || config?.upsert) {
+    const { before = [], after = [] } = config.upsert || defaultBeforeAfter
+    setupRoute('/', 'patch', before, UserAccountUpsert as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.delete('/', ...(middlewares as DeleteMiddleware[]))
   }
 
-  if (config?.deleteManyMiddleware && config?.deleteManyMiddleware.length) {
-    const middlewares = [...config.deleteManyMiddleware, UserAccountDeleteMany]
-    if (config.deleteManyNextMiddleware) {
-      middlewares.push(...config.deleteManyNextMiddleware)
+  if (config.enableAll || config?.delete) {
+    const { before = [], after = [] } = config.delete || defaultBeforeAfter
+    setupRoute('/', 'delete', before, UserAccountDelete as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.delete('/many', ...(middlewares as DeleteManyMiddleware[]))
   }
 
-  if (config?.aggregateMiddleware && config?.aggregateMiddleware.length) {
-    const middlewares = [...config.aggregateMiddleware, UserAccountAggregate]
-    if (config.aggregateNextMiddleware) {
-      middlewares.push(...config.aggregateNextMiddleware)
+  if (config.enableAll || config?.deleteMany) {
+    const { before = [], after = [] } = config.deleteMany || defaultBeforeAfter
+    setupRoute(
+      '/many',
+      'delete',
+      before,
+      UserAccountDeleteMany as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.get('/aggregate', ...(middlewares as AggregateMiddleware[]))
   }
 
-  if (config?.countMiddleware && config?.countMiddleware.length) {
-    const middlewares = [...config.countMiddleware, UserAccountCount]
-    if (config.countNextMiddleware) {
-      middlewares.push(...config.countNextMiddleware)
+  if (config.enableAll || config?.aggregate) {
+    const { before = [], after = [] } = config.aggregate || defaultBeforeAfter
+    setupRoute(
+      '/aggregate',
+      'get',
+      before,
+      UserAccountAggregate as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/aggregate', ...after)
     }
-    router.get('/count', ...(middlewares as CountMiddleware[]))
   }
 
-  if (config?.groupByMiddleware && config?.groupByMiddleware.length) {
-    const middlewares = [...config.groupByMiddleware, UserAccountGroupBy]
-    if (config.groupByNextMiddleware) {
-      middlewares.push(...config.groupByNextMiddleware)
+  if (config.enableAll || config?.count) {
+    const { before = [], after = [] } = config.count || defaultBeforeAfter
+    setupRoute('/count', 'get', before, UserAccountCount as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/count', ...after)
     }
-    router.get('/groupby', ...(middlewares as GroupByMiddleware[]))
+  }
+
+  if (config.enableAll || config?.groupBy) {
+    const { before = [], after = [] } = config.groupBy || defaultBeforeAfter
+    setupRoute('/groupby', 'get', before, UserAccountGroupBy as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/groupby', ...after)
+    }
   }
 
   return router

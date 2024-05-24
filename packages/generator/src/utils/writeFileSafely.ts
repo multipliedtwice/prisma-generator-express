@@ -9,15 +9,16 @@ export const writeFileSafely = async ({
   options,
   content,
 }: {
-  model: DMMF.Model
+  model?: DMMF.Model
   operation: string
   options: GeneratorOptions
   content: string
 }) => {
-  const fileName = operation === 'index' ? 'index' : `${model.name}${operation}`
+  const fileName =
+    operation === 'index' ? 'index' : `${model?.name || ''}${operation}`
   const filePath = path.join(
     options.generator.output?.value!,
-    `${model.name}/${fileName}.ts`,
+    model ? `${model?.name}/${fileName}.ts` : `/${fileName}.ts`,
   )
   console.log('filePath :>> ', filePath)
   await fs.mkdir(path.dirname(filePath), {

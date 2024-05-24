@@ -1,75 +1,22 @@
 import express, { RequestHandler } from 'express'
-import {
-  orderItemFindFirst,
-  type FindFirstMiddleware,
-} from './orderItemFindFirst'
-import { orderItemFindMany, type FindManyMiddleware } from './orderItemFindMany'
-import {
-  orderItemFindUnique,
-  type FindUniqueMiddleware,
-} from './orderItemFindUnique'
-import { orderItemCreate, type CreateMiddleware } from './orderItemCreate'
-import {
-  orderItemCreateMany,
-  type CreateManyMiddleware,
-} from './orderItemCreateMany'
-import { orderItemUpdate, type UpdateMiddleware } from './orderItemUpdate'
-import {
-  orderItemUpdateMany,
-  type UpdateManyMiddleware,
-} from './orderItemUpdateMany'
-import { orderItemUpsert, type UpsertMiddleware } from './orderItemUpsert'
-import { orderItemDelete, type DeleteMiddleware } from './orderItemDelete'
-import {
-  orderItemDeleteMany,
-  type DeleteManyMiddleware,
-} from './orderItemDeleteMany'
-import {
-  orderItemAggregate,
-  type AggregateMiddleware,
-} from './orderItemAggregate'
-import { orderItemCount, type CountMiddleware } from './orderItemCount'
-import { orderItemGroupBy, type GroupByMiddleware } from './orderItemGroupBy'
+import { orderItemFindFirst } from './orderItemFindFirst'
+import { orderItemFindMany } from './orderItemFindMany'
+import { orderItemFindUnique } from './orderItemFindUnique'
+import { orderItemCreate } from './orderItemCreate'
+import { orderItemCreateMany } from './orderItemCreateMany'
+import { orderItemUpdate } from './orderItemUpdate'
+import { orderItemUpdateMany } from './orderItemUpdateMany'
+import { orderItemUpsert } from './orderItemUpsert'
+import { orderItemDelete } from './orderItemDelete'
+import { orderItemDeleteMany } from './orderItemDeleteMany'
+import { orderItemAggregate } from './orderItemAggregate'
+import { orderItemCount } from './orderItemCount'
+import { orderItemGroupBy } from './orderItemGroupBy'
+import { RouteConfig } from '../RouteConfig'
 
-interface RouteConfig {
-  findFirstMiddleware?: FindFirstMiddleware[]
-  findFirstNextMiddleware?: RequestHandler[]
-
-  findManyMiddleware?: FindManyMiddleware[]
-  findManyNextMiddleware?: RequestHandler[]
-
-  findUniqueMiddleware?: FindUniqueMiddleware[]
-  findUniqueNextMiddleware?: RequestHandler[]
-
-  createMiddleware?: CreateMiddleware[]
-  createNextMiddleware?: RequestHandler[]
-
-  createManyMiddleware?: CreateManyMiddleware[]
-  createManyNextMiddleware?: RequestHandler[]
-
-  updateMiddleware?: UpdateMiddleware[]
-  updateNextMiddleware?: RequestHandler[]
-
-  updateManyMiddleware?: UpdateManyMiddleware[]
-  updateManyNextMiddleware?: RequestHandler[]
-
-  upsertMiddleware?: UpsertMiddleware[]
-  upsertNextMiddleware?: RequestHandler[]
-
-  deleteMiddleware?: DeleteMiddleware[]
-  deleteNextMiddleware?: RequestHandler[]
-
-  deleteManyMiddleware?: DeleteManyMiddleware[]
-  deleteManyNextMiddleware?: RequestHandler[]
-
-  aggregateMiddleware?: AggregateMiddleware[]
-  aggregateNextMiddleware?: RequestHandler[]
-
-  countMiddleware?: CountMiddleware[]
-  countNextMiddleware?: RequestHandler[]
-
-  groupByMiddleware?: GroupByMiddleware[]
-  groupByNextMiddleware?: RequestHandler[]
+const defaultBeforeAfter = {
+  before: [] as RequestHandler[],
+  after: [] as RequestHandler[],
 }
 
 /**
@@ -77,111 +24,134 @@ interface RouteConfig {
  * @param config Contains optional middleware to enable routes.
  * @returns {express.Router}
  */
-export function orderItemRouter(config: RouteConfig) {
+export function orderItemRouter(config: RouteConfig<RequestHandler>) {
   const router = express.Router()
+  const basePath = config.addModelPrefix ? '/orderitem' : ''
 
-  if (config?.findFirstMiddleware && config?.findFirstMiddleware.length) {
-    const middlewares = [...config.findFirstMiddleware, orderItemFindFirst]
-    if (config.findFirstNextMiddleware) {
-      middlewares.push(...config.findFirstNextMiddleware)
-    }
-    router.get('/first', ...(middlewares as FindFirstMiddleware[]))
+  const setupRoute = (
+    path: string,
+    method:
+      | 'all'
+      | 'get'
+      | 'post'
+      | 'put'
+      | 'delete'
+      | 'patch'
+      | 'options'
+      | 'head',
+    middlewares: RequestHandler[],
+    handler: RequestHandler,
+  ) => {
+    router[method](basePath + path, ...middlewares, handler)
   }
 
-  if (config?.findManyMiddleware && config?.findManyMiddleware.length) {
-    const middlewares = [...config.findManyMiddleware, orderItemFindMany]
-    if (config.findManyNextMiddleware) {
-      middlewares.push(...config.findManyNextMiddleware)
+  if (config.enableAll || config?.findFirst) {
+    const { before = [], after = [] } = config.findFirst || defaultBeforeAfter
+    setupRoute('/first', 'get', before, orderItemFindFirst as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/first', ...after)
     }
-    router.get('/', ...(middlewares as FindManyMiddleware[]))
   }
 
-  if (config?.findUniqueMiddleware && config?.findUniqueMiddleware.length) {
-    const middlewares = [...config.findUniqueMiddleware, orderItemFindUnique]
-    if (config.findUniqueNextMiddleware) {
-      middlewares.push(...config.findUniqueNextMiddleware)
+  if (config.enableAll || config?.findMany) {
+    const { before = [], after = [] } = config.findMany || defaultBeforeAfter
+    setupRoute('/', 'get', before, orderItemFindMany as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.get('/:id', ...(middlewares as FindUniqueMiddleware[]))
   }
 
-  if (config?.createMiddleware && config?.createMiddleware.length) {
-    const middlewares = [...config.createMiddleware, orderItemCreate]
-    if (config.createNextMiddleware) {
-      middlewares.push(...config.createNextMiddleware)
+  if (config.enableAll || config?.findUnique) {
+    const { before = [], after = [] } = config.findUnique || defaultBeforeAfter
+    setupRoute('/:id', 'get', before, orderItemFindUnique as any)
+    if (after.length) {
+      router.use(basePath + '/:id', ...after)
     }
-    router.post('/', ...(middlewares as CreateMiddleware[]))
   }
 
-  if (config?.createManyMiddleware && config?.createManyMiddleware.length) {
-    const middlewares = [...config.createManyMiddleware, orderItemCreateMany]
-    if (config.createManyNextMiddleware) {
-      middlewares.push(...config.createManyNextMiddleware)
+  if (config.enableAll || config?.create) {
+    const { before = [], after = [] } = config.create || defaultBeforeAfter
+    setupRoute('/', 'post', before, orderItemCreate as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.post('/many', ...(middlewares as CreateManyMiddleware[]))
   }
 
-  if (config?.updateMiddleware && config?.updateMiddleware.length) {
-    const middlewares = [...config.updateMiddleware, orderItemUpdate]
-    if (config.updateNextMiddleware) {
-      middlewares.push(...config.updateNextMiddleware)
+  if (config.enableAll || config?.createMany) {
+    const { before = [], after = [] } = config.createMany || defaultBeforeAfter
+    setupRoute('/many', 'post', before, orderItemCreateMany as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.put('/', ...(middlewares as UpdateMiddleware[]))
   }
 
-  if (config?.updateManyMiddleware && config?.updateManyMiddleware.length) {
-    const middlewares = [...config.updateManyMiddleware, orderItemUpdateMany]
-    if (config.updateManyNextMiddleware) {
-      middlewares.push(...config.updateManyNextMiddleware)
+  if (config.enableAll || config?.update) {
+    const { before = [], after = [] } = config.update || defaultBeforeAfter
+    setupRoute('/', 'put', before, orderItemUpdate as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.put('/many', ...(middlewares as UpdateManyMiddleware[]))
   }
 
-  if (config?.upsertMiddleware && config?.upsertMiddleware.length) {
-    const middlewares = [...config.upsertMiddleware, orderItemUpsert]
-    if (config.upsertNextMiddleware) {
-      middlewares.push(...config.upsertNextMiddleware)
+  if (config.enableAll || config?.updateMany) {
+    const { before = [], after = [] } = config.updateMany || defaultBeforeAfter
+    setupRoute('/many', 'put', before, orderItemUpdateMany as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.patch('/', ...(middlewares as UpsertMiddleware[]))
   }
 
-  if (config?.deleteMiddleware && config?.deleteMiddleware.length) {
-    const middlewares = [...config.deleteMiddleware, orderItemDelete]
-    if (config.deleteNextMiddleware) {
-      middlewares.push(...config.deleteNextMiddleware)
+  if (config.enableAll || config?.upsert) {
+    const { before = [], after = [] } = config.upsert || defaultBeforeAfter
+    setupRoute('/', 'patch', before, orderItemUpsert as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.delete('/', ...(middlewares as DeleteMiddleware[]))
   }
 
-  if (config?.deleteManyMiddleware && config?.deleteManyMiddleware.length) {
-    const middlewares = [...config.deleteManyMiddleware, orderItemDeleteMany]
-    if (config.deleteManyNextMiddleware) {
-      middlewares.push(...config.deleteManyNextMiddleware)
+  if (config.enableAll || config?.delete) {
+    const { before = [], after = [] } = config.delete || defaultBeforeAfter
+    setupRoute('/', 'delete', before, orderItemDelete as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.delete('/many', ...(middlewares as DeleteManyMiddleware[]))
   }
 
-  if (config?.aggregateMiddleware && config?.aggregateMiddleware.length) {
-    const middlewares = [...config.aggregateMiddleware, orderItemAggregate]
-    if (config.aggregateNextMiddleware) {
-      middlewares.push(...config.aggregateNextMiddleware)
+  if (config.enableAll || config?.deleteMany) {
+    const { before = [], after = [] } = config.deleteMany || defaultBeforeAfter
+    setupRoute('/many', 'delete', before, orderItemDeleteMany as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.get('/aggregate', ...(middlewares as AggregateMiddleware[]))
   }
 
-  if (config?.countMiddleware && config?.countMiddleware.length) {
-    const middlewares = [...config.countMiddleware, orderItemCount]
-    if (config.countNextMiddleware) {
-      middlewares.push(...config.countNextMiddleware)
+  if (config.enableAll || config?.aggregate) {
+    const { before = [], after = [] } = config.aggregate || defaultBeforeAfter
+    setupRoute(
+      '/aggregate',
+      'get',
+      before,
+      orderItemAggregate as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/aggregate', ...after)
     }
-    router.get('/count', ...(middlewares as CountMiddleware[]))
   }
 
-  if (config?.groupByMiddleware && config?.groupByMiddleware.length) {
-    const middlewares = [...config.groupByMiddleware, orderItemGroupBy]
-    if (config.groupByNextMiddleware) {
-      middlewares.push(...config.groupByNextMiddleware)
+  if (config.enableAll || config?.count) {
+    const { before = [], after = [] } = config.count || defaultBeforeAfter
+    setupRoute('/count', 'get', before, orderItemCount as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/count', ...after)
     }
-    router.get('/groupby', ...(middlewares as GroupByMiddleware[]))
+  }
+
+  if (config.enableAll || config?.groupBy) {
+    const { before = [], after = [] } = config.groupBy || defaultBeforeAfter
+    setupRoute('/groupby', 'get', before, orderItemGroupBy as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/groupby', ...after)
+    }
   }
 
   return router

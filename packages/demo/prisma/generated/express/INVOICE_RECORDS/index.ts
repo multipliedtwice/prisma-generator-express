@@ -1,96 +1,22 @@
 import express, { RequestHandler } from 'express'
-import {
-  INVOICE_RECORDSFindFirst,
-  type FindFirstMiddleware,
-} from './INVOICE_RECORDSFindFirst'
-import {
-  INVOICE_RECORDSFindMany,
-  type FindManyMiddleware,
-} from './INVOICE_RECORDSFindMany'
-import {
-  INVOICE_RECORDSFindUnique,
-  type FindUniqueMiddleware,
-} from './INVOICE_RECORDSFindUnique'
-import {
-  INVOICE_RECORDSCreate,
-  type CreateMiddleware,
-} from './INVOICE_RECORDSCreate'
-import {
-  INVOICE_RECORDSCreateMany,
-  type CreateManyMiddleware,
-} from './INVOICE_RECORDSCreateMany'
-import {
-  INVOICE_RECORDSUpdate,
-  type UpdateMiddleware,
-} from './INVOICE_RECORDSUpdate'
-import {
-  INVOICE_RECORDSUpdateMany,
-  type UpdateManyMiddleware,
-} from './INVOICE_RECORDSUpdateMany'
-import {
-  INVOICE_RECORDSUpsert,
-  type UpsertMiddleware,
-} from './INVOICE_RECORDSUpsert'
-import {
-  INVOICE_RECORDSDelete,
-  type DeleteMiddleware,
-} from './INVOICE_RECORDSDelete'
-import {
-  INVOICE_RECORDSDeleteMany,
-  type DeleteManyMiddleware,
-} from './INVOICE_RECORDSDeleteMany'
-import {
-  INVOICE_RECORDSAggregate,
-  type AggregateMiddleware,
-} from './INVOICE_RECORDSAggregate'
-import {
-  INVOICE_RECORDSCount,
-  type CountMiddleware,
-} from './INVOICE_RECORDSCount'
-import {
-  INVOICE_RECORDSGroupBy,
-  type GroupByMiddleware,
-} from './INVOICE_RECORDSGroupBy'
+import { INVOICE_RECORDSFindFirst } from './INVOICE_RECORDSFindFirst'
+import { INVOICE_RECORDSFindMany } from './INVOICE_RECORDSFindMany'
+import { INVOICE_RECORDSFindUnique } from './INVOICE_RECORDSFindUnique'
+import { INVOICE_RECORDSCreate } from './INVOICE_RECORDSCreate'
+import { INVOICE_RECORDSCreateMany } from './INVOICE_RECORDSCreateMany'
+import { INVOICE_RECORDSUpdate } from './INVOICE_RECORDSUpdate'
+import { INVOICE_RECORDSUpdateMany } from './INVOICE_RECORDSUpdateMany'
+import { INVOICE_RECORDSUpsert } from './INVOICE_RECORDSUpsert'
+import { INVOICE_RECORDSDelete } from './INVOICE_RECORDSDelete'
+import { INVOICE_RECORDSDeleteMany } from './INVOICE_RECORDSDeleteMany'
+import { INVOICE_RECORDSAggregate } from './INVOICE_RECORDSAggregate'
+import { INVOICE_RECORDSCount } from './INVOICE_RECORDSCount'
+import { INVOICE_RECORDSGroupBy } from './INVOICE_RECORDSGroupBy'
+import { RouteConfig } from '../RouteConfig'
 
-interface RouteConfig {
-  findFirstMiddleware?: FindFirstMiddleware[]
-  findFirstNextMiddleware?: RequestHandler[]
-
-  findManyMiddleware?: FindManyMiddleware[]
-  findManyNextMiddleware?: RequestHandler[]
-
-  findUniqueMiddleware?: FindUniqueMiddleware[]
-  findUniqueNextMiddleware?: RequestHandler[]
-
-  createMiddleware?: CreateMiddleware[]
-  createNextMiddleware?: RequestHandler[]
-
-  createManyMiddleware?: CreateManyMiddleware[]
-  createManyNextMiddleware?: RequestHandler[]
-
-  updateMiddleware?: UpdateMiddleware[]
-  updateNextMiddleware?: RequestHandler[]
-
-  updateManyMiddleware?: UpdateManyMiddleware[]
-  updateManyNextMiddleware?: RequestHandler[]
-
-  upsertMiddleware?: UpsertMiddleware[]
-  upsertNextMiddleware?: RequestHandler[]
-
-  deleteMiddleware?: DeleteMiddleware[]
-  deleteNextMiddleware?: RequestHandler[]
-
-  deleteManyMiddleware?: DeleteManyMiddleware[]
-  deleteManyNextMiddleware?: RequestHandler[]
-
-  aggregateMiddleware?: AggregateMiddleware[]
-  aggregateNextMiddleware?: RequestHandler[]
-
-  countMiddleware?: CountMiddleware[]
-  countNextMiddleware?: RequestHandler[]
-
-  groupByMiddleware?: GroupByMiddleware[]
-  groupByNextMiddleware?: RequestHandler[]
+const defaultBeforeAfter = {
+  before: [] as RequestHandler[],
+  after: [] as RequestHandler[],
 }
 
 /**
@@ -98,129 +24,159 @@ interface RouteConfig {
  * @param config Contains optional middleware to enable routes.
  * @returns {express.Router}
  */
-export function INVOICE_RECORDSRouter(config: RouteConfig) {
+export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
   const router = express.Router()
+  const basePath = config.addModelPrefix ? '/invoice_records' : ''
 
-  if (config?.findFirstMiddleware && config?.findFirstMiddleware.length) {
-    const middlewares = [
-      ...config.findFirstMiddleware,
-      INVOICE_RECORDSFindFirst,
-    ]
-    if (config.findFirstNextMiddleware) {
-      middlewares.push(...config.findFirstNextMiddleware)
-    }
-    router.get('/first', ...(middlewares as FindFirstMiddleware[]))
+  const setupRoute = (
+    path: string,
+    method:
+      | 'all'
+      | 'get'
+      | 'post'
+      | 'put'
+      | 'delete'
+      | 'patch'
+      | 'options'
+      | 'head',
+    middlewares: RequestHandler[],
+    handler: RequestHandler,
+  ) => {
+    router[method](basePath + path, ...middlewares, handler)
   }
 
-  if (config?.findManyMiddleware && config?.findManyMiddleware.length) {
-    const middlewares = [...config.findManyMiddleware, INVOICE_RECORDSFindMany]
-    if (config.findManyNextMiddleware) {
-      middlewares.push(...config.findManyNextMiddleware)
+  if (config.enableAll || config?.findFirst) {
+    const { before = [], after = [] } = config.findFirst || defaultBeforeAfter
+    setupRoute(
+      '/first',
+      'get',
+      before,
+      INVOICE_RECORDSFindFirst as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/first', ...after)
     }
-    router.get('/', ...(middlewares as FindManyMiddleware[]))
   }
 
-  if (config?.findUniqueMiddleware && config?.findUniqueMiddleware.length) {
-    const middlewares = [
-      ...config.findUniqueMiddleware,
-      INVOICE_RECORDSFindUnique,
-    ]
-    if (config.findUniqueNextMiddleware) {
-      middlewares.push(...config.findUniqueNextMiddleware)
+  if (config.enableAll || config?.findMany) {
+    const { before = [], after = [] } = config.findMany || defaultBeforeAfter
+    setupRoute('/', 'get', before, INVOICE_RECORDSFindMany as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.get('/:id', ...(middlewares as FindUniqueMiddleware[]))
   }
 
-  if (config?.createMiddleware && config?.createMiddleware.length) {
-    const middlewares = [...config.createMiddleware, INVOICE_RECORDSCreate]
-    if (config.createNextMiddleware) {
-      middlewares.push(...config.createNextMiddleware)
+  if (config.enableAll || config?.findUnique) {
+    const { before = [], after = [] } = config.findUnique || defaultBeforeAfter
+    setupRoute('/:id', 'get', before, INVOICE_RECORDSFindUnique as any)
+    if (after.length) {
+      router.use(basePath + '/:id', ...after)
     }
-    router.post('/', ...(middlewares as CreateMiddleware[]))
   }
 
-  if (config?.createManyMiddleware && config?.createManyMiddleware.length) {
-    const middlewares = [
-      ...config.createManyMiddleware,
-      INVOICE_RECORDSCreateMany,
-    ]
-    if (config.createManyNextMiddleware) {
-      middlewares.push(...config.createManyNextMiddleware)
+  if (config.enableAll || config?.create) {
+    const { before = [], after = [] } = config.create || defaultBeforeAfter
+    setupRoute('/', 'post', before, INVOICE_RECORDSCreate as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.post('/many', ...(middlewares as CreateManyMiddleware[]))
   }
 
-  if (config?.updateMiddleware && config?.updateMiddleware.length) {
-    const middlewares = [...config.updateMiddleware, INVOICE_RECORDSUpdate]
-    if (config.updateNextMiddleware) {
-      middlewares.push(...config.updateNextMiddleware)
+  if (config.enableAll || config?.createMany) {
+    const { before = [], after = [] } = config.createMany || defaultBeforeAfter
+    setupRoute(
+      '/many',
+      'post',
+      before,
+      INVOICE_RECORDSCreateMany as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.put('/', ...(middlewares as UpdateMiddleware[]))
   }
 
-  if (config?.updateManyMiddleware && config?.updateManyMiddleware.length) {
-    const middlewares = [
-      ...config.updateManyMiddleware,
-      INVOICE_RECORDSUpdateMany,
-    ]
-    if (config.updateManyNextMiddleware) {
-      middlewares.push(...config.updateManyNextMiddleware)
+  if (config.enableAll || config?.update) {
+    const { before = [], after = [] } = config.update || defaultBeforeAfter
+    setupRoute('/', 'put', before, INVOICE_RECORDSUpdate as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.put('/many', ...(middlewares as UpdateManyMiddleware[]))
   }
 
-  if (config?.upsertMiddleware && config?.upsertMiddleware.length) {
-    const middlewares = [...config.upsertMiddleware, INVOICE_RECORDSUpsert]
-    if (config.upsertNextMiddleware) {
-      middlewares.push(...config.upsertNextMiddleware)
+  if (config.enableAll || config?.updateMany) {
+    const { before = [], after = [] } = config.updateMany || defaultBeforeAfter
+    setupRoute(
+      '/many',
+      'put',
+      before,
+      INVOICE_RECORDSUpdateMany as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.patch('/', ...(middlewares as UpsertMiddleware[]))
   }
 
-  if (config?.deleteMiddleware && config?.deleteMiddleware.length) {
-    const middlewares = [...config.deleteMiddleware, INVOICE_RECORDSDelete]
-    if (config.deleteNextMiddleware) {
-      middlewares.push(...config.deleteNextMiddleware)
+  if (config.enableAll || config?.upsert) {
+    const { before = [], after = [] } = config.upsert || defaultBeforeAfter
+    setupRoute('/', 'patch', before, INVOICE_RECORDSUpsert as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.delete('/', ...(middlewares as DeleteMiddleware[]))
   }
 
-  if (config?.deleteManyMiddleware && config?.deleteManyMiddleware.length) {
-    const middlewares = [
-      ...config.deleteManyMiddleware,
-      INVOICE_RECORDSDeleteMany,
-    ]
-    if (config.deleteManyNextMiddleware) {
-      middlewares.push(...config.deleteManyNextMiddleware)
+  if (config.enableAll || config?.delete) {
+    const { before = [], after = [] } = config.delete || defaultBeforeAfter
+    setupRoute('/', 'delete', before, INVOICE_RECORDSDelete as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/', ...after)
     }
-    router.delete('/many', ...(middlewares as DeleteManyMiddleware[]))
   }
 
-  if (config?.aggregateMiddleware && config?.aggregateMiddleware.length) {
-    const middlewares = [
-      ...config.aggregateMiddleware,
-      INVOICE_RECORDSAggregate,
-    ]
-    if (config.aggregateNextMiddleware) {
-      middlewares.push(...config.aggregateNextMiddleware)
+  if (config.enableAll || config?.deleteMany) {
+    const { before = [], after = [] } = config.deleteMany || defaultBeforeAfter
+    setupRoute(
+      '/many',
+      'delete',
+      before,
+      INVOICE_RECORDSDeleteMany as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/many', ...after)
     }
-    router.get('/aggregate', ...(middlewares as AggregateMiddleware[]))
   }
 
-  if (config?.countMiddleware && config?.countMiddleware.length) {
-    const middlewares = [...config.countMiddleware, INVOICE_RECORDSCount]
-    if (config.countNextMiddleware) {
-      middlewares.push(...config.countNextMiddleware)
+  if (config.enableAll || config?.aggregate) {
+    const { before = [], after = [] } = config.aggregate || defaultBeforeAfter
+    setupRoute(
+      '/aggregate',
+      'get',
+      before,
+      INVOICE_RECORDSAggregate as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/aggregate', ...after)
     }
-    router.get('/count', ...(middlewares as CountMiddleware[]))
   }
 
-  if (config?.groupByMiddleware && config?.groupByMiddleware.length) {
-    const middlewares = [...config.groupByMiddleware, INVOICE_RECORDSGroupBy]
-    if (config.groupByNextMiddleware) {
-      middlewares.push(...config.groupByNextMiddleware)
+  if (config.enableAll || config?.count) {
+    const { before = [], after = [] } = config.count || defaultBeforeAfter
+    setupRoute('/count', 'get', before, INVOICE_RECORDSCount as RequestHandler)
+    if (after.length) {
+      router.use(basePath + '/count', ...after)
     }
-    router.get('/groupby', ...(middlewares as GroupByMiddleware[]))
+  }
+
+  if (config.enableAll || config?.groupBy) {
+    const { before = [], after = [] } = config.groupBy || defaultBeforeAfter
+    setupRoute(
+      '/groupby',
+      'get',
+      before,
+      INVOICE_RECORDSGroupBy as RequestHandler,
+    )
+    if (after.length) {
+      router.use(basePath + '/groupby', ...after)
+    }
   }
 
   return router
