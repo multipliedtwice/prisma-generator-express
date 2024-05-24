@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.7.0...v1.7.1) (2024-05-24)
+
+
+### Bug Fixes
+
+* The left-hand side of an assignment expression may not be an optional property access. ([3c5a5f5](https://github.com/multipliedtwice/prisma-generator-express/commit/3c5a5f58d18d9b889f14b572527250c2e20230fa))
+
 # [1.7.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.6.0...v1.7.0) (2024-05-24)
 
 
