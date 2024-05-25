@@ -1,3 +1,15 @@
+# [1.9.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.8.1...v1.9.0) (2024-05-25)
+
+
+### Bug Fixes
+
+* add customUrlPrefix type ([df25af4](https://github.com/multipliedtwice/prisma-generator-express/commit/df25af4da567857b476839457962c66c1705f797))
+
+
+### Features
+
+* **express:** add support for custom URL prefix in generated router functions for various models. This allows flexibility in defining routes with custom prefixes. ([1f01f4a](https://github.com/multipliedtwice/prisma-generator-express/commit/1f01f4a3e6c27b80438120c6add685e2c5ac1661))
+
 ## [1.8.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.8.0...v1.8.1) (2024-05-24)
 
 
