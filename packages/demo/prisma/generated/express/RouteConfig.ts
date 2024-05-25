@@ -21,6 +21,7 @@ export interface RouteConfig<M> {
   groupBy?: MiddlewareConfig<M>
   addModelPrefix?: boolean
   enableAll?: boolean
+  customUrlPrefix?: string
 }
 
 export default RouteConfig
