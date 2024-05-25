@@ -1,3 +1,10 @@
+## [1.10.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.10.1...v1.10.2) (2024-05-25)
+
+
+### Bug Fixes
+
+* customUrlPrefix ([701286d](https://github.com/multipliedtwice/prisma-generator-express/commit/701286d77f571ba03719548d27cff961eaa95ccc))
+
 ## [1.10.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.10.0...v1.10.1) (2024-05-25)
 
 
