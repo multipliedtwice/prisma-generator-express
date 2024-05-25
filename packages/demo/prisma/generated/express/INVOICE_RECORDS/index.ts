@@ -84,9 +84,10 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
       basePath + path,
       (req, res, next) => {
         req.query = parseQueryParams(req.query)
-        handler(req, res, next)
+        next()
       },
       ...middlewares,
+      handler,
     )
   }
 
