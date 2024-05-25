@@ -169,6 +169,7 @@ const someRouterConfig: RouteConfig<RequestHandler> = {
   },
   addModelPrefix: true,
   enableAll: true,
+  customUrlPrefix: '/v1',
 }
 
 app.use(addPrisma, orderItemRouter(someRouterConfig))
