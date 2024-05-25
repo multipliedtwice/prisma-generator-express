@@ -1,3 +1,10 @@
+## [1.11.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.11.3...v1.11.4) (2024-05-25)
+
+
+### Bug Fixes
+
+* parseQueryParams for AND, OR, NOT ([ffa57ab](https://github.com/multipliedtwice/prisma-generator-express/commit/ffa57ab779221d117f7d63cc969944fa531cee3a))
+
 ## [1.11.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.11.2...v1.11.3) (2024-05-25)
 
 
