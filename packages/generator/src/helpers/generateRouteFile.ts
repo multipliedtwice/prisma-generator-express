@@ -36,9 +36,9 @@ const defaultBeforeAfter = {
  * @param customUrlPrefix Optional custom URL prefix for the routes.
  * @returns {express.Router}
  */
-export function ${routerFunctionName}(config: RouteConfig<RequestHandler>, customUrlPrefix = '') {
+export function ${routerFunctionName}(config: RouteConfig<RequestHandler>') {
   const router = express.Router();
-  const basePath = customUrlPrefix + (config.addModelPrefix ? '/${modelName.toLowerCase()}' : '');
+  const basePath = config.customUrlPrefix + (config.addModelPrefix ? '/${modelName.toLowerCase()}' : '');
 
   const setupRoute = (
     path: string,
