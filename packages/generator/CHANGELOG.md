@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.9.1...v1.10.0) (2024-05-25)
+
+
+### Features
+
+* **README.md:** add customUrlPrefix option to someRouterConfig to allow setting a custom URL prefix for the router ([13da6ea](https://github.com/multipliedtwice/prisma-generator-express/commit/13da6ea4bb92c2b40559b9ae34858997682cd60e))
+
 ## [1.9.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.9.0...v1.9.1) (2024-05-25)
 
 
