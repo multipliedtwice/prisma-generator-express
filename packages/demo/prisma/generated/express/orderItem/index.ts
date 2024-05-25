@@ -19,18 +19,41 @@ const defaultBeforeAfter = {
   after: [] as RequestHandler[],
 }
 
+const parseQueryValue = (value: string) => {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  if (value === 'null') return null
+  if (!isNaN(Number(value))) return Number(value)
+  return value
+}
+
+const parseQueryParams = (params: any) => {
+  const parsedParams: any = {}
+  for (const key in params) {
+    const value = params[key]
+    if (typeof value === 'string') {
+      parsedParams[key] = parseQueryValue(value)
+    } else if (Array.isArray(value)) {
+      parsedParams[key] = value.map(parseQueryValue)
+    } else if (typeof value === 'object') {
+      parsedParams[key] = parseQueryParams(value)
+    } else {
+      parsedParams[key] = value
+    }
+  }
+  return parsedParams
+}
+
 /**
  * Generates an Express router for orderItem model.
  * @param config Contains optional middleware to enable routes.
  * @param customUrlPrefix Optional custom URL prefix for the routes.
  * @returns {express.Router}
  */
-export function orderItemRouter(
-  config: RouteConfig<RequestHandler>,
-  customUrlPrefix = '',
-) {
+export function orderItemRouter(config: RouteConfig<RequestHandler>) {
   const router = express.Router()
-  const basePath = customUrlPrefix + (config.addModelPrefix ? '/orderitem' : '')
+  const basePath =
+    (config.customUrlPrefix || '') + (config.addModelPrefix ? '/orderitem' : '')
 
   const setupRoute = (
     path: string,
@@ -46,7 +69,14 @@ export function orderItemRouter(
     middlewares: RequestHandler[],
     handler: RequestHandler,
   ) => {
-    router[method](basePath + path, ...middlewares, handler)
+    router[method](
+      basePath + path,
+      (req, res, next) => {
+        req.query = parseQueryParams(req.query)
+        handler(req, res, next)
+      },
+      ...middlewares,
+    )
   }
 
   if (config.enableAll || config?.findFirst) {

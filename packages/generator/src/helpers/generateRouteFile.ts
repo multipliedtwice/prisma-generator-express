@@ -30,6 +30,31 @@ const defaultBeforeAfter = {
   after: [] as RequestHandler[],
 };
 
+const parseQueryValue = (value: string) => {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (value === 'null') return null;
+  if (!isNaN(Number(value))) return Number(value);
+  return value;
+};
+
+const parseQueryParams = (params: any) => {
+  const parsedParams: any = {};
+  for (const key in params) {
+    const value = params[key];
+    if (typeof value === 'string') {
+      parsedParams[key] = parseQueryValue(value);
+    } else if (Array.isArray(value)) {
+      parsedParams[key] = value.map(parseQueryValue);
+    } else if (typeof value === 'object') {
+      parsedParams[key] = parseQueryParams(value);
+    } else {
+      parsedParams[key] = value;
+    }
+  }
+  return parsedParams;
+};
+
 /**
  * Generates an Express router for ${modelName} model.
  * @param config Contains optional middleware to enable routes.
@@ -38,7 +63,7 @@ const defaultBeforeAfter = {
  */
 export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   const router = express.Router();
-  const basePath = config.customUrlPrefix + (config.addModelPrefix ? '/${modelName.toLowerCase()}' : '');
+  const basePath = (config.customUrlPrefix || '') + (config.addModelPrefix ? '/${modelName.toLowerCase()}' : '');
 
   const setupRoute = (
     path: string,
@@ -46,7 +71,10 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     middlewares: RequestHandler[],
     handler: RequestHandler
   ) => {
-    router[method](basePath + path, ...middlewares, handler);
+    router[method](basePath + path, (req, res, next) => {
+      req.query = parseQueryParams(req.query);
+      handler(req, res, next);
+    }, ...middlewares);
   };
 
   if (config.enableAll || config?.findFirst) {
