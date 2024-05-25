@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.8.0...v1.8.1) (2024-05-24)
+
+
+### Bug Fixes
+
+* build ([568074c](https://github.com/multipliedtwice/prisma-generator-express/commit/568074c589233ddf2aa67f34ad3d115e91e9798f))
+
 # [1.8.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.7.2...v1.8.0) (2024-05-24)
 
 
