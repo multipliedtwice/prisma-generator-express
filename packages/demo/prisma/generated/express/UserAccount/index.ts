@@ -1,4 +1,5 @@
 import express, { RequestHandler } from 'express'
+import { ParsedQs } from 'qs'
 import { UserAccountFindFirst } from './UserAccountFindFirst'
 import { UserAccountFindMany } from './UserAccountFindMany'
 import { UserAccountFindUnique } from './UserAccountFindUnique'
@@ -13,45 +14,11 @@ import { UserAccountAggregate } from './UserAccountAggregate'
 import { UserAccountCount } from './UserAccountCount'
 import { UserAccountGroupBy } from './UserAccountGroupBy'
 import { RouteConfig } from '../RouteConfig'
+import { parseQueryParams } from '../ParseQueryParams'
 
 const defaultBeforeAfter = {
   before: [] as RequestHandler[],
   after: [] as RequestHandler[],
-}
-
-/**
- * Parses a query value to convert strings to their respective types.
- * @param {string} value - The query value to parse.
- * @returns {any} The parsed value.
- */
-const parseQueryValue = (value: string) => {
-  if (value === 'true') return true
-  if (value === 'false') return false
-  if (value === 'null') return null
-  if (!isNaN(Number(value))) return Number(value)
-  return value
-}
-
-/**
- * Recursively parses query parameters to convert strings to their respective types.
- * @param {any} params - The query parameters to parse.
- * @returns {any} The parsed query parameters.
- */
-const parseQueryParams = (params: any) => {
-  const parsedParams: any = {}
-  for (const key in params) {
-    const value = params[key]
-    if (typeof value === 'string') {
-      parsedParams[key] = parseQueryValue(value)
-    } else if (Array.isArray(value)) {
-      parsedParams[key] = value.map(parseQueryValue)
-    } else if (typeof value === 'object') {
-      parsedParams[key] = parseQueryParams(value)
-    } else {
-      parsedParams[key] = value
-    }
-  }
-  return parsedParams
 }
 
 /**
@@ -83,7 +50,7 @@ export function UserAccountRouter(config: RouteConfig<RequestHandler>) {
     router[method](
       basePath + path,
       (req, res, next) => {
-        req.query = parseQueryParams(req.query)
+        req.query = parseQueryParams(req.query) as ParsedQs
         next()
       },
       ...middlewares,

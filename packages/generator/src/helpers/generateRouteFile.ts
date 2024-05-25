@@ -10,6 +10,7 @@ export function generateRouterFunction({
 
   return `
 import express, { RequestHandler } from 'express';
+import { ParsedQs } from 'qs'
 import { ${modelName}FindFirst } from './${modelName}FindFirst';
 import { ${modelName}FindMany } from './${modelName}FindMany';
 import { ${modelName}FindUnique } from './${modelName}FindUnique';
@@ -24,45 +25,11 @@ import { ${modelName}Aggregate } from './${modelName}Aggregate';
 import { ${modelName}Count } from './${modelName}Count';
 import { ${modelName}GroupBy } from './${modelName}GroupBy';
 import { RouteConfig } from "../RouteConfig";
+import { parseQueryParams } from "../ParseQueryParams";
 
 const defaultBeforeAfter = {
   before: [] as RequestHandler[],
   after: [] as RequestHandler[],
-};
-
-/**
- * Parses a query value to convert strings to their respective types.
- * @param {string} value - The query value to parse.
- * @returns {any} The parsed value.
- */
-const parseQueryValue = (value: string) => {
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  if (value === 'null') return null;
-  if (!isNaN(Number(value))) return Number(value);
-  return value;
-};
-
-/**
- * Recursively parses query parameters to convert strings to their respective types.
- * @param {any} params - The query parameters to parse.
- * @returns {any} The parsed query parameters.
- */
-const parseQueryParams = (params: any) => {
-  const parsedParams: any = {};
-  for (const key in params) {
-    const value = params[key];
-    if (typeof value === 'string') {
-      parsedParams[key] = parseQueryValue(value);
-    } else if (Array.isArray(value)) {
-      parsedParams[key] = value.map(parseQueryValue);
-    } else if (typeof value === 'object') {
-      parsedParams[key] = parseQueryParams(value);
-    } else {
-      parsedParams[key] = value;
-    }
-  }
-  return parsedParams;
 };
 
 /**
@@ -82,7 +49,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     handler: RequestHandler
   ) => {
     router[method](basePath + path, (req, res, next) => {
-      req.query = parseQueryParams(req.query);
+      req.query = parseQueryParams(req.query) as ParsedQs;
       next();
     }, ...middlewares, handler);
   };
