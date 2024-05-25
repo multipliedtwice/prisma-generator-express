@@ -83,8 +83,8 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   ) => {
     router[method](basePath + path, (req, res, next) => {
       req.query = parseQueryParams(req.query);
-      handler(req, res, next);
-    }, ...middlewares);
+      next();
+    }, ...middlewares, handler, ...after);
   };
 
   if (config.enableAll || config?.findFirst) {
