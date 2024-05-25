@@ -22,6 +22,7 @@ export function generateRouteConfigType() {
     groupBy?: MiddlewareConfig<M>;
     addModelPrefix?: boolean;
     enableAll?: boolean;
+    customUrlPrefix?: string;
   }
   
   export default RouteConfig;`
