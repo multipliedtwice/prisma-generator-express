@@ -1,3 +1,10 @@
+## [1.11.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.11.1...v1.11.2) (2024-05-25)
+
+
+### Bug Fixes
+
+* parseQueryParams ([1c2cbf5](https://github.com/multipliedtwice/prisma-generator-express/commit/1c2cbf54fbed4f2195b556561cee4de8c23e108c))
+
 ## [1.11.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.11.0...v1.11.1) (2024-05-25)
 
 
