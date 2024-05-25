@@ -25,6 +25,7 @@ import { ${modelName}Aggregate } from './${modelName}Aggregate';
 import { ${modelName}Count } from './${modelName}Count';
 import { ${modelName}GroupBy } from './${modelName}GroupBy';
 import { RouteConfig } from "../RouteConfig";
+import qs from "qs";
 import { parseQueryParams } from "../ParseQueryParams";
 
 const defaultBeforeAfter = {
@@ -49,8 +50,8 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     handler: RequestHandler
   ) => {
     router[method](basePath + path, (req, res, next) => {
-      req.query = parseQueryParams(req.query) as ParsedQs;
-      next();
+      if (req.query)
+        req.query = parseQueryParams(qs.parse(req.query as Record<string, string>)) as ParsedQs;      next();
     }, ...middlewares, handler);
   };
 
