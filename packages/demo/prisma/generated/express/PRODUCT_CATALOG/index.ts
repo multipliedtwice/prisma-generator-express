@@ -22,11 +22,16 @@ const defaultBeforeAfter = {
 /**
  * Generates an Express router for PRODUCT_CATALOG model.
  * @param config Contains optional middleware to enable routes.
+ * @param customUrlPrefix Optional custom URL prefix for the routes.
  * @returns {express.Router}
  */
-export function PRODUCT_CATALOGRouter(config: RouteConfig<RequestHandler>) {
+export function PRODUCT_CATALOGRouter(
+  config: RouteConfig<RequestHandler>,
+  customUrlPrefix = '',
+) {
   const router = express.Router()
-  const basePath = config.addModelPrefix ? '/product_catalog' : ''
+  const basePath =
+    customUrlPrefix + (config.addModelPrefix ? '/product_catalog' : '')
 
   const setupRoute = (
     path: string,

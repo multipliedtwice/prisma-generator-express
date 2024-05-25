@@ -22,11 +22,16 @@ const defaultBeforeAfter = {
 /**
  * Generates an Express router for INVOICE_RECORDS model.
  * @param config Contains optional middleware to enable routes.
+ * @param customUrlPrefix Optional custom URL prefix for the routes.
  * @returns {express.Router}
  */
-export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
+export function INVOICE_RECORDSRouter(
+  config: RouteConfig<RequestHandler>,
+  customUrlPrefix = '',
+) {
   const router = express.Router()
-  const basePath = config.addModelPrefix ? '/invoice_records' : ''
+  const basePath =
+    customUrlPrefix + (config.addModelPrefix ? '/invoice_records' : '')
 
   const setupRoute = (
     path: string,

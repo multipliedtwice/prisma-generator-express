@@ -22,11 +22,15 @@ const defaultBeforeAfter = {
 /**
  * Generates an Express router for orderItem model.
  * @param config Contains optional middleware to enable routes.
+ * @param customUrlPrefix Optional custom URL prefix for the routes.
  * @returns {express.Router}
  */
-export function orderItemRouter(config: RouteConfig<RequestHandler>) {
+export function orderItemRouter(
+  config: RouteConfig<RequestHandler>,
+  customUrlPrefix = '',
+) {
   const router = express.Router()
-  const basePath = config.addModelPrefix ? '/orderitem' : ''
+  const basePath = customUrlPrefix + (config.addModelPrefix ? '/orderitem' : '')
 
   const setupRoute = (
     path: string,

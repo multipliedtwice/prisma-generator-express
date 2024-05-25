@@ -22,11 +22,16 @@ const defaultBeforeAfter = {
 /**
  * Generates an Express router for UserAccount model.
  * @param config Contains optional middleware to enable routes.
+ * @param customUrlPrefix Optional custom URL prefix for the routes.
  * @returns {express.Router}
  */
-export function UserAccountRouter(config: RouteConfig<RequestHandler>) {
+export function UserAccountRouter(
+  config: RouteConfig<RequestHandler>,
+  customUrlPrefix = '',
+) {
   const router = express.Router()
-  const basePath = config.addModelPrefix ? '/useraccount' : ''
+  const basePath =
+    customUrlPrefix + (config.addModelPrefix ? '/useraccount' : '')
 
   const setupRoute = (
     path: string,
