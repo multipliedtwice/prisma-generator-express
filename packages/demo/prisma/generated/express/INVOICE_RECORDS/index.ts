@@ -19,6 +19,11 @@ const defaultBeforeAfter = {
   after: [] as RequestHandler[],
 }
 
+/**
+ * Parses a query value to convert strings to their respective types.
+ * @param {string} value - The query value to parse.
+ * @returns {any} The parsed value.
+ */
 const parseQueryValue = (value: string) => {
   if (value === 'true') return true
   if (value === 'false') return false
@@ -27,6 +32,11 @@ const parseQueryValue = (value: string) => {
   return value
 }
 
+/**
+ * Recursively parses query parameters to convert strings to their respective types.
+ * @param {any} params - The query parameters to parse.
+ * @returns {any} The parsed query parameters.
+ */
 const parseQueryParams = (params: any) => {
   const parsedParams: any = {}
   for (const key in params) {
