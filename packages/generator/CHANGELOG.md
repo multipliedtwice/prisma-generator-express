@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.10.2...v1.11.0) (2024-05-25)
+
+
+### Features
+
+* parseQueryParams for router generator ([cfff0b7](https://github.com/multipliedtwice/prisma-generator-express/commit/cfff0b7a166ddbb949e253dd9c1bbd38b7177c25))
+
 ## [1.10.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.10.1...v1.10.2) (2024-05-25)
 
 
