@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.11.4...v1.12.0) (2024-05-26)
+
+
+### Features
+
+* **package.json:** add new dependencies lodash, @types/jest, @types/lodash, jest, ts-jest ([febcde4](https://github.com/multipliedtwice/prisma-generator-express/commit/febcde42f8c000e70c7a0457d3a87ac1221ce3f5))
+
 ## [1.11.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.11.3...v1.11.4) (2024-05-25)
 
 
