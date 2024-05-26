@@ -13,7 +13,7 @@ import { PRODUCT_CATALOGDeleteMany } from './PRODUCT_CATALOGDeleteMany'
 import { PRODUCT_CATALOGAggregate } from './PRODUCT_CATALOGAggregate'
 import { PRODUCT_CATALOGCount } from './PRODUCT_CATALOGCount'
 import { PRODUCT_CATALOGGroupBy } from './PRODUCT_CATALOGGroupBy'
-import { RouteConfig } from '../RouteConfig'
+import { RouteConfig } from '../routeConfig'
 import { parseQueryParams } from '../ParseQueryParams'
 
 const defaultBeforeAfter = {
@@ -50,7 +50,10 @@ export function PRODUCT_CATALOGRouter(config: RouteConfig<RequestHandler>) {
     router[method](
       basePath + path,
       (req, res, next) => {
-        req.query = parseQueryParams(req.query) as ParsedQs
+        if (req.query)
+          req.query = parseQueryParams(
+            req.query as Record<string, string>,
+          ) as ParsedQs
         next()
       },
       ...middlewares,

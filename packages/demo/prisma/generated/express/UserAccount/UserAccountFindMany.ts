@@ -45,9 +45,9 @@ export async function UserAccountFindMany(
     } else if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data)
       if (validationResult.success) {
-        res.status(200).json(validationResult.data)
+        return res.status(200).json(validationResult.data)
       } else {
-        res
+        return res
           .status(400)
           .json({
             error: 'Invalid data format',
@@ -59,15 +59,9 @@ export async function UserAccountFindMany(
         'Output validation schema must be provided unless explicitly omitted. Attach omitOutputValidation = true to request to suppress this error.',
       )
     } else {
-      res.status(200).json(data)
+      return res.status(200).json(data)
     }
   } catch (error: unknown) {
-    console.error('Error in handling request:', error)
-    if (error instanceof Error) {
-      res.status(500).json({ error: error.message })
-    } else {
-      res.status(500).json({ error: 'Unknown error occurred' })
-    }
-    next(error)
+    return next(error)
   }
 }

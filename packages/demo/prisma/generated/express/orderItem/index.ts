@@ -13,7 +13,7 @@ import { orderItemDeleteMany } from './orderItemDeleteMany'
 import { orderItemAggregate } from './orderItemAggregate'
 import { orderItemCount } from './orderItemCount'
 import { orderItemGroupBy } from './orderItemGroupBy'
-import { RouteConfig } from '../RouteConfig'
+import { RouteConfig } from '../routeConfig'
 import { parseQueryParams } from '../ParseQueryParams'
 
 const defaultBeforeAfter = {
@@ -49,7 +49,10 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     router[method](
       basePath + path,
       (req, res, next) => {
-        req.query = parseQueryParams(req.query) as ParsedQs
+        if (req.query)
+          req.query = parseQueryParams(
+            req.query as Record<string, string>,
+          ) as ParsedQs
         next()
       },
       ...middlewares,

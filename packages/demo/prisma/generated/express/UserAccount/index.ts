@@ -13,7 +13,7 @@ import { UserAccountDeleteMany } from './UserAccountDeleteMany'
 import { UserAccountAggregate } from './UserAccountAggregate'
 import { UserAccountCount } from './UserAccountCount'
 import { UserAccountGroupBy } from './UserAccountGroupBy'
-import { RouteConfig } from '../RouteConfig'
+import { RouteConfig } from '../routeConfig'
 import { parseQueryParams } from '../ParseQueryParams'
 
 const defaultBeforeAfter = {
@@ -50,7 +50,10 @@ export function UserAccountRouter(config: RouteConfig<RequestHandler>) {
     router[method](
       basePath + path,
       (req, res, next) => {
-        req.query = parseQueryParams(req.query) as ParsedQs
+        if (req.query)
+          req.query = parseQueryParams(
+            req.query as Record<string, string>,
+          ) as ParsedQs
         next()
       },
       ...middlewares,

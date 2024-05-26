@@ -36,9 +36,9 @@ export async function UserAccountDeleteMany(
     if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(result)
       if (validationResult.success) {
-        res.status(200).json(validationResult.data)
+        return res.status(200).json(validationResult.data)
       } else {
-        res
+        return res
           .status(400)
           .json({
             error: 'Invalid data format',
@@ -46,15 +46,9 @@ export async function UserAccountDeleteMany(
           })
       }
     } else {
-      res.status(200).json(result)
+      return res.status(200).json(result)
     }
   } catch (error: unknown) {
-    console.error('Error in handling batch delete request:', error)
-    if (error instanceof Error) {
-      res.status(500).json({ error: error.message })
-    } else {
-      res.status(500).json({ error: 'Unknown error occurred' })
-    }
-    next(error)
+    return next(error)
   }
 }

@@ -13,7 +13,7 @@ import { INVOICE_RECORDSDeleteMany } from './INVOICE_RECORDSDeleteMany'
 import { INVOICE_RECORDSAggregate } from './INVOICE_RECORDSAggregate'
 import { INVOICE_RECORDSCount } from './INVOICE_RECORDSCount'
 import { INVOICE_RECORDSGroupBy } from './INVOICE_RECORDSGroupBy'
-import { RouteConfig } from '../RouteConfig'
+import { RouteConfig } from '../routeConfig'
 import { parseQueryParams } from '../ParseQueryParams'
 
 const defaultBeforeAfter = {
@@ -50,7 +50,10 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     router[method](
       basePath + path,
       (req, res, next) => {
-        req.query = parseQueryParams(req.query) as ParsedQs
+        if (req.query)
+          req.query = parseQueryParams(
+            req.query as Record<string, string>,
+          ) as ParsedQs
         next()
       },
       ...middlewares,
