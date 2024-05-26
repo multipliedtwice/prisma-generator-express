@@ -17,8 +17,8 @@ import { generateDeleteManyFunction } from './helpers/generateDeleteMany'
 import { generateAggregateFunction } from './helpers/generateAggregate'
 import { generateCountFunction } from './helpers/generateCount'
 import { generateGroupByFunction } from './helpers/generateGroupBy'
-import { generateRouteConfigType } from './helpers/generateRouteConfigType'
-import { generateParseQueryParams } from './helpers/generateQsParser'
+
+import { copyFiles } from './utils/copyFiles'
 
 const { version } = require('../package.json')
 
@@ -173,16 +173,6 @@ generatorHandler({
       })
     }
 
-    await writeFileSafely({
-      content: generateRouteConfigType(),
-      options,
-      operation: 'RouteConfig',
-    })
-
-    await writeFileSafely({
-      content: generateParseQueryParams(),
-      options,
-      operation: 'ParseQueryParams',
-    })
+    await copyFiles(options)
   },
 })

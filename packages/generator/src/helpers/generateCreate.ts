@@ -40,23 +40,17 @@ export async function ${functionName}(req: CreateRequest, res: Response, next: N
     if (!req.omitOutputValidation && req.outputValidation) {
       const validationResult = req.outputValidation.safeParse(data);
       if (validationResult.success) {
-        res.status(201).json(validationResult.data);
+        return res.status(201).json(validationResult.data);
       } else {
-        res.status(400).json({ error: 'Invalid data format', details: validationResult.error });
+        return res.status(400).json({ error: 'Invalid data format', details: validationResult.error });
       }
     } else if (!req.omitOutputValidation) {
       throw new Error('Output validation schema must be provided unless explicitly omitted.');
     } else {
-      res.status(201).json(data);
+      return res.status(201).json(data);
     }
   } catch (error: unknown) {
-    console.error("Error in handling create request:", error);
-    if (error instanceof Error) {
-      res.status(500).json({ error: error.message });
-    } else {
-      res.status(500).json({ error: "Unknown error occurred" });
-    }
-    next(error);
+    return next(error);
   }
 }`
 }

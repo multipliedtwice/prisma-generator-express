@@ -18,6 +18,12 @@
     "rootDir": "./src",
     "newLine": "lf"
   },
-  "include": ["src/**/*"],
-  "exclude": ["**/node_modules", "**/*.test.ts","**/__tests__", "**/dest"]
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "**/node_modules",
+    "**/*.test.ts",
+    "**/__tests__",
+    "**/dest",
+    "src/copy/**/*.ts"
+  ]
 }

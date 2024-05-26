@@ -1,9 +1,9 @@
 # Prisma Generator Express
 
-[![npm version](https://img.shields.io/npm/v/prisma-generator-express.svg)](https://www.npmjs.com/package/prisma-generator-express)
+[![npm version](https://badge.fury.io/js/prisma-generator-express.svg)](https://badge.fury.io/js/prisma-generator-express)
 [![npm](https://img.shields.io/npm/dt/prisma-generator-express.svg)](https://www.npmjs.com/package/prisma-generator-express)
-[![npm](https://img.shields.io/npm/types/prisma-generator-express)](https://www.npmjs.com/package/prisma-generator-express)
 [![HitCount](https://hits.dwyl.com/multipliedtwice/prisma-generator-express.svg?style=flat)](http://hits.dwyl.com/multipliedtwice/prisma-generator-express)
+[![Coverage Status](https://codecov.io/github/multipliedtwice/prisma-generator-express/graph/badge.svg?token=TTJ30HVKB8)](https://codecov.io/github/multipliedtwice/prisma-generator-express)
 [![npm](https://img.shields.io/npm/l/prisma-generator-express.svg)](LICENSE)
 
 This tool helps you quickly create API endpoints in your Express app using your Prisma models.
@@ -115,7 +115,7 @@ import express, { json } from 'express'
 import type { Response, Request, NextFunction, RequestHandler } from 'express'
 
 import { orderItemRouter } from '../prisma/generated/express/orderItem'
-import RouteConfig from '../prisma/generated/express/RouteConfig'
+import RouteConfig from '../prisma/generated/express/routeConfig'
 import { PrismaClient } from '../prisma/generated/client'
 
 const app = express()
@@ -208,3 +208,45 @@ The following properties can be attached to the `req` object to control the beha
 | `aggregate`  | `GET`    | `/aggregate` |
 | `count`      | `GET`    | `/count`     |
 | `groupBy`    | `GET`    | `/groupby`   |
+
+## Helper functions
+
+### createValidatorMiddleware(validatorOptions: ValidatorOptions)
+
+Simple wrapper that internally uses `allow` or `forbid` logic for filtering incoming queries and data payloads
+
+```ts
+interface ValidatorOptions {
+  schema: ZodSchema<any>
+  allowedPaths?: string[] // Fobids all except allowed. For example [`where.user.id`, `select.id`], all other provided inputs will throw an error
+  forbiddenPaths?: string[] // Similar, but allows all, except forbidden
+  target?: 'body' | 'query'
+}
+```
+
+### encodeQueryParams(params: Params)
+
+Can be used on frontend to encode Prisma compatible queries. Alternatively `qs` can be used, but it probably won't work with `OR: [{ blah: false }, { blah: null }]` or some other edge cases.
+
+```ts
+type RecursiveUrlParams = {
+  [key: string]: RecursiveUrlParams | string | boolean | unknown
+}
+type Params = Record<string, RecursiveUrlParams | string>
+```
+
+### parseQueryParams(params: QueryParams)
+
+```ts
+type QueryParams = string | ParsedQs | string[] | ParsedQs[] | undefined
+```
+
+Recursively converts strings "true", "false", "null", and "number" into correct formats.
+
+### allow<T extends z.ZodTypeAny>( schema: T, allowedPaths: string[] ): ZodEffects<T, any, any>
+
+Accepts schema and `['array.of.allowed.paths']`. Throws an error if provided something that doesn't fit allowed schema.
+
+### forbid<T extends z.ZodTypeAny>( schema: T, forbiddenPaths: string[] ): ZodEffects<T, any, any>
+
+Same as `allow` but works in opposite way.
