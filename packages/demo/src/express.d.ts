@@ -8,6 +8,7 @@ declare module 'express-serve-static-core' {
     passToNext?: boolean
     locals?: {
       data?: any
+      outputValidator?: ZodTypeAny
     }
   }
 }

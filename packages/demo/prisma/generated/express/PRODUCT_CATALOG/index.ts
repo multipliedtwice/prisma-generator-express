@@ -1,4 +1,9 @@
-import express, { RequestHandler } from 'express'
+import express, {
+  NextFunction,
+  RequestHandler,
+  Request,
+  Response,
+} from 'express'
 import { ParsedQs } from 'qs'
 import { PRODUCT_CATALOGFindFirst } from './PRODUCT_CATALOGFindFirst'
 import { PRODUCT_CATALOGFindMany } from './PRODUCT_CATALOGFindMany'
@@ -13,12 +18,19 @@ import { PRODUCT_CATALOGDeleteMany } from './PRODUCT_CATALOGDeleteMany'
 import { PRODUCT_CATALOGAggregate } from './PRODUCT_CATALOGAggregate'
 import { PRODUCT_CATALOGCount } from './PRODUCT_CATALOGCount'
 import { PRODUCT_CATALOGGroupBy } from './PRODUCT_CATALOGGroupBy'
-import { RouteConfig } from '../routeConfig'
+import {
+  createValidatorMiddleware,
+  ValidatorOptions,
+} from '../createValidatorMiddleware'
+import { createOutputValidatorMiddleware } from '../createOutputValidatorMiddleware'
+import { RouteConfig, ValidatorConfig } from '../routeConfig'
 import { parseQueryParams } from '../ParseQueryParams'
 
 const defaultBeforeAfter = {
   before: [] as RequestHandler[],
   after: [] as RequestHandler[],
+  input: undefined,
+  output: undefined,
 }
 
 /**
@@ -46,28 +58,56 @@ export function PRODUCT_CATALOGRouter(config: RouteConfig<RequestHandler>) {
       | 'head',
     middlewares: RequestHandler[],
     handler: RequestHandler,
+    inputValidator?: ValidatorConfig,
+    outputValidator?: ValidatorConfig,
   ) => {
-    router[method](
-      basePath + path,
+    const middlewaresWithValidators: RequestHandler[] = [
       (req, res, next) => {
-        if (req.query)
+        if (req.query) {
           req.query = parseQueryParams(
             req.query as Record<string, string>,
           ) as ParsedQs
+        }
         next()
       },
       ...middlewares,
-      handler,
-    )
+    ]
+
+    if (inputValidator) {
+      middlewaresWithValidators.push(
+        createValidatorMiddleware({
+          schema: inputValidator.schema,
+          allowedPaths: inputValidator.allow,
+          forbiddenPaths: inputValidator.forbid,
+          target: method === 'get' ? 'query' : 'body',
+        }),
+      )
+    }
+
+    middlewaresWithValidators.push((req, res, next) => {
+      res.locals.outputValidator = outputValidator
+      next()
+    })
+
+    middlewaresWithValidators.push(handler)
+
+    router[method](basePath + path, ...middlewaresWithValidators)
   }
 
   if (config.enableAll || config?.findFirst) {
-    const { before = [], after = [] } = config.findFirst || defaultBeforeAfter
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.findFirst || defaultBeforeAfter
     setupRoute(
       '/first',
       'get',
       before,
       PRODUCT_CATALOGFindFirst as RequestHandler,
+      input,
+      output,
     )
     if (after.length) {
       router.use(basePath + '/first', ...after)
@@ -75,36 +115,79 @@ export function PRODUCT_CATALOGRouter(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.findMany) {
-    const { before = [], after = [] } = config.findMany || defaultBeforeAfter
-    setupRoute('/', 'get', before, PRODUCT_CATALOGFindMany as RequestHandler)
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.findMany || defaultBeforeAfter
+    setupRoute(
+      '/',
+      'get',
+      before,
+      PRODUCT_CATALOGFindMany as RequestHandler,
+      input,
+      output,
+    )
     if (after.length) {
       router.use(basePath + '/', ...after)
     }
   }
 
   if (config.enableAll || config?.findUnique) {
-    const { before = [], after = [] } = config.findUnique || defaultBeforeAfter
-    setupRoute('/:id', 'get', before, PRODUCT_CATALOGFindUnique as any)
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.findUnique || defaultBeforeAfter
+    setupRoute(
+      '/:id',
+      'get',
+      before,
+      PRODUCT_CATALOGFindUnique as any,
+      input,
+      output,
+    )
     if (after.length) {
       router.use(basePath + '/:id', ...after)
     }
   }
 
   if (config.enableAll || config?.create) {
-    const { before = [], after = [] } = config.create || defaultBeforeAfter
-    setupRoute('/', 'post', before, PRODUCT_CATALOGCreate as RequestHandler)
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.create || defaultBeforeAfter
+    setupRoute(
+      '/',
+      'post',
+      before,
+      PRODUCT_CATALOGCreate as RequestHandler,
+      input,
+      output,
+    )
     if (after.length) {
       router.use(basePath + '/', ...after)
     }
   }
 
   if (config.enableAll || config?.createMany) {
-    const { before = [], after = [] } = config.createMany || defaultBeforeAfter
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.createMany || defaultBeforeAfter
     setupRoute(
       '/many',
       'post',
       before,
       PRODUCT_CATALOGCreateMany as RequestHandler,
+      input,
+      output,
     )
     if (after.length) {
       router.use(basePath + '/many', ...after)
@@ -112,20 +195,39 @@ export function PRODUCT_CATALOGRouter(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.update) {
-    const { before = [], after = [] } = config.update || defaultBeforeAfter
-    setupRoute('/', 'put', before, PRODUCT_CATALOGUpdate as RequestHandler)
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.update || defaultBeforeAfter
+    setupRoute(
+      '/',
+      'put',
+      before,
+      PRODUCT_CATALOGUpdate as RequestHandler,
+      input,
+      output,
+    )
     if (after.length) {
       router.use(basePath + '/', ...after)
     }
   }
 
   if (config.enableAll || config?.updateMany) {
-    const { before = [], after = [] } = config.updateMany || defaultBeforeAfter
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.updateMany || defaultBeforeAfter
     setupRoute(
       '/many',
       'put',
       before,
       PRODUCT_CATALOGUpdateMany as RequestHandler,
+      input,
+      output,
     )
     if (after.length) {
       router.use(basePath + '/many', ...after)
@@ -133,28 +235,59 @@ export function PRODUCT_CATALOGRouter(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.upsert) {
-    const { before = [], after = [] } = config.upsert || defaultBeforeAfter
-    setupRoute('/', 'patch', before, PRODUCT_CATALOGUpsert as RequestHandler)
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.upsert || defaultBeforeAfter
+    setupRoute(
+      '/',
+      'patch',
+      before,
+      PRODUCT_CATALOGUpsert as RequestHandler,
+      input,
+      output,
+    )
     if (after.length) {
       router.use(basePath + '/', ...after)
     }
   }
 
   if (config.enableAll || config?.delete) {
-    const { before = [], after = [] } = config.delete || defaultBeforeAfter
-    setupRoute('/', 'delete', before, PRODUCT_CATALOGDelete as RequestHandler)
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.delete || defaultBeforeAfter
+    setupRoute(
+      '/',
+      'delete',
+      before,
+      PRODUCT_CATALOGDelete as RequestHandler,
+      input,
+      output,
+    )
     if (after.length) {
       router.use(basePath + '/', ...after)
     }
   }
 
   if (config.enableAll || config?.deleteMany) {
-    const { before = [], after = [] } = config.deleteMany || defaultBeforeAfter
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.deleteMany || defaultBeforeAfter
     setupRoute(
       '/many',
       'delete',
       before,
       PRODUCT_CATALOGDeleteMany as RequestHandler,
+      input,
+      output,
     )
     if (after.length) {
       router.use(basePath + '/many', ...after)
@@ -162,12 +295,19 @@ export function PRODUCT_CATALOGRouter(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.aggregate) {
-    const { before = [], after = [] } = config.aggregate || defaultBeforeAfter
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.aggregate || defaultBeforeAfter
     setupRoute(
       '/aggregate',
       'get',
       before,
       PRODUCT_CATALOGAggregate as RequestHandler,
+      input,
+      output,
     )
     if (after.length) {
       router.use(basePath + '/aggregate', ...after)
@@ -175,20 +315,39 @@ export function PRODUCT_CATALOGRouter(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.count) {
-    const { before = [], after = [] } = config.count || defaultBeforeAfter
-    setupRoute('/count', 'get', before, PRODUCT_CATALOGCount as RequestHandler)
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.count || defaultBeforeAfter
+    setupRoute(
+      '/count',
+      'get',
+      before,
+      PRODUCT_CATALOGCount as RequestHandler,
+      input,
+      output,
+    )
     if (after.length) {
       router.use(basePath + '/count', ...after)
     }
   }
 
   if (config.enableAll || config?.groupBy) {
-    const { before = [], after = [] } = config.groupBy || defaultBeforeAfter
+    const {
+      before = [],
+      after = [],
+      input,
+      output,
+    } = config.groupBy || defaultBeforeAfter
     setupRoute(
       '/groupby',
       'get',
       before,
       PRODUCT_CATALOGGroupBy as RequestHandler,
+      input,
+      output,
     )
     if (after.length) {
       router.use(basePath + '/groupby', ...after)

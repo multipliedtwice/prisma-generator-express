@@ -11,6 +11,9 @@ interface CountRequest extends Request {
   query: Partial<Prisma.UserAccountCountArgs> & ParsedQs
   outputValidation?: ZodTypeAny
   omitOutputValidation?: boolean
+  locals?: {
+    outputValidator?: ZodTypeAny
+  }
 }
 
 export type CountMiddleware = RequestHandler<
@@ -26,7 +29,9 @@ export async function UserAccountCount(
   next: NextFunction,
 ) {
   try {
-    if (!req.outputValidation && !req.omitOutputValidation) {
+    const outputValidator = req.locals?.outputValidator || req.outputValidation
+
+    if (!outputValidator && !req.omitOutputValidation) {
       throw new Error(
         'Output validation schema or omission flag must be provided.',
       )
@@ -36,8 +41,8 @@ export async function UserAccountCount(
       req.query as Prisma.UserAccountCountArgs,
     )
 
-    if (!req.omitOutputValidation && req.outputValidation) {
-      const validationResult = req.outputValidation.safeParse(result)
+    if (!req.omitOutputValidation && outputValidator) {
+      const validationResult = outputValidator.safeParse(result)
       if (validationResult.success) {
         return res.status(200).json(validationResult.data)
       } else {

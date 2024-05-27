@@ -29,20 +29,25 @@ interface CountRequest extends Request {
   query: Partial<${argsTypeName}> & ParsedQs;
   outputValidation?: ZodTypeAny;
   omitOutputValidation?: boolean;
+  locals?: {
+    outputValidator?: ZodTypeAny;
+  };
 }
 
 export type CountMiddleware = RequestHandler<ParamsDictionary, any, {}, ParsedQs>;
 
 export async function ${functionName}(req: CountRequest, res: Response, next: NextFunction) {
   try {
-    if (!req.outputValidation && !req.omitOutputValidation) {
+    const outputValidator = req.locals?.outputValidator || req.outputValidation;
+
+    if (!outputValidator && !req.omitOutputValidation) {
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
     const result = await req.prisma.${lowercaseFirstLetter(modelName)}.count(req.query as ${argsTypeName});
 
-    if (!req.omitOutputValidation && req.outputValidation) {
-      const validationResult = req.outputValidation.safeParse(result);
+    if (!req.omitOutputValidation && outputValidator) {
+      const validationResult = outputValidator.safeParse(result);
       if (validationResult.success) {
         return res.status(200).json(validationResult.data);
       } else {

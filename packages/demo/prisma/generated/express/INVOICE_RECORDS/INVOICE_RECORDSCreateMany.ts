@@ -10,6 +10,9 @@ interface CreateManyRequest extends Request {
   body: Prisma.INVOICE_RECORDSCreateManyArgs
   outputValidation?: ZodTypeAny
   omitOutputValidation?: boolean
+  locals?: {
+    outputValidator?: ZodTypeAny
+  }
 }
 
 export type CreateManyMiddleware = RequestHandler<
@@ -25,15 +28,18 @@ export async function INVOICE_RECORDSCreateMany(
   next: NextFunction,
 ) {
   try {
-    if (!req.outputValidation && !req.omitOutputValidation) {
+    const outputValidator = req.locals?.outputValidator || req.outputValidation
+
+    if (!outputValidator && !req.omitOutputValidation) {
       throw new Error(
         'Output validation schema or omission flag must be provided.',
       )
     }
 
     const data = await req.prisma.iNVOICE_RECORDS.createMany(req.body)
-    if (!req.omitOutputValidation && req.outputValidation) {
-      const validationResult = req.outputValidation.safeParse(data)
+
+    if (!req.omitOutputValidation && outputValidator) {
+      const validationResult = outputValidator.safeParse(data)
       if (validationResult.success) {
         return res.status(201).json(validationResult.data)
       } else {
@@ -44,10 +50,6 @@ export async function INVOICE_RECORDSCreateMany(
             details: validationResult.error,
           })
       }
-    } else if (!req.omitOutputValidation) {
-      throw new Error(
-        'Output validation schema must be provided unless explicitly omitted.',
-      )
     } else {
       return res.status(201).json(data)
     }
