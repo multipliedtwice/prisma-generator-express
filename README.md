@@ -252,3 +252,7 @@ Accepts schema and `['array.of.allowed.paths']`. Throws an error if provided som
 Same as `allow` but works in opposite way.
 
 ---
+
+## Rememo.io [Free Kanban & Chat](https://rememo.io)
+
+<img src="https://github.com/multipliedtwice/prisma-generator-express/blob/feat/internal-validation/rememo-192.png?raw=true" alt="Free Kanban & Corporate Chat">
