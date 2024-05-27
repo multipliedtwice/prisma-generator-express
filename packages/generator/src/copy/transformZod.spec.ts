@@ -30,8 +30,8 @@ describe('Cryptocurrency Schema Validation', () => {
   const allowedFields = [
     'wallet.id',
     'wallet.owner.name',
-    'transactions.amount',
-    'transactions.currency',
+    'transactions[].amount',
+    'transactions[].currency',
   ]
   const forbiddenFields = ['wallet.owner.age', 'transactions.details.fee']
 
@@ -225,9 +225,9 @@ describe('Cryptocurrency Schema Validation', () => {
       'wallet.id',
       'wallet.owner.name',
       'wallet.owner.age',
-      'transactions.amount',
-      'transactions.currency',
-      'transactions.details.fee',
+      'transactions[].amount',
+      'transactions[].currency',
+      'transactions[].details.fee',
     ]
 
     try {
@@ -549,6 +549,164 @@ describe('Cryptocurrency Schema Validation', () => {
       expect(result).toEqual({
         'wallet.details': 'lazy value',
       })
+    } catch (error) {
+      expect(error).toBeInstanceOf(ZodError)
+    }
+  })
+
+  it('deep nesting', () => {
+    const taskSchema = z.object({
+      select: z
+        .object({
+          id: z.boolean().optional(),
+          project_id: z.boolean().optional(),
+          list_id: z.boolean().optional(),
+          user_assignments: z
+            .object({
+              select: z.object({
+                user: z.boolean().optional(),
+              }),
+            })
+            .optional(),
+          tags_mappings: z
+            .object({
+              select: z.object({
+                tag: z.boolean().optional(),
+              }),
+            })
+            .optional(),
+          attachments: z
+            .object({
+              select: z.object({
+                attachment: z.boolean().optional(),
+              }),
+              where: z
+                .object({
+                  is_image: z.boolean().optional(),
+                })
+                .optional(),
+              take: z.number().optional(),
+              orderBy: z
+                .object({
+                  created_at: z.enum(['asc', 'desc']).optional(),
+                })
+                .optional(),
+            })
+            .optional(),
+          rendered_description: z.boolean().optional(),
+          description: z.boolean().optional(),
+          created_at: z.boolean().optional(),
+          start_date: z.boolean().optional(),
+          reactions: z.boolean().optional(),
+          intervals: z.boolean().optional(),
+          column_id: z.boolean().optional(),
+          priority: z.boolean().optional(),
+          due_date: z.boolean().optional(),
+          column: z.boolean().optional(),
+          title: z.boolean().optional(),
+          order: z.boolean().optional(),
+          color: z.boolean().optional(),
+        })
+        .optional(),
+      where: z
+        .object({
+          id: z.string().optional(),
+          AND: z
+            .array(
+              z.object({
+                OR: z
+                  .array(
+                    z.object({
+                      to_delete: z.boolean().nullable().optional(),
+                    }),
+                  )
+                  .optional(),
+              }),
+            )
+            .optional(),
+        })
+        .optional(),
+    })
+
+    const allowedFields = [
+      'select.id',
+      'select.project_id',
+      'select.list_id',
+      'select.user_assignments.select.user',
+      'select.tags_mappings.select.tag',
+      'select.attachments.select.attachment',
+      'select.attachments.where.is_image',
+      'select.attachments.take',
+      'select.attachments.orderBy.created_at',
+      'select.rendered_description',
+      'select.description',
+      'select.created_at',
+      'select.start_date',
+      'select.reactions',
+      'select.intervals',
+      'select.column_id',
+      'select.priority',
+      'select.due_date',
+      'select.column',
+      'select.order',
+      'select.color',
+      'where.id',
+      'where.AND[].OR[].to_delete',
+    ]
+    const inputData = {
+      select: {
+        id: true,
+        project_id: true,
+        list_id: true,
+        user_assignments: {
+          select: {
+            user: true,
+          },
+        },
+        tags_mappings: {
+          select: {
+            tag: true,
+          },
+        },
+        attachments: {
+          select: {
+            attachment: true,
+          },
+          where: {
+            is_image: true,
+          },
+          take: 100,
+          orderBy: {
+            created_at: 'desc',
+          },
+        },
+        rendered_description: true,
+        description: true,
+        created_at: true,
+        start_date: true,
+        reactions: true,
+        intervals: true,
+        column_id: true,
+        priority: true,
+        due_date: true,
+        column: true,
+        title: true,
+        order: true,
+        color: true,
+      },
+      where: {
+        id: 'task_id',
+        AND: [
+          {
+            OR: [{ to_delete: false }, { to_delete: null }],
+          },
+        ],
+      },
+    }
+
+    try {
+      const result = allow(taskSchema, allowedFields).safeParse(inputData)
+      expect(result.success).toBe(false)
     } catch (error) {
       expect(error).toBeInstanceOf(ZodError)
     }
