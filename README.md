@@ -250,3 +250,5 @@ Accepts schema and `['array.of.allowed.paths']`. Throws an error if provided som
 ### forbid<T extends z.ZodTypeAny>( schema: T, forbiddenPaths: string[] ): ZodEffects<T, any, any>
 
 Same as `allow` but works in opposite way.
+
+---
