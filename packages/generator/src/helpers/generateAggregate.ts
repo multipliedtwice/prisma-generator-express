@@ -23,26 +23,32 @@ import { Request, Response, NextFunction } from 'express';
 import { RequestHandler, ParamsDictionary } from 'express-serve-static-core'
 import { ParsedQs } from 'qs'
 import { ZodTypeAny } from 'zod';
+import { ValidatorConfig } from '../routeConfig'
 
 interface AggregateRequest extends Request {
   prisma: PrismaClient;
   query: Partial<${argsTypeName}> & ParsedQs;
   outputValidation?: ZodTypeAny;
   omitOutputValidation?: boolean;
+  locals?: {
+    outputValidator?: ValidatorConfig;
+  };
 }
 
 export type AggregateMiddleware = RequestHandler<ParamsDictionary, any, Partial<${argsTypeName}>, Record<string, any>>;
 
 export async function ${functionName}(req: AggregateRequest, res: Response, next: NextFunction) {
   try {
-    if (!req.outputValidation && !req.omitOutputValidation) {
+    const outputValidator = res.locals.outputValidator?.schema || req.outputValidation;
+
+    if (!outputValidator && !req.omitOutputValidation) {
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
     const result = await req.prisma.${lowercaseFirstLetter(modelName)}.aggregate(req.query as ${argsTypeName});
 
-    if (!req.omitOutputValidation && req.outputValidation) {
-      const validationResult = req.outputValidation.safeParse(result);
+    if (!req.omitOutputValidation && outputValidator) {
+      const validationResult = outputValidator.safeParse(result);
       if (validationResult.success) {
         return res.status(200).json(validationResult.data);
       } else {

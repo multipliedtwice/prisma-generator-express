@@ -1,8 +1,17 @@
 import { RequestHandler } from 'express'
+import { ZodTypeAny } from 'zod'
+
+export interface ValidatorConfig {
+  allow?: string[]
+  forbid?: string[]
+  schema: ZodTypeAny
+}
 
 interface MiddlewareConfig<M> {
   before?: M[]
   after?: RequestHandler[]
+  input?: ValidatorConfig
+  output?: ValidatorConfig
 }
 
 export interface RouteConfig<M> {
@@ -23,5 +32,3 @@ export interface RouteConfig<M> {
   enableAll?: boolean
   customUrlPrefix?: string
 }
-
-export default RouteConfig

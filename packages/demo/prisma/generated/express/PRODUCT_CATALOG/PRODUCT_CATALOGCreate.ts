@@ -10,6 +10,9 @@ interface CreateRequest extends Request {
   body: Prisma.PRODUCT_CATALOGCreateArgs
   outputValidation?: ZodTypeAny
   omitOutputValidation?: boolean
+  locals?: {
+    outputValidator?: ZodTypeAny
+  }
 }
 
 export type CreateMiddleware = RequestHandler<
@@ -25,15 +28,18 @@ export async function PRODUCT_CATALOGCreate(
   next: NextFunction,
 ) {
   try {
-    if (!req.outputValidation && !req.omitOutputValidation) {
+    const outputValidator = req.locals?.outputValidator || req.outputValidation
+
+    if (!outputValidator && !req.omitOutputValidation) {
       throw new Error(
         'Output validation schema or omission flag must be provided.',
       )
     }
 
     const data = await req.prisma.pRODUCT_CATALOG.create(req.body)
-    if (!req.omitOutputValidation && req.outputValidation) {
-      const validationResult = req.outputValidation.safeParse(data)
+
+    if (!req.omitOutputValidation && outputValidator) {
+      const validationResult = outputValidator.safeParse(data)
       if (validationResult.success) {
         return res.status(201).json(validationResult.data)
       } else {
@@ -44,10 +50,6 @@ export async function PRODUCT_CATALOGCreate(
             details: validationResult.error,
           })
       }
-    } else if (!req.omitOutputValidation) {
-      throw new Error(
-        'Output validation schema must be provided unless explicitly omitted.',
-      )
     } else {
       return res.status(201).json(data)
     }

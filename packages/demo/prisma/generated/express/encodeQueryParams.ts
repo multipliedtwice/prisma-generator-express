@@ -7,10 +7,12 @@ import { isObject } from './misc'
  */
 export const encodeQueryParams = (params: Record<string, unknown>): string => {
   const customEncodeURIComponent = (str: string): string => {
-    return encodeURIComponent(str).replace(
-      /[!'()*~]/g,
-      (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
-    )
+    return encodeURIComponent(str)
+      .replace(
+        /[!'()*~]/g,
+        (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+      )
+      .replace(/%20/g, '%20') // Encode spaces as %20
   }
 
   const encode = (key: string, value: unknown): string => {
@@ -32,9 +34,7 @@ export const encodeQueryParams = (params: Record<string, unknown>): string => {
         .filter(Boolean)
         .join('&')
     }
-    return `${customEncodeURIComponent(key)}=${customEncodeURIComponent(
-      String(value),
-    )}`
+    return `${customEncodeURIComponent(key)}=${customEncodeURIComponent(String(value))}`
   }
 
   return Object.entries(params)

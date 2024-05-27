@@ -30,21 +30,26 @@ interface GroupByRequest extends Request {
   query: Partial<${argsTypeName}> & ParsedQs;
   outputValidation?: ZodTypeAny;
   omitOutputValidation?: boolean;
+  locals?: {
+    outputValidator?: ZodTypeAny;
+  };
 }
 
 export type GroupByMiddleware = RequestHandler<ParamsDictionary, any, {}, ParsedQs>;
 
 export async function ${functionName}(req: GroupByRequest, res: Response, next: NextFunction) {
   try {
-    if (!req.outputValidation && !req.omitOutputValidation) {
+    const outputValidator = req.locals?.outputValidator || req.outputValidation;
+
+    if (!outputValidator && !req.omitOutputValidation) {
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
     // @ts-ignore
     const result = await req.prisma.${lowercaseFirstLetter(modelName)}.groupBy(req.query);
 
-    if (!req.omitOutputValidation && req.outputValidation) {
-      const validationResult = req.outputValidation.safeParse(result);
+    if (!req.omitOutputValidation && outputValidator) {
+      const validationResult = outputValidator.safeParse(result);
       if (validationResult.success) {
         return res.status(200).json(validationResult.data);
       } else {

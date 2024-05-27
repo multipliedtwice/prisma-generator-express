@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express'
 import { ZodSchema } from 'zod'
 import { allow, forbid } from './transformZod'
 
-interface ValidatorOptions {
+export interface ValidatorOptions {
   schema: ZodSchema<any>
   allowedPaths?: string[]
   forbiddenPaths?: string[]

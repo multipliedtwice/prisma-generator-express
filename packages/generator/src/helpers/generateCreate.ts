@@ -1,5 +1,6 @@
 import { DMMF } from '@prisma/generator-helper'
 import { lowercaseFirstLetter } from '../utils/strings'
+
 /**
  * Generates an Express middleware function that handles creation of records and includes conditional output validation with Zod.
  * This version dynamically includes the correct type for the arguments based on the Prisma model.
@@ -26,26 +27,30 @@ interface CreateRequest extends Request {
   body: ${argsTypeName};
   outputValidation?: ZodTypeAny;
   omitOutputValidation?: boolean;
+  locals?: {
+    outputValidator?: ZodTypeAny;
+  };
 }
 
 export type CreateMiddleware = RequestHandler<ParamsDictionary, any, ${argsTypeName}, Record<string, any>>
 
 export async function ${functionName}(req: CreateRequest, res: Response, next: NextFunction) {
   try {
-    if (!req.outputValidation && !req.omitOutputValidation) {
+    const outputValidator = req.locals?.outputValidator || req.outputValidation;
+
+    if (!outputValidator && !req.omitOutputValidation) {
       throw new Error('Output validation schema or omission flag must be provided.');
     }
 
     const data = await req.prisma.${lowercaseFirstLetter(modelName)}.create(req.body);
-    if (!req.omitOutputValidation && req.outputValidation) {
-      const validationResult = req.outputValidation.safeParse(data);
+
+    if (!req.omitOutputValidation && outputValidator) {
+      const validationResult = outputValidator.safeParse(data);
       if (validationResult.success) {
         return res.status(201).json(validationResult.data);
       } else {
         return res.status(400).json({ error: 'Invalid data format', details: validationResult.error });
       }
-    } else if (!req.omitOutputValidation) {
-      throw new Error('Output validation schema must be provided unless explicitly omitted.');
     } else {
       return res.status(201).json(data);
     }
