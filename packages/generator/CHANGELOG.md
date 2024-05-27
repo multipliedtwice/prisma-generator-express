@@ -1,3 +1,10 @@
+# [1.13.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.12.0...v1.13.0) (2024-05-27)
+
+
+### Features
+
+* **INVOICE_RECORDS:** add support for output validation schema and omission flag in various CRUD operations to enhance data validation and error handling ([5ad1c28](https://github.com/multipliedtwice/prisma-generator-express/commit/5ad1c2844d23e7de9bf2bffa59b1e821688146f5))
+
 # [1.12.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.11.4...v1.12.0) (2024-05-26)
 
 
