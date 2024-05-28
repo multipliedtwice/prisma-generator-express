@@ -1,3 +1,10 @@
+## [1.14.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.14.0...v1.14.1) (2024-05-28)
+
+
+### Bug Fixes
+
+* parseQueryParams path ([7451c6c](https://github.com/multipliedtwice/prisma-generator-express/commit/7451c6c70eab105c42a2efc24dadb31d0c5c94c6))
+
 # [1.14.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.13.0...v1.14.0) (2024-05-28)
 
 
