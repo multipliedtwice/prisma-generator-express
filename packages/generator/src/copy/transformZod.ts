@@ -9,7 +9,32 @@ import {
   ZodTypeAny,
 } from 'zod'
 
-export function allow<T extends z.ZodTypeAny>(
+function startsWith(str: string, prefix: string): boolean {
+  return str.slice(0, prefix.length) === prefix
+}
+
+function every<T>(
+  array: T[],
+  callback: (value: T, index: number, array: T[]) => boolean,
+): boolean {
+  for (let i = 0; i < array.length; i++) {
+    if (!callback(array[i], i, array)) {
+      return false
+    }
+  }
+  return true
+}
+
+function isKeyAllowed(key: string, allowedPaths: string[]): boolean {
+  return !every(
+    allowedPaths,
+    (path) =>
+      !startsWith(key.replace(/\[\d+\]/g, ''), path.replace(/\[\d+\]/g, '')) &&
+      !startsWith(path.replace(/\[\d+\]/g, ''), key.replace(/\[\d+\]/g, '')),
+  )
+}
+
+export function allow<T extends ZodTypeAny>(
   schema: T,
   allowedPaths: string[],
 ): ZodEffects<T, any, any> {
@@ -20,11 +45,7 @@ export function allow<T extends z.ZodTypeAny>(
     const disallowedPaths: string[] = []
 
     for (const key of Object.keys(flatData)) {
-      if (
-        allowedPaths.every(
-          (path) => !(key.startsWith(path) || path.startsWith(key)),
-        )
-      ) {
+      if (!isKeyAllowed(key, allowedPaths)) {
         disallowedPaths.push(key)
       }
     }
@@ -40,6 +61,7 @@ export function allow<T extends z.ZodTypeAny>(
       }
       throw new ZodError(errors)
     }
+
     return data
   }) as ZodEffects<T, any, any>
 }
@@ -74,16 +96,6 @@ export function forbid<T extends z.ZodTypeAny>(
   }) as ZodEffects<T, any, any>
 }
 
-function isJsonLikeUnion(schemaPart: ZodTypeAny): boolean {
-  if (schemaPart instanceof z.ZodOptional) {
-    schemaPart = schemaPart.unwrap()
-  }
-  return (
-    schemaPart instanceof z.ZodUnion &&
-    schemaPart.options.some((option: ZodTypeAny) => option instanceof z.ZodLazy)
-  )
-}
-
 export function flattenObject(
   obj: Record<string, any>,
   prefix = '',
@@ -91,29 +103,38 @@ export function flattenObject(
 ): Record<string, any> {
   const result: Record<string, any> = {}
 
-  for (const key of Object.keys(obj)) {
-    const pre = prefix.length ? `${prefix}.` : ''
-    const currentSchema = schema?.shape[key]
-
-    if (currentSchema instanceof z.ZodOptional && obj[key] === undefined) {
-      continue
-    }
-
-    if (currentSchema && isJsonLikeUnion(currentSchema)) {
-      result[`${pre}${key}`] = obj[key]
-    } else if (
-      typeof obj[key] === 'object' &&
-      obj[key] !== null &&
-      currentSchema instanceof ZodObject
-    ) {
-      Object.assign(
-        result,
-        flattenObject(obj[key], `${pre}${key}`, currentSchema),
-      )
+  function flatten(current: any, prop: string, schema?: ZodObject<any>) {
+    if (Object(current) !== current) {
+      result[prop] = current
+    } else if (Array.isArray(current)) {
+      current.forEach((item, index) => {
+        flatten(item, `${prop}[]`, schema)
+      })
     } else {
-      result[`${pre}${key}`] = obj[key]
+      let isEmpty = true
+      for (const key in current) {
+        if (current.hasOwnProperty(key)) {
+          isEmpty = false
+          const currentSchema = schema?.shape[key]
+          if (
+            currentSchema instanceof z.ZodOptional &&
+            current[key] === undefined
+          ) {
+            continue
+          }
+          flatten(
+            current[key],
+            prop ? `${prop}.${key}` : key,
+            currentSchema instanceof ZodObject ? currentSchema : undefined,
+          )
+        }
+      }
+      if (isEmpty) {
+        result[prop] = {}
+      }
     }
   }
 
+  flatten(obj, prefix, schema)
   return result
 }
