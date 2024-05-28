@@ -1,3 +1,10 @@
+# [1.14.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.13.0...v1.14.0) (2024-05-28)
+
+
+### Features
+
+* route generator validations ([d2eaffe](https://github.com/multipliedtwice/prisma-generator-express/commit/d2eaffece7e588793693a74fdc8356508f323f4e))
+
 # [1.13.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.12.0...v1.13.0) (2024-05-27)
 
 
