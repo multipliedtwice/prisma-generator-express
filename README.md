@@ -114,9 +114,10 @@ The library will create functions to generate routers per each model in schema. 
 import express, { json } from 'express'
 import type { Response, Request, NextFunction, RequestHandler } from 'express'
 
-import { orderItemRouter } from '../prisma/generated/express/orderItem'
-import RouteConfig from '../prisma/generated/express/routeConfig'
 import { PrismaClient } from '../prisma/generated/client'
+import { UserAccountRouter } from '../prisma/generated/express/UserAccount'
+import { RouteConfig } from '~prisma/generated/express/routeConfig'
+import { UserAccountFindFirstSchema } from '../prisma/generated/prisma-zod-generator/schemas'
 
 const app = express()
 
@@ -132,28 +133,27 @@ const addPrisma: RequestHandler = (
   next: NextFunction,
 ) => {
   req.prisma = prisma
-  req.omitOutputValidation = true
+  // req.omitOutputValidation = true (not required if you use `select` instead of `include`)
   next()
 }
 
 /**
- * Before middleware to set a custom property on the request object.
- * Demonstrates how to add custom properties to the request object to be used in later middleware or route handlers.
+ * Run context-related operations or modify `req` properties to control the behavior of the route
  */
-const beforeFindMany: RequestHandler = (
+const beforeFindFirst: RequestHandler = (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
-  ;(req as any).passToNext = true
+  req.passToNext = true
   next()
 }
 
 /**
- * After middleware placeholder for any post-processing after the main route handler.
- * This example just calls next() but can be extended to perform actions like logging or response modification.
+ * if `req.passToNext` is true, then the result of generated middleware
+ * will be available in req.locals?.data for modifications
  */
-const afterFindMany: RequestHandler = (
+const afterFindFirst: RequestHandler = (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -162,17 +162,39 @@ const afterFindMany: RequestHandler = (
   next()
 }
 
+/**
+ * For generated route the middleware order will be as follows:
+ * 1. Query parser
+ * 2. Custom middlewares: config.{method}.before[]
+ * 3. Input validator middleware (Optional): config.{method}.input
+ * 4. Generated middleware
+ * 5. Output validator middleware: config.{method}.input
+ * 6. Custom middlewares: config.{method}.after[] (not available if req.passToNext is falsy)
+ */
 const someRouterConfig: RouteConfig<RequestHandler> = {
-  findMany: {
-    before: [beforeFindMany],
-    after: [afterFindMany],
+  FindFirst: {
+    before: [beforeFindFirst],
+    after: [afterFindFirst],
+    input: {
+      schema: UserAccountFindFirstSchema,
+      allow: [
+        'select.id',
+        'select.full_name',
+        'select.emailAddress',
+        'select.orders[].ProductName',
+        'select.orders[].quantity',
+        'where.id',
+        'where.createdAt',
+      ],
+    },
   },
   addModelPrefix: true,
   enableAll: true,
   customUrlPrefix: '/v1',
 }
 
-app.use(addPrisma, orderItemRouter(someRouterConfig))
+app.use(addPrisma)
+app.use(UserAccountRouter(someRouterConfig))
 
 app.listen(3000, () => {
   console.log('Server is running on http://localhost:3000')
@@ -197,7 +219,7 @@ The following properties can be attached to the `req` object to control the beha
 | ------------ | -------- | ------------ |
 | `findUnique` | `GET`    | `/:id`       |
 | `findFirst`  | `GET`    | `/first`     |
-| `findMany`   | `GET`    | `/`          |
+| `FindFirst`  | `GET`    | `/`          |
 | `create`     | `POST`   | `/`          |
 | `createMany` | `POST`   | `/many`      |
 | `update`     | `PUT`    | `/`          |
