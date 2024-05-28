@@ -164,7 +164,7 @@ const afterFindFirst: RequestHandler = (
 
 /**
  * For generated route the middleware order will be as follows:
- * 1. Query parser
+ * 1. Query parser (kicks in for GET requests)
  * 2. Custom middlewares: config.{method}.before[]
  * 3. Input validator middleware (Optional): config.{method}.input
  * 4. Generated middleware
@@ -176,7 +176,7 @@ const someRouterConfig: RouteConfig<RequestHandler> = {
     before: [beforeFindFirst],
     after: [afterFindFirst],
     input: {
-      schema: UserAccountFindFirstSchema,
+      schema: UserAccountFindFirstSchema, // make sure you set `isGenerateSelect = true` in prisma-zod-generator
       allow: [
         'select.id',
         'select.full_name',

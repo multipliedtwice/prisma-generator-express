@@ -553,106 +553,7 @@ describe('Cryptocurrency Schema Validation', () => {
       expect(error).toBeInstanceOf(ZodError)
     }
   })
-
-  it('deep nesting', () => {
-    const taskSchema = z.object({
-      select: z
-        .object({
-          id: z.boolean().optional(),
-          project_id: z.boolean().optional(),
-          list_id: z.boolean().optional(),
-          user_assignments: z
-            .object({
-              select: z.object({
-                user: z.boolean().optional(),
-              }),
-            })
-            .optional(),
-          tags_mappings: z
-            .object({
-              select: z.object({
-                tag: z.boolean().optional(),
-              }),
-            })
-            .optional(),
-          attachments: z
-            .object({
-              select: z.object({
-                attachment: z.boolean().optional(),
-              }),
-              where: z
-                .object({
-                  is_image: z.boolean().optional(),
-                })
-                .optional(),
-              take: z.number().optional(),
-              orderBy: z
-                .object({
-                  created_at: z.enum(['asc', 'desc']).optional(),
-                })
-                .optional(),
-            })
-            .optional(),
-          rendered_description: z.boolean().optional(),
-          description: z.boolean().optional(),
-          created_at: z.boolean().optional(),
-          start_date: z.boolean().optional(),
-          reactions: z.boolean().optional(),
-          intervals: z.boolean().optional(),
-          column_id: z.boolean().optional(),
-          priority: z.boolean().optional(),
-          due_date: z.boolean().optional(),
-          column: z.boolean().optional(),
-          title: z.boolean().optional(),
-          order: z.boolean().optional(),
-          color: z.boolean().optional(),
-        })
-        .optional(),
-      where: z
-        .object({
-          id: z.string().optional(),
-          AND: z
-            .array(
-              z.object({
-                OR: z
-                  .array(
-                    z.object({
-                      to_delete: z.boolean().nullable().optional(),
-                    }),
-                  )
-                  .optional(),
-              }),
-            )
-            .optional(),
-        })
-        .optional(),
-    })
-
-    const allowedFields = [
-      'select.id',
-      'select.project_id',
-      'select.list_id',
-      'select.user_assignments.select.user',
-      'select.tags_mappings.select.tag',
-      'select.attachments.select.attachment',
-      'select.attachments.where.is_image',
-      'select.attachments.take',
-      'select.attachments.orderBy.created_at',
-      'select.rendered_description',
-      'select.description',
-      'select.created_at',
-      'select.start_date',
-      'select.reactions',
-      'select.intervals',
-      'select.column_id',
-      'select.priority',
-      'select.due_date',
-      'select.column',
-      'select.order',
-      'select.color',
-      'where.id',
-      'where.AND[].OR[].to_delete',
-    ]
+  describe('Prisma example', () => {
     const inputData = {
       select: {
         id: true,
@@ -703,12 +604,160 @@ describe('Cryptocurrency Schema Validation', () => {
         ],
       },
     }
+    it('deep nesting', () => {
+      const taskSchema = z.object({
+        select: z
+          .object({
+            id: z.boolean().optional(),
+            project_id: z.boolean().optional(),
+            list_id: z.boolean().optional(),
+            user_assignments: z
+              .object({
+                select: z.object({
+                  user: z.boolean().optional(),
+                }),
+              })
+              .optional(),
+            tags_mappings: z
+              .object({
+                select: z.object({
+                  tag: z.boolean().optional(),
+                }),
+              })
+              .optional(),
+            attachments: z
+              .object({
+                select: z.object({
+                  attachment: z.boolean().optional(),
+                }),
+                where: z
+                  .object({
+                    is_image: z.boolean().optional(),
+                  })
+                  .optional(),
+                take: z.number().optional(),
+                orderBy: z
+                  .object({
+                    created_at: z.enum(['asc', 'desc']).optional(),
+                  })
+                  .optional(),
+              })
+              .optional(),
+            rendered_description: z.boolean().optional(),
+            description: z.boolean().optional(),
+            created_at: z.boolean().optional(),
+            start_date: z.boolean().optional(),
+            reactions: z.boolean().optional(),
+            intervals: z.boolean().optional(),
+            column_id: z.boolean().optional(),
+            priority: z.boolean().optional(),
+            due_date: z.boolean().optional(),
+            column: z.boolean().optional(),
+            title: z.boolean().optional(),
+            order: z.boolean().optional(),
+            color: z.boolean().optional(),
+          })
+          .optional(),
+        where: z
+          .object({
+            id: z.string().optional(),
+            AND: z
+              .array(
+                z.object({
+                  OR: z
+                    .array(
+                      z.object({
+                        to_delete: z.boolean().nullable().optional(),
+                      }),
+                    )
+                    .optional(),
+                }),
+              )
+              .optional(),
+          })
+          .optional(),
+      })
 
-    try {
-      const result = allow(taskSchema, allowedFields).safeParse(inputData)
-      expect(result.success).toBe(false)
-    } catch (error) {
-      expect(error).toBeInstanceOf(ZodError)
-    }
+      const allowedFields = [
+        'select.id',
+        'select.project_id',
+        'select.list_id',
+        'select.user_assignments.select.user',
+        'select.tags_mappings.select.tag',
+        'select.attachments.select.attachment',
+        'select.attachments.where.is_image',
+        'select.attachments.take',
+        'select.attachments.orderBy.created_at',
+        'select.rendered_description',
+        'select.description',
+        'select.created_at',
+        'select.start_date',
+        'select.reactions',
+        'select.intervals',
+        'select.column_id',
+        'select.priority',
+        'select.due_date',
+        'select.column',
+        'select.order',
+        'select.color',
+        'where.id',
+        'where.AND[].OR[].to_delete',
+      ]
+
+      try {
+        const result = allow(taskSchema, allowedFields).safeParse(inputData)
+        expect(result.success).toBe(false)
+      } catch (error) {
+        expect(error).toBeInstanceOf(ZodError)
+      }
+    })
+
+    it('deep nesting 2', () => {
+      const taskSchema = z.object({
+        where: z
+          .object({
+            id: z.string().optional(),
+            AND: z
+              .array(
+                z.object({
+                  OR: z
+                    .array(
+                      z.object({
+                        to_delete: z.boolean().nullable().optional(),
+                      }),
+                    )
+                    .optional(),
+                }),
+              )
+              .optional(),
+          })
+          .optional(),
+      })
+
+      const allowedFields = [
+        'select.id',
+        'select.project_id',
+        'select.list_id',
+        'select.user_assignments.select.user',
+        'select.tags_mappings.select.tag',
+        'select.attachments.select.attachment',
+        'select.attachments.where.is_image',
+        'select.attachments.take',
+        'select.attachments.orderBy.created_at',
+        'select.rendered_description',
+        'select.description',
+        'select.created_at',
+        'select.start_date',
+        'where.id',
+        'where.AND[].OR[].to_delete',
+      ]
+
+      try {
+        const result = allow(taskSchema, allowedFields).safeParse(inputData)
+        expect(result.success).toBe(false)
+      } catch (error) {
+        expect(error).toBeInstanceOf(ZodError)
+      }
+    })
   })
 })

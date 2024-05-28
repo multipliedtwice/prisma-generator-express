@@ -38,10 +38,11 @@ export function allow<T extends ZodTypeAny>(
   schema: T,
   allowedPaths: string[],
 ): ZodEffects<T, any, any> {
-  const rootSchema = schema instanceof z.ZodObject ? schema : undefined
+  const rootSchema = schema instanceof z.ZodObject ? schema.strict() : undefined
 
-  return schema.transform((data) => {
+  return rootSchema?.transform((data) => {
     const flatData = flattenObject(data, '', rootSchema)
+
     const disallowedPaths: string[] = []
 
     for (const key of Object.keys(flatData)) {
@@ -51,19 +52,11 @@ export function allow<T extends ZodTypeAny>(
     }
 
     if (disallowedPaths.length > 0) {
-      const errors: ZodIssue[] = []
-      for (const path of disallowedPaths) {
-        errors.push({
-          code: ZodIssueCode.custom,
-          message: `Field '${path}' is not allowed.`,
-          path: path.split('.'),
-        })
-      }
-      throw new ZodError(errors)
+      throw createZodErrorFromPaths(disallowedPaths, 'Field is not allowed:')
     }
 
     return data
-  }) as ZodEffects<T, any, any>
+  }) as unknown as ZodEffects<T, any, any>
 }
 
 export function forbid<T extends z.ZodTypeAny>(
@@ -82,15 +75,7 @@ export function forbid<T extends z.ZodTypeAny>(
     }
 
     if (forbiddenMatches.length > 0) {
-      const errors: ZodIssue[] = []
-      for (const path of forbiddenMatches) {
-        errors.push({
-          code: ZodIssueCode.custom,
-          message: `Field '${path}' is forbidden.`,
-          path: [path],
-        })
-      }
-      throw new ZodError(errors)
+      throw createZodErrorFromPaths(forbiddenMatches, 'Field is forbidden:')
     }
     return data
   }) as ZodEffects<T, any, any>
@@ -137,4 +122,19 @@ export function flattenObject(
 
   flatten(obj, prefix, schema)
   return result
+}
+
+function createZodErrorFromPaths(
+  disallowedPaths: string[],
+  errorMessage: string,
+): ZodError {
+  const errors: ZodIssue[] = []
+  for (const path of disallowedPaths) {
+    errors.push({
+      code: ZodIssueCode.custom,
+      message: `${errorMessage} '${path}'`,
+      path: path.split('.'),
+    })
+  }
+  return new ZodError(errors)
 }
