@@ -2,8 +2,8 @@ import express, { json } from 'express'
 import type { Response, Request, NextFunction, RequestHandler } from 'express'
 
 import { orderItemRouter } from '../prisma/generated/express/orderItem'
-import RouteConfig from '../prisma/generated/express/routeConfig'
 import { PrismaClient } from '../prisma/generated/client'
+import { RouteConfig } from '../prisma/generated/express/routeConfig'
 
 const app = express()
 

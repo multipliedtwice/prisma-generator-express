@@ -31,7 +31,7 @@ import { ${modelName}GroupBy } from './${modelName}GroupBy';
 import { createValidatorMiddleware, ValidatorOptions } from '../createValidatorMiddleware'
 import { createOutputValidatorMiddleware } from '../createOutputValidatorMiddleware'
 import { RouteConfig, ValidatorConfig } from '../routeConfig'
-import { parseQueryParams } from "../ParseQueryParams";
+import { parseQueryParams } from "../parseQueryParams";
 
 const defaultBeforeAfter = {
   before: [] as RequestHandler[],
