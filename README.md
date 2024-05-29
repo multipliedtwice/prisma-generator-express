@@ -166,7 +166,7 @@ const afterFindFirst: RequestHandler = (
  * For generated route the middleware order will be as follows:
  * 1. Query parser (kicks in for GET requests)
  * 2. Custom middlewares: config.{method}.before[]
- * 3. Input validator middleware (Optional): config.{method}.input
+ * 3. Input validator middleware (Optional): config.{method}.input. For GET request validates `req.query`, for others - `req.body`
  * 4. Generated middleware
  * 5. Output validator middleware: config.{method}.input
  * 6. Custom middlewares: config.{method}.after[] (not available if req.passToNext is falsy)
