@@ -171,7 +171,7 @@ const afterFindFirst: RequestHandler = (
  * 5. Output validator middleware: config.{method}.input
  * 6. Custom middlewares: config.{method}.after[] (not available if req.passToNext is falsy)
  */
-const someRouterConfig: RouteConfig<RequestHandler> = {
+const userAccounRouterConfig: RouteConfig<RequestHandler> = {
   FindFirst: {
     before: [beforeFindFirst],
     after: [afterFindFirst],
@@ -194,7 +194,7 @@ const someRouterConfig: RouteConfig<RequestHandler> = {
 }
 
 app.use(addPrisma)
-app.use(UserAccountRouter(someRouterConfig))
+app.use(UserAccountRouter(userAccounRouterConfig))
 
 app.listen(3000, () => {
   console.log('Server is running on http://localhost:3000')
