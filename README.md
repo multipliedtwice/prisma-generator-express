@@ -219,6 +219,9 @@ The following properties can be attached to the `req` object to control the beha
 | `findUnique` | `GET`    | `/:id`       |
 | `findFirst`  | `GET`    | `/first`     |
 | `FindFirst`  | `GET`    | `/`          |
+| `aggregate`  | `GET`    | `/aggregate` |
+| `count`      | `GET`    | `/count`     |
+| `groupBy`    | `GET`    | `/groupby`   |
 | `create`     | `POST`   | `/`          |
 | `createMany` | `POST`   | `/many`      |
 | `update`     | `PUT`    | `/`          |
@@ -226,9 +229,7 @@ The following properties can be attached to the `req` object to control the beha
 | `upsert`     | `PATCH`  | `/`          |
 | `delete`     | `DELETE` | `/`          |
 | `deleteMany` | `DELETE` | `/many`      |
-| `aggregate`  | `GET`    | `/aggregate` |
-| `count`      | `GET`    | `/count`     |
-| `groupBy`    | `GET`    | `/groupby`   |
+
 
 ## Helper functions
 
