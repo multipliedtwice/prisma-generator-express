@@ -218,7 +218,7 @@ The following properties can be attached to the `req` object to control the beha
 | ------------ | -------- | ------------ |
 | `findUnique` | `GET`    | `/:id`       |
 | `findFirst`  | `GET`    | `/first`     |
-| `FindFirst`  | `GET`    | `/`          |
+| `findMany`   | `GET`    | `/`          |
 | `aggregate`  | `GET`    | `/aggregate` |
 | `count`      | `GET`    | `/count`     |
 | `groupBy`    | `GET`    | `/groupby`   |
