@@ -10,7 +10,7 @@ This tool helps you quickly create API endpoints in your Express app using your 
 
 When you run `npx prisma generate`, it automatically creates two things:
 
-- Service functions that you can import into your Express routes. By default these functions handle CRUD operations and output validation. This behavior can be controlled.
+- Service functions that you can import into your Express routes. By default, these functions handle CRUD operations and output validation. This behavior can be controlled.
 - Router generator function that lets you select which routes to add to the application and which middlewares to apply.
 
 ## Table of Contents
@@ -19,7 +19,7 @@ When you run `npx prisma generate`, it automatically creates two things:
 - [Basic Usage](#basic-usage)
 - [Router Generator Usage](#router-generator-usage)
 - [Request Object Properties](#request-object-properties)
-- [Roadmap](#roadmap)
+- [Router Schema](#router-schema)
 
 # Installation
 
@@ -72,7 +72,7 @@ app.use((req, res, next) => {
 - Here’s how you can use a generated function in your Express app:
 
 ```ts
-import { UserFindUnique } from './generated/UserFindUnique' // Adjust the path as necessary
+import { UserFindUnique } from './generated/api/UserFindUnique' // Adjust the path as necessary
 import { FindUniqueUserSchema } from './prisma-zod-generator/schemas/FindUniqueUser.schema' // Adjust the path as necessary
 import { FindUniqueUserSchemaOutput } from './prisma-zod-generator/schemas/FindUniqueUserOutput.schema' // Adjust the path as necessary
 
@@ -208,9 +208,9 @@ The following properties can be attached to the `req` object to control the beha
 | Property               | Type         | Description                                                                                                                                                                        |
 | ---------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `prisma`               | PrismaClient | An instance of PrismaClient that allows the middleware to interact with your database.                                                                                             |
-| `passToNext`           | boolean      | Optional, if `true` - the result of a Prisma request will be passed to a next middleware as `if (req.locals) req.locals.data`                                                      |
+| `passToNext`           | boolean      | Optional, if `true` - the result of a Prisma request will be passed to the next middleware as `if (req.locals) req.locals.data`                                                      |
 | `query`                | Object       | A structured object that conforms to Prisma's API for the selected method.                                                                                                         |
-| `outputValidation`     | ZodTypeAny   | (Optional) A Zod schema used to validate the data returned from the Prisma query before sending it to the client. This helps ensure the response adheres to expected data formats. |
+| `outputValidation`     | ZodTypeAny   | (Optional) A Zod schema used to validate the data returned from the Prisma query before sending it to the client. |
 | `omitOutputValidation` | Boolean      | (Optional) A flag that, if set to `true`, disables output validation even if a Zod schema is provided.                                                                             |
 
 ## Router Schema
@@ -248,7 +248,7 @@ interface ValidatorOptions {
 
 ### encodeQueryParams(params: Params)
 
-Can be used on frontend to encode Prisma compatible queries. Alternatively `qs` can be used, but it probably won't work with `OR: [{ blah: false }, { blah: null }]` or some other edge cases.
+It can be used on the frontend to encode Prisma-compatible queries. Alternatively `qs` can be used, but it probably won't work with `OR: [{ blah: false }, { blah: null }]` or some other edge cases.
 
 ```ts
 type RecursiveUrlParams = {
