@@ -133,7 +133,7 @@ const addPrisma: RequestHandler = (
   next: NextFunction,
 ) => {
   req.prisma = prisma
-  // req.omitOutputValidation = true (not required if you use `select` instead of `include`)
+  // req.omitOutputValidation = true (output validation is not required if you use `select` instead of `include`)
   next()
 }
 
