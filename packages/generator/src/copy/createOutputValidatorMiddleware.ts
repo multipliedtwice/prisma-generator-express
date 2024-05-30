@@ -1,4 +1,4 @@
-import { NextFunction } from 'express'
+import { NextFunction, Response, Request } from 'express'
 import { allow, forbid } from './transformZod'
 import { ValidatorOptions } from './createValidatorMiddleware'
 
