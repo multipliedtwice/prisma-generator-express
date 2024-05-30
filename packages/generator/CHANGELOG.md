@@ -1,3 +1,10 @@
+## [1.14.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.14.1...v1.14.2) (2024-05-30)
+
+
+### Bug Fixes
+
+* **package.json:** update devDependencies versions for @types/node, prisma-generator-express, ts-jest in demo and generator packages ([f2052c7](https://github.com/multipliedtwice/prisma-generator-express/commit/f2052c7ea6f7eba83df909849f370fed16f4185e))
+
 ## [1.14.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.14.0...v1.14.1) (2024-05-28)
 
 
