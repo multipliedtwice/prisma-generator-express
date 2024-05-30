@@ -1,3 +1,10 @@
+## [1.14.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.14.2...v1.14.3) (2024-05-30)
+
+
+### Bug Fixes
+
+* createOutputValidatorMiddleware types ([015f1ed](https://github.com/multipliedtwice/prisma-generator-express/commit/015f1edf4c391bdcefac36f757c64e6938d3ef87))
+
 ## [1.14.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.14.1...v1.14.2) (2024-05-30)
 
 
