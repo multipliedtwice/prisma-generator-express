@@ -1,9 +1,4 @@
-import express, {
-  NextFunction,
-  RequestHandler,
-  Request,
-  Response,
-} from 'express'
+import express, { RequestHandler } from 'express'
 import { ParsedQs } from 'qs'
 import { PRODUCT_CATALOGFindFirst } from './PRODUCT_CATALOGFindFirst'
 import { PRODUCT_CATALOGFindMany } from './PRODUCT_CATALOGFindMany'
@@ -18,13 +13,9 @@ import { PRODUCT_CATALOGDeleteMany } from './PRODUCT_CATALOGDeleteMany'
 import { PRODUCT_CATALOGAggregate } from './PRODUCT_CATALOGAggregate'
 import { PRODUCT_CATALOGCount } from './PRODUCT_CATALOGCount'
 import { PRODUCT_CATALOGGroupBy } from './PRODUCT_CATALOGGroupBy'
-import {
-  createValidatorMiddleware,
-  ValidatorOptions,
-} from '../createValidatorMiddleware'
-import { createOutputValidatorMiddleware } from '../createOutputValidatorMiddleware'
+import { createValidatorMiddleware } from '../createValidatorMiddleware'
 import { RouteConfig, ValidatorConfig } from '../routeConfig'
-import { parseQueryParams } from '../ParseQueryParams'
+import { parseQueryParams } from '../parseQueryParams'
 
 const defaultBeforeAfter = {
   before: [] as RequestHandler[],

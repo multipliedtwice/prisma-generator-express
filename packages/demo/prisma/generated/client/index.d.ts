@@ -15,7 +15,7 @@ export type PrismaPromise<T> = $Public.PrismaPromise<T>
 
 /**
  * Model UserAccount
- * 
+ * generator off
  */
 export type UserAccount = $Result.DefaultSelection<Prisma.$UserAccountPayload>
 /**

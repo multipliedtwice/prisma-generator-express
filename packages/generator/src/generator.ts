@@ -35,6 +35,16 @@ generatorHandler({
     const prismaImportStatement = generateImportPrismaStatement(options)
 
     for await (const model of options.dmmf.datamodel.models) {
+      if (
+        model.documentation &&
+        model.documentation.includes('generator off')
+      ) {
+        logger.info(
+          `Skipping generation for model ${model.name} as it is marked with 'generator off'.`,
+        )
+        continue
+      }
+
       await writeFileSafely({
         content: generateFindUniqueFunction({
           model,

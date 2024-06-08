@@ -13,6 +13,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// generator off
 model UserAccount {
   ID           Int         @id @default(autoincrement())
   full_name    String

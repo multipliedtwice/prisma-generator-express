@@ -9,10 +9,7 @@ export function generateRouterFunction({
   const routerFunctionName = `${modelName}Router`
 
   return `import express, {
-  NextFunction,
-  RequestHandler,
-  Request,
-  Response,
+  RequestHandler
 } from 'express'
 import { ParsedQs } from 'qs'
 import { ${modelName}FindFirst } from './${modelName}FindFirst';
@@ -28,8 +25,7 @@ import { ${modelName}DeleteMany } from './${modelName}DeleteMany';
 import { ${modelName}Aggregate } from './${modelName}Aggregate';
 import { ${modelName}Count } from './${modelName}Count';
 import { ${modelName}GroupBy } from './${modelName}GroupBy';
-import { createValidatorMiddleware, ValidatorOptions } from '../createValidatorMiddleware'
-import { createOutputValidatorMiddleware } from '../createOutputValidatorMiddleware'
+import { createValidatorMiddleware } from '../createValidatorMiddleware'
 import { RouteConfig, ValidatorConfig } from '../routeConfig'
 import { parseQueryParams } from "../parseQueryParams";
 

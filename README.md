@@ -205,12 +205,12 @@ app.listen(3000, () => {
 
 The following properties can be attached to the `req` object to control the behavior of generated middleware:
 
-| Property               | Type         | Description                                                                                                                                                                        |
-| ---------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prisma`               | PrismaClient | An instance of PrismaClient that allows the middleware to interact with your database.                                                                                             |
-| `passToNext`           | boolean      | Optional, if `true` - the result of a Prisma request will be passed to the next middleware as `if (req.locals) req.locals.data`                                                      |
-| `outputValidation`     | ZodTypeAny   | (Optional) A Zod schema used to validate the data returned from the Prisma query before sending it to the client. |
-| `omitOutputValidation` | Boolean      | (Optional) A flag that, if set to `true`, disables output validation even if a Zod schema is provided.                                                                             |
+| Property               | Type         | Description                                                                                                                     |
+| ---------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `prisma`               | PrismaClient | An instance of PrismaClient that allows the middleware to interact with your database.                                          |
+| `passToNext`           | boolean      | Optional, if `true` - the result of a Prisma request will be passed to the next middleware as `if (req.locals) req.locals.data` |
+| `outputValidation`     | ZodTypeAny   | (Optional) A Zod schema used to validate the data returned from the Prisma query before sending it to the client.               |
+| `omitOutputValidation` | Boolean      | (Optional) A flag that, if set to `true`, disables output validation even if a Zod schema is provided.                          |
 
 ## Router Schema
 
@@ -230,6 +230,18 @@ The following properties can be attached to the `req` object to control the beha
 | `delete`     | `DELETE` | `/`          |
 | `deleteMany` | `DELETE` | `/many`      |
 
+## Skip generation
+
+```prisma
+/// generator off
+model UserAccount {
+  ID           Int         @id @default(autoincrement())
+  full_name    String
+  emailAddress String      @unique
+  createdAt    DateTime    @default(now())
+  orders       orderItem[]
+}
+```
 
 ## Helper functions
 
