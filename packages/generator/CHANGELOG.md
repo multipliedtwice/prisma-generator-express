@@ -1,3 +1,10 @@
+# [1.15.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.14.3...v1.15.0) (2024-06-08)
+
+
+### Features
+
+* skip generation ([5a62142](https://github.com/multipliedtwice/prisma-generator-express/commit/5a62142700958cc6ba1bd0e0afc725e0a7765580))
+
 ## [1.14.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.14.2...v1.14.3) (2024-05-30)
 
 
