@@ -11,7 +11,6 @@ function copyFile(source, destinationPath) {
   const filename = path.basename(source)
   const destination = path.join(destinationPath, filename)
   fs.copyFileSync(source, destination)
-  console.log(`Copied ${filename} to ${destination}`)
 }
 
 // Execute copy
