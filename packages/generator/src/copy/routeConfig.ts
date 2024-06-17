@@ -10,8 +10,8 @@ export interface ValidatorConfig {
 interface MiddlewareConfig<M> {
   before?: M[]
   after?: RequestHandler[]
-  input?: ValidatorConfig
-  output?: ValidatorConfig
+  inputValidatior?: ValidatorConfig
+  outputValidatior?: ValidatorConfig
 }
 
 export interface RouteConfig<M> {
