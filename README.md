@@ -133,7 +133,6 @@ const addPrisma: RequestHandler = (
   next: NextFunction,
 ) => {
   req.prisma = prisma
-  // req.omitOutputValidation = true (output validation is not required if you use `select` instead of `include`)
   next()
 }
 
@@ -210,7 +209,6 @@ The following properties can be attached to the `req` object to control the beha
 | `prisma`               | PrismaClient | An instance of PrismaClient that allows the middleware to interact with your database.                                          |
 | `passToNext`           | boolean      | Optional, if `true` - the result of a Prisma request will be passed to the next middleware as `if (req.locals) req.locals.data` |
 | `outputValidation`     | ZodTypeAny   | (Optional) A Zod schema used to validate the data returned from the Prisma query before sending it to the client.               |
-| `omitOutputValidation` | Boolean      | (Optional) A flag that, if set to `true`, disables output validation even if a Zod schema is provided.                          |
 
 ## Router Schema
 

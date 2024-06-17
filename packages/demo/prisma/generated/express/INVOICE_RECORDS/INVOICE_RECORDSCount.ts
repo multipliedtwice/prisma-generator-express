@@ -10,7 +10,6 @@ interface CountRequest extends Request {
   prisma: PrismaClient
   query: Partial<Prisma.INVOICE_RECORDSCountArgs> & ParsedQs
   outputValidation?: ZodTypeAny
-  omitOutputValidation?: boolean
   locals?: {
     outputValidator?: ZodTypeAny
   }
@@ -31,17 +30,11 @@ export async function INVOICE_RECORDSCount(
   try {
     const outputValidator = req.locals?.outputValidator || req.outputValidation
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error(
-        'Output validation schema or omission flag must be provided.',
-      )
-    }
-
     const result = await req.prisma.iNVOICE_RECORDS.count(
       req.query as Prisma.INVOICE_RECORDSCountArgs,
     )
 
-    if (!req.omitOutputValidation && outputValidator) {
+    if (outputValidator) {
       const validationResult = outputValidator.safeParse(result)
       if (validationResult.success) {
         return res.status(200).json(validationResult.data)
@@ -57,6 +50,6 @@ export async function INVOICE_RECORDSCount(
       return res.status(200).json(result)
     }
   } catch (error: unknown) {
-    return next(error)
+    next(error)
   }
 }

@@ -20,8 +20,8 @@ import { parseQueryParams } from '../parseQueryParams'
 const defaultBeforeAfter = {
   before: [] as RequestHandler[],
   after: [] as RequestHandler[],
-  input: undefined,
-  output: undefined,
+  inputValidator: undefined,
+  outputValidator: undefined,
 }
 
 /**
@@ -88,16 +88,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.findFirst || defaultBeforeAfter
     setupRoute(
       '/first',
       'get',
       before,
       orderItemFindFirst as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/first', ...after)
@@ -108,16 +108,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.findMany || defaultBeforeAfter
     setupRoute(
       '/',
       'get',
       before,
       orderItemFindMany as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/', ...after)
@@ -128,10 +128,17 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.findUnique || defaultBeforeAfter
-    setupRoute('/:id', 'get', before, orderItemFindUnique as any, input, output)
+    setupRoute(
+      '/:id',
+      'get',
+      before,
+      orderItemFindUnique as any,
+      inputValidator,
+      outputValidator,
+    )
     if (after.length) {
       router.use(basePath + '/:id', ...after)
     }
@@ -141,16 +148,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.create || defaultBeforeAfter
     setupRoute(
       '/',
       'post',
       before,
       orderItemCreate as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/', ...after)
@@ -161,16 +168,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.createMany || defaultBeforeAfter
     setupRoute(
       '/many',
       'post',
       before,
       orderItemCreateMany as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/many', ...after)
@@ -181,16 +188,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.update || defaultBeforeAfter
     setupRoute(
       '/',
       'put',
       before,
       orderItemUpdate as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/', ...after)
@@ -201,16 +208,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.updateMany || defaultBeforeAfter
     setupRoute(
       '/many',
       'put',
       before,
       orderItemUpdateMany as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/many', ...after)
@@ -221,16 +228,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.upsert || defaultBeforeAfter
     setupRoute(
       '/',
       'patch',
       before,
       orderItemUpsert as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/', ...after)
@@ -241,16 +248,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.delete || defaultBeforeAfter
     setupRoute(
       '/',
       'delete',
       before,
       orderItemDelete as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/', ...after)
@@ -261,16 +268,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.deleteMany || defaultBeforeAfter
     setupRoute(
       '/many',
       'delete',
       before,
       orderItemDeleteMany as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/many', ...after)
@@ -281,16 +288,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.aggregate || defaultBeforeAfter
     setupRoute(
       '/aggregate',
       'get',
       before,
       orderItemAggregate as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/aggregate', ...after)
@@ -301,16 +308,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.count || defaultBeforeAfter
     setupRoute(
       '/count',
       'get',
       before,
       orderItemCount as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/count', ...after)
@@ -321,16 +328,16 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.groupBy || defaultBeforeAfter
     setupRoute(
       '/groupby',
       'get',
       before,
       orderItemGroupBy as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/groupby', ...after)

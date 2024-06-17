@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-import { capitalize, lowercaseFirstLetter } from '../utils/strings'
+import { capitalize, toPascalCase } from '../utils/strings'
 
 /**
  * Generates an Express middleware function that handles aggregation queries
@@ -29,7 +29,6 @@ interface AggregateRequest extends Request {
   prisma: PrismaClient;
   query: Partial<${argsTypeName}> & ParsedQs;
   outputValidation?: ZodTypeAny;
-  omitOutputValidation?: boolean;
   locals?: {
     outputValidator?: ValidatorConfig;
   };
@@ -41,13 +40,9 @@ export async function ${functionName}(req: AggregateRequest, res: Response, next
   try {
     const outputValidator = res.locals.outputValidator?.schema || req.outputValidation;
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error('Output validation schema or omission flag must be provided.');
-    }
+    const result = await req.prisma.${toPascalCase(modelName)}.aggregate(req.query as ${argsTypeName});
 
-    const result = await req.prisma.${lowercaseFirstLetter(modelName)}.aggregate(req.query as ${argsTypeName});
-
-    if (!req.omitOutputValidation && outputValidator) {
+    if (outputValidator) {
       const validationResult = outputValidator.safeParse(result);
       if (validationResult.success) {
         return res.status(200).json(validationResult.data);
@@ -57,8 +52,8 @@ export async function ${functionName}(req: AggregateRequest, res: Response, next
     } else {
       return res.status(200).json(result);
     }
-  } catch (error: unknown) {
-    return next(error);
+  } catch(error: unknown) {
+    next(error)
   }
 }`
 }

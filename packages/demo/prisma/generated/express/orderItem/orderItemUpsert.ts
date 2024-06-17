@@ -9,7 +9,6 @@ interface UpsertRequest extends Request {
   prisma: PrismaClient
   body: Prisma.orderItemUpsertArgs
   outputValidation?: ZodTypeAny
-  omitOutputValidation?: boolean
   locals?: {
     outputValidator?: ZodTypeAny
   }
@@ -30,15 +29,9 @@ export async function orderItemUpsert(
   try {
     const outputValidator = req.locals?.outputValidator || req.outputValidation
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error(
-        'Output validation schema or omission flag must be provided.',
-      )
-    }
-
     const data = await req.prisma.orderItem.upsert(req.body)
 
-    if (!req.omitOutputValidation && outputValidator) {
+    if (outputValidator) {
       const validationResult = outputValidator.safeParse(data)
       if (validationResult.success) {
         return res.status(200).json(validationResult.data)
@@ -54,6 +47,6 @@ export async function orderItemUpsert(
       return res.status(200).json(data)
     }
   } catch (error: unknown) {
-    return next(error)
+    next(error)
   }
 }

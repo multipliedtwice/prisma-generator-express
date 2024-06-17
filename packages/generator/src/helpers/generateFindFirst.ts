@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-import { lowercaseFirstLetter } from '../utils/strings'
+import { toPascalCase } from '../utils/strings'
 /**
  * Generates an Express middleware function that includes conditional output validation with Zod.
  * This version dynamically includes the correct type for the query parameter based on the Prisma model.
@@ -29,7 +29,6 @@ export interface FindFirstRequest extends Request {
   prisma: PrismaClient;
   query: ${queryTypeName} & ParsedQs;
   outputValidation?: ZodTypeAny;
-  omitOutputValidation?: boolean;
   passToNext?: boolean;
   locals?: {
     data?: ${modelName} | null
@@ -42,15 +41,11 @@ export async function ${functionName}(req: FindFirstRequest, res: Response, next
   try {
     const outputValidator = req.locals?.outputValidator || req.outputValidation;
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error('Output validation schema or omission flag must be provided.');
-    }
-
-    const data = await req.prisma.${lowercaseFirstLetter(modelName)}.findFirst(req.query as ${queryTypeName});
+    const data = await req.prisma.${toPascalCase(modelName)}.findFirst(req.query as ${queryTypeName});
     if (req.passToNext) {
       if (req.locals) req.locals.data = data;
       next();
-    } else if (!req.omitOutputValidation && outputValidator) {
+    } else if (outputValidator) {
       const validationResult = outputValidator.safeParse(data);
       if (validationResult.success) {
         return res.status(200).json(validationResult.data);
@@ -60,8 +55,8 @@ export async function ${functionName}(req: FindFirstRequest, res: Response, next
     } else {
       return res.status(200).json(data); 
     }
-  } catch (error: unknown) {
-    return next(error);
+  } catch(error: unknown) {
+    next(error)
   }
 }`
 }

@@ -20,8 +20,8 @@ import { parseQueryParams } from '../parseQueryParams'
 const defaultBeforeAfter = {
   before: [] as RequestHandler[],
   after: [] as RequestHandler[],
-  input: undefined,
-  output: undefined,
+  inputValidator: undefined,
+  outputValidator: undefined,
 }
 
 /**
@@ -89,16 +89,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.findFirst || defaultBeforeAfter
     setupRoute(
       '/first',
       'get',
       before,
       INVOICE_RECORDSFindFirst as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/first', ...after)
@@ -109,16 +109,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.findMany || defaultBeforeAfter
     setupRoute(
       '/',
       'get',
       before,
       INVOICE_RECORDSFindMany as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/', ...after)
@@ -129,16 +129,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.findUnique || defaultBeforeAfter
     setupRoute(
       '/:id',
       'get',
       before,
       INVOICE_RECORDSFindUnique as any,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/:id', ...after)
@@ -149,16 +149,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.create || defaultBeforeAfter
     setupRoute(
       '/',
       'post',
       before,
       INVOICE_RECORDSCreate as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/', ...after)
@@ -169,16 +169,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.createMany || defaultBeforeAfter
     setupRoute(
       '/many',
       'post',
       before,
       INVOICE_RECORDSCreateMany as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/many', ...after)
@@ -189,16 +189,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.update || defaultBeforeAfter
     setupRoute(
       '/',
       'put',
       before,
       INVOICE_RECORDSUpdate as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/', ...after)
@@ -209,16 +209,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.updateMany || defaultBeforeAfter
     setupRoute(
       '/many',
       'put',
       before,
       INVOICE_RECORDSUpdateMany as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/many', ...after)
@@ -229,16 +229,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.upsert || defaultBeforeAfter
     setupRoute(
       '/',
       'patch',
       before,
       INVOICE_RECORDSUpsert as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/', ...after)
@@ -249,16 +249,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.delete || defaultBeforeAfter
     setupRoute(
       '/',
       'delete',
       before,
       INVOICE_RECORDSDelete as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/', ...after)
@@ -269,16 +269,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.deleteMany || defaultBeforeAfter
     setupRoute(
       '/many',
       'delete',
       before,
       INVOICE_RECORDSDeleteMany as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/many', ...after)
@@ -289,16 +289,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.aggregate || defaultBeforeAfter
     setupRoute(
       '/aggregate',
       'get',
       before,
       INVOICE_RECORDSAggregate as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/aggregate', ...after)
@@ -309,16 +309,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.count || defaultBeforeAfter
     setupRoute(
       '/count',
       'get',
       before,
       INVOICE_RECORDSCount as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/count', ...after)
@@ -329,16 +329,16 @@ export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
     const {
       before = [],
       after = [],
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     } = config.groupBy || defaultBeforeAfter
     setupRoute(
       '/groupby',
       'get',
       before,
       INVOICE_RECORDSGroupBy as RequestHandler,
-      input,
-      output,
+      inputValidator,
+      outputValidator,
     )
     if (after.length) {
       router.use(basePath + '/groupby', ...after)

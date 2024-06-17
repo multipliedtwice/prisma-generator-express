@@ -9,7 +9,6 @@ interface UpdateManyRequest extends Request {
   prisma: PrismaClient
   body: Prisma.INVOICE_RECORDSUpdateManyArgs
   outputValidation?: ZodTypeAny
-  omitOutputValidation?: boolean
   locals?: {
     outputValidator?: ZodTypeAny
   }
@@ -30,15 +29,9 @@ export async function INVOICE_RECORDSUpdateMany(
   try {
     const outputValidator = req.locals?.outputValidator || req.outputValidation
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error(
-        'Output validation schema or omission flag must be provided.',
-      )
-    }
-
     const data = await req.prisma.iNVOICE_RECORDS.updateMany(req.body)
 
-    if (!req.omitOutputValidation && outputValidator) {
+    if (outputValidator) {
       const validationResult = outputValidator.safeParse(data)
       if (validationResult.success) {
         return res.status(200).json({ count: validationResult.data.count })
@@ -54,6 +47,6 @@ export async function INVOICE_RECORDSUpdateMany(
       return res.status(200).json({ count: data.count })
     }
   } catch (error: unknown) {
-    return next(error)
+    next(error)
   }
 }

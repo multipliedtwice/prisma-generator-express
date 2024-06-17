@@ -10,7 +10,6 @@ export interface FindFirstRequest extends Request {
   prisma: PrismaClient
   query: Prisma.INVOICE_RECORDSFindFirstArgs & ParsedQs
   outputValidation?: ZodTypeAny
-  omitOutputValidation?: boolean
   passToNext?: boolean
   locals?: {
     data?: INVOICE_RECORDS | null
@@ -33,19 +32,13 @@ export async function INVOICE_RECORDSFindFirst(
   try {
     const outputValidator = req.locals?.outputValidator || req.outputValidation
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error(
-        'Output validation schema or omission flag must be provided.',
-      )
-    }
-
     const data = await req.prisma.iNVOICE_RECORDS.findFirst(
       req.query as Prisma.INVOICE_RECORDSFindFirstArgs,
     )
     if (req.passToNext) {
       if (req.locals) req.locals.data = data
       next()
-    } else if (!req.omitOutputValidation && outputValidator) {
+    } else if (outputValidator) {
       const validationResult = outputValidator.safeParse(data)
       if (validationResult.success) {
         return res.status(200).json(validationResult.data)
@@ -61,6 +54,6 @@ export async function INVOICE_RECORDSFindFirst(
       return res.status(200).json(data)
     }
   } catch (error: unknown) {
-    return next(error)
+    next(error)
   }
 }

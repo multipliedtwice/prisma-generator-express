@@ -10,7 +10,6 @@ interface CountRequest extends Request {
   prisma: PrismaClient
   query: Partial<Prisma.PRODUCT_CATALOGCountArgs> & ParsedQs
   outputValidation?: ZodTypeAny
-  omitOutputValidation?: boolean
   locals?: {
     outputValidator?: ZodTypeAny
   }
@@ -31,17 +30,11 @@ export async function PRODUCT_CATALOGCount(
   try {
     const outputValidator = req.locals?.outputValidator || req.outputValidation
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error(
-        'Output validation schema or omission flag must be provided.',
-      )
-    }
-
     const result = await req.prisma.pRODUCT_CATALOG.count(
       req.query as Prisma.PRODUCT_CATALOGCountArgs,
     )
 
-    if (!req.omitOutputValidation && outputValidator) {
+    if (outputValidator) {
       const validationResult = outputValidator.safeParse(result)
       if (validationResult.success) {
         return res.status(200).json(validationResult.data)
@@ -57,6 +50,6 @@ export async function PRODUCT_CATALOGCount(
       return res.status(200).json(result)
     }
   } catch (error: unknown) {
-    return next(error)
+    next(error)
   }
 }

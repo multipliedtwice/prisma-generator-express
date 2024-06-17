@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-import { lowercaseFirstLetter } from '../utils/strings'
+import { toPascalCase } from '../utils/strings'
 
 /**
  * Generates an Express middleware function that handles batch deleting records
@@ -27,7 +27,6 @@ interface DeleteManyRequest extends Request {
   prisma: PrismaClient;
   body: ${argsTypeName};
   outputValidation?: ZodTypeAny;
-  omitOutputValidation?: boolean;
   locals?: {
     outputValidator?: ZodTypeAny;
   };
@@ -39,13 +38,9 @@ export async function ${functionName}(req: DeleteManyRequest, res: Response, nex
   try {
     const outputValidator = req.locals?.outputValidator || req.outputValidation;
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error('Output validation schema or omission flag must be provided.');
-    }
+    const result = await req.prisma.${toPascalCase(modelName)}.deleteMany(req.body);
 
-    const result = await req.prisma.${lowercaseFirstLetter(modelName)}.deleteMany(req.body);
-
-    if (!req.omitOutputValidation && outputValidator) {
+    if (outputValidator) {
       const validationResult = outputValidator.safeParse(result);
       if (validationResult.success) {
         return res.status(200).json(validationResult.data);
@@ -55,8 +50,8 @@ export async function ${functionName}(req: DeleteManyRequest, res: Response, nex
     } else {
       return res.status(200).json(result);
     }
-  } catch (error: unknown) {
-    return next(error);
+  } catch(error: unknown) {
+    next(error)
   }
 }`
 }

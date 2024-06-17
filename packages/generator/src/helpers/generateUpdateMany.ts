@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-import { lowercaseFirstLetter } from '../utils/strings'
+import { toPascalCase } from '../utils/strings'
 
 /**
  * Generates an Express middleware function that handles updating multiple records and includes conditional output validation with Zod.
@@ -26,7 +26,6 @@ interface UpdateManyRequest extends Request {
   prisma: PrismaClient;
   body: ${argsTypeName};
   outputValidation?: ZodTypeAny;
-  omitOutputValidation?: boolean;
   locals?: {
     outputValidator?: ZodTypeAny;
   };
@@ -38,13 +37,9 @@ export async function ${functionName}(req: UpdateManyRequest, res: Response, nex
   try {
     const outputValidator = req.locals?.outputValidator || req.outputValidation;
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error('Output validation schema or omission flag must be provided.');
-    }
+    const data = await req.prisma.${toPascalCase(modelName)}.updateMany(req.body);
 
-    const data = await req.prisma.${lowercaseFirstLetter(modelName)}.updateMany(req.body);
-
-    if (!req.omitOutputValidation && outputValidator) {
+    if (outputValidator) {
       const validationResult = outputValidator.safeParse(data);
       if (validationResult.success) {
         return res.status(200).json({ count: validationResult.data.count });
@@ -54,8 +49,8 @@ export async function ${functionName}(req: UpdateManyRequest, res: Response, nex
     } else {
       return res.status(200).json({ count: data.count });
     }
-  } catch (error: unknown) {
-    return next(error);
+  } catch(error: unknown) {
+    next(error)
   }
 }`
 }

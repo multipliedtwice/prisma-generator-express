@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-import { lowercaseFirstLetter } from '../utils/strings'
+import { toPascalCase } from '../utils/strings'
 import { PrismaClient, Prisma } from '@prisma/client'
 
 /**
@@ -29,7 +29,6 @@ interface GroupByRequest extends Request {
   prisma: PrismaClient;
   query: Partial<${argsTypeName}> & ParsedQs;
   outputValidation?: ZodTypeAny;
-  omitOutputValidation?: boolean;
   locals?: {
     outputValidator?: ZodTypeAny;
   };
@@ -41,14 +40,10 @@ export async function ${functionName}(req: GroupByRequest, res: Response, next: 
   try {
     const outputValidator = req.locals?.outputValidator || req.outputValidation;
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error('Output validation schema or omission flag must be provided.');
-    }
-
     // @ts-ignore
-    const result = await req.prisma.${lowercaseFirstLetter(modelName)}.groupBy(req.query);
+    const result = await req.prisma.${toPascalCase(modelName)}.groupBy(req.query);
 
-    if (!req.omitOutputValidation && outputValidator) {
+    if (outputValidator) {
       const validationResult = outputValidator.safeParse(result);
       if (validationResult.success) {
         return res.status(200).json(validationResult.data);
@@ -58,8 +53,8 @@ export async function ${functionName}(req: GroupByRequest, res: Response, next: 
     } else {
       return res.status(200).json(result);
     }
-  } catch (error: unknown) {
-    return next(error);
+  } catch(error: unknown) {
+    next(error)
   }
 }`
 }

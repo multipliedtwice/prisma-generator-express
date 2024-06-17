@@ -11,7 +11,6 @@ interface AggregateRequest extends Request {
   prisma: PrismaClient
   query: Partial<Prisma.PRODUCT_CATALOGAggregateArgs> & ParsedQs
   outputValidation?: ZodTypeAny
-  omitOutputValidation?: boolean
   locals?: {
     outputValidator?: ValidatorConfig
   }
@@ -33,17 +32,11 @@ export async function PRODUCT_CATALOGAggregate(
     const outputValidator =
       res.locals.outputValidator?.schema || req.outputValidation
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error(
-        'Output validation schema or omission flag must be provided.',
-      )
-    }
-
     const result = await req.prisma.pRODUCT_CATALOG.aggregate(
       req.query as Prisma.PRODUCT_CATALOGAggregateArgs,
     )
 
-    if (!req.omitOutputValidation && outputValidator) {
+    if (outputValidator) {
       const validationResult = outputValidator.safeParse(result)
       if (validationResult.success) {
         return res.status(200).json(validationResult.data)
@@ -59,6 +52,6 @@ export async function PRODUCT_CATALOGAggregate(
       return res.status(200).json(result)
     }
   } catch (error: unknown) {
-    return next(error)
+    next(error)
   }
 }

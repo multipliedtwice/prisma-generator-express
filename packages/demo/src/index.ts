@@ -19,7 +19,6 @@ const addPrisma: RequestHandler = (
   next: NextFunction,
 ) => {
   req.prisma = prisma
-  req.omitOutputValidation = true
   next()
 }
 

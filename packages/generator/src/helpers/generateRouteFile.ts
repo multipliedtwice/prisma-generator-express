@@ -32,8 +32,8 @@ import { parseQueryParams } from "../parseQueryParams";
 const defaultBeforeAfter = {
   before: [] as RequestHandler[],
   after: [] as RequestHandler[],
-  input: undefined,
-  output: undefined,
+  inputValidator: undefined,
+  outputValidator: undefined,
 };
 
 /**
@@ -85,104 +85,104 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
 
 
   if (config.enableAll || config?.findFirst) {
-    const { before = [], after = [], input, output } = config.findFirst || defaultBeforeAfter;
-    setupRoute('/first', 'get', before, ${modelName}FindFirst as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.findFirst || defaultBeforeAfter;
+    setupRoute('/first', 'get', before, ${modelName}FindFirst as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/first', ...after);
     }
   }
 
   if (config.enableAll || config?.findMany) {
-    const { before = [], after = [], input, output } = config.findMany || defaultBeforeAfter;
-    setupRoute('/', 'get', before, ${modelName}FindMany as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.findMany || defaultBeforeAfter;
+    setupRoute('/', 'get', before, ${modelName}FindMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/', ...after);
     }
   }
 
   if (config.enableAll || config?.findUnique) {
-    const { before = [], after = [], input, output } = config.findUnique || defaultBeforeAfter;
-    setupRoute('/:id', 'get', before, ${modelName}FindUnique as any, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.findUnique || defaultBeforeAfter;
+    setupRoute('/:id', 'get', before, ${modelName}FindUnique as any, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/:id', ...after);
     }
   }
 
   if (config.enableAll || config?.create) {
-    const { before = [], after = [], input, output } = config.create || defaultBeforeAfter;
-    setupRoute('/', 'post', before, ${modelName}Create as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.create || defaultBeforeAfter;
+    setupRoute('/', 'post', before, ${modelName}Create as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/', ...after);
     }
   }
 
   if (config.enableAll || config?.createMany) {
-    const { before = [], after = [], input, output } = config.createMany || defaultBeforeAfter;
-    setupRoute('/many', 'post', before, ${modelName}CreateMany as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.createMany || defaultBeforeAfter;
+    setupRoute('/many', 'post', before, ${modelName}CreateMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/many', ...after);
     }
   }
 
   if (config.enableAll || config?.update) {
-    const { before = [], after = [], input, output } = config.update || defaultBeforeAfter;
-    setupRoute('/', 'put', before, ${modelName}Update as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.update || defaultBeforeAfter;
+    setupRoute('/', 'put', before, ${modelName}Update as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/', ...after);
     }
   }
 
   if (config.enableAll || config?.updateMany) {
-    const { before = [], after = [], input, output } = config.updateMany || defaultBeforeAfter;
-    setupRoute('/many', 'put', before, ${modelName}UpdateMany as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.updateMany || defaultBeforeAfter;
+    setupRoute('/many', 'put', before, ${modelName}UpdateMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/many', ...after);
     }
   }
 
   if (config.enableAll || config?.upsert) {
-    const { before = [], after = [], input, output } = config.upsert || defaultBeforeAfter;
-    setupRoute('/', 'patch', before, ${modelName}Upsert as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.upsert || defaultBeforeAfter;
+    setupRoute('/', 'patch', before, ${modelName}Upsert as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/', ...after);
     }
   }
 
   if (config.enableAll || config?.delete) {
-    const { before = [], after = [], input, output } = config.delete || defaultBeforeAfter;
-    setupRoute('/', 'delete', before, ${modelName}Delete as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.delete || defaultBeforeAfter;
+    setupRoute('/', 'delete', before, ${modelName}Delete as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/', ...after);
     }
   }
 
   if (config.enableAll || config?.deleteMany) {
-    const { before = [], after = [], input, output } = config.deleteMany || defaultBeforeAfter;
-    setupRoute('/many', 'delete', before, ${modelName}DeleteMany as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.deleteMany || defaultBeforeAfter;
+    setupRoute('/many', 'delete', before, ${modelName}DeleteMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/many', ...after);
     }
   }
 
   if (config.enableAll || config?.aggregate) {
-    const { before = [], after = [], input, output } = config.aggregate || defaultBeforeAfter;
-    setupRoute('/aggregate', 'get', before, ${modelName}Aggregate as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.aggregate || defaultBeforeAfter;
+    setupRoute('/aggregate', 'get', before, ${modelName}Aggregate as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/aggregate', ...after);
     }
   }
 
   if (config.enableAll || config?.count) {
-    const { before = [], after = [], input, output } = config.count || defaultBeforeAfter;
-    setupRoute('/count', 'get', before, ${modelName}Count as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.count || defaultBeforeAfter;
+    setupRoute('/count', 'get', before, ${modelName}Count as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/count', ...after);
     }
   }
 
   if (config.enableAll || config?.groupBy) {
-    const { before = [], after = [], input, output } = config.groupBy || defaultBeforeAfter;
-    setupRoute('/groupby', 'get', before, ${modelName}GroupBy as RequestHandler, input, output);
+    const { before = [], after = [], inputValidator, outputValidator) = config.groupBy || defaultBeforeAfter;
+    setupRoute('/groupby', 'get', before, ${modelName}GroupBy as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/groupby', ...after);
     }

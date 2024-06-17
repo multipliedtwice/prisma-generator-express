@@ -9,7 +9,6 @@ interface DeleteManyRequest extends Request {
   prisma: PrismaClient
   body: Prisma.INVOICE_RECORDSDeleteManyArgs
   outputValidation?: ZodTypeAny
-  omitOutputValidation?: boolean
   locals?: {
     outputValidator?: ZodTypeAny
   }
@@ -30,15 +29,9 @@ export async function INVOICE_RECORDSDeleteMany(
   try {
     const outputValidator = req.locals?.outputValidator || req.outputValidation
 
-    if (!outputValidator && !req.omitOutputValidation) {
-      throw new Error(
-        'Output validation schema or omission flag must be provided.',
-      )
-    }
-
     const result = await req.prisma.iNVOICE_RECORDS.deleteMany(req.body)
 
-    if (!req.omitOutputValidation && outputValidator) {
+    if (outputValidator) {
       const validationResult = outputValidator.safeParse(result)
       if (validationResult.success) {
         return res.status(200).json(validationResult.data)
@@ -54,6 +47,6 @@ export async function INVOICE_RECORDSDeleteMany(
       return res.status(200).json(result)
     }
   } catch (error: unknown) {
-    return next(error)
+    next(error)
   }
 }

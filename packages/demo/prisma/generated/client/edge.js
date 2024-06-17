@@ -148,7 +148,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "C:\\Users\\xtate\\prisma-generator-express\\packages\\demo\\prisma\\generated\\client",
+      "value": "C:\\Users\\multi\\prisma-generator-express\\packages\\demo\\prisma\\generated\\client",
       "fromEnvVar": null
     },
     "config": {
@@ -183,8 +183,8 @@ const config = {
       }
     }
   },
-  "inlineSchema": "generator generator_express {\n  provider = \"node ../../node_modules/prisma-generator-express\"\n  output   = \"./generated/express\"\n}\n\ngenerator client {\n  provider = \"prisma-client-js\"\n  output   = \"./generated/client\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\n/// generator off\nmodel UserAccount {\n  ID           Int         @id @default(autoincrement())\n  full_name    String\n  emailAddress String      @unique\n  createdAt    DateTime    @default(now())\n  orders       orderItem[]\n}\n\nmodel orderItem {\n  id              Int               @id @default(autoincrement())\n  ProductName     String\n  quantity        Int\n  userID          Int\n  userAccount     UserAccount       @relation(fields: [userID], references: [ID])\n  created_at      DateTime          @default(now())\n  INVOICE_RECORDS INVOICE_RECORDS[]\n}\n\nmodel PRODUCT_CATALOG {\n  product_id  Int             @id @default(autoincrement())\n  productname String\n  price       Float\n  category    productCategory\n}\n\nenum productCategory {\n  ELECTRONICS\n  FURNITURE\n  CLOTHING\n}\n\nmodel INVOICE_RECORDS {\n  invoiceID Int       @id @default(autoincrement())\n  ORDER_ID  Int\n  orderItem orderItem @relation(fields: [ORDER_ID], references: [id])\n  amount    Float\n  issuedAt  DateTime  @default(now())\n}\n",
-  "inlineSchemaHash": "b1ee2ab9204353175fea676c6f786d010f52d40b2444f322c1f54385edc47474",
+  "inlineSchema": "generator generator_express {\n  provider = \"node ../generator\"\n  output   = \"./generated/express\"\n}\n\ngenerator client {\n  provider = \"prisma-client-js\"\n  output   = \"./generated/client\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\n/// generator off\nmodel UserAccount {\n  ID           Int         @id @default(autoincrement())\n  full_name    String\n  emailAddress String      @unique\n  createdAt    DateTime    @default(now())\n  orders       orderItem[]\n}\n\nmodel orderItem {\n  id              Int               @id @default(autoincrement())\n  ProductName     String\n  quantity        Int\n  userID          Int\n  userAccount     UserAccount       @relation(fields: [userID], references: [ID])\n  created_at      DateTime          @default(now())\n  INVOICE_RECORDS INVOICE_RECORDS[]\n}\n\nmodel PRODUCT_CATALOG {\n  product_id  Int             @id @default(autoincrement())\n  productname String\n  price       Float\n  category    productCategory\n}\n\nenum productCategory {\n  ELECTRONICS\n  FURNITURE\n  CLOTHING\n}\n\nmodel INVOICE_RECORDS {\n  invoiceID Int       @id @default(autoincrement())\n  ORDER_ID  Int\n  orderItem orderItem @relation(fields: [ORDER_ID], references: [id])\n  amount    Float\n  issuedAt  DateTime  @default(now())\n}\n",
+  "inlineSchemaHash": "1c04ce637519e2fbf41d2d70c22edae0802dd572de167620078b59a8334fd9f7",
   "copyEngine": true
 }
 config.dirname = '/'

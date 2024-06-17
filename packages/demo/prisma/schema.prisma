@@ -1,5 +1,5 @@
 generator generator_express {
-  provider = "node ../../node_modules/prisma-generator-express"
+  provider = "node ../generator"
   output   = "./generated/express"
 }
 
