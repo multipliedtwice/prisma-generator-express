@@ -1,3 +1,10 @@
+## [1.15.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.15.0...v1.15.1) (2024-06-17)
+
+
+### Bug Fixes
+
+* **README.md:** remove outdated comment about omitOutputValidation property ([47a1aa0](https://github.com/multipliedtwice/prisma-generator-express/commit/47a1aa0d950f6d6d20deb8c745b31cf42ce8e641))
+
 # [1.15.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.14.3...v1.15.0) (2024-06-08)
 
 
