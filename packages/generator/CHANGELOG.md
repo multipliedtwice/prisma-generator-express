@@ -1,3 +1,10 @@
+# [1.16.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.15.1...v1.16.0) (2024-06-17)
+
+
+### Features
+
+* remove console log statement from copyFile function to improve code cleanliness and remove unnecessary output ([a4590a2](https://github.com/multipliedtwice/prisma-generator-express/commit/a4590a216ad908b6a34c5d2633afff37e5c15828))
+
 ## [1.15.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.15.0...v1.15.1) (2024-06-17)
 
 
