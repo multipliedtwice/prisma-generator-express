@@ -1,3 +1,10 @@
+## [1.16.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.0...v1.16.1) (2024-06-17)
+
+
+### Bug Fixes
+
+* **generateRouteFile.ts:** fix syntax error in object destructuring assignment by adding missing commas between properties ([3861d7f](https://github.com/multipliedtwice/prisma-generator-express/commit/3861d7fc54ba20a3fea6d7d360d454898b52ac66))
+
 # [1.16.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.15.1...v1.16.0) (2024-06-17)
 
 
