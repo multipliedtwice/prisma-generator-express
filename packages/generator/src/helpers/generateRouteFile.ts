@@ -85,7 +85,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
 
 
   if (config.enableAll || config?.findFirst) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.findFirst || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.findFirst || defaultBeforeAfter;
     setupRoute('/first', 'get', before, ${modelName}FindFirst as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/first', ...after);
@@ -93,7 +93,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.findMany) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.findMany || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.findMany || defaultBeforeAfter;
     setupRoute('/', 'get', before, ${modelName}FindMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/', ...after);
@@ -101,7 +101,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.findUnique) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.findUnique || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.findUnique || defaultBeforeAfter;
     setupRoute('/:id', 'get', before, ${modelName}FindUnique as any, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/:id', ...after);
@@ -109,7 +109,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.create) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.create || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.create || defaultBeforeAfter;
     setupRoute('/', 'post', before, ${modelName}Create as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/', ...after);
@@ -117,7 +117,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.createMany) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.createMany || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.createMany || defaultBeforeAfter;
     setupRoute('/many', 'post', before, ${modelName}CreateMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/many', ...after);
@@ -125,7 +125,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.update) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.update || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.update || defaultBeforeAfter;
     setupRoute('/', 'put', before, ${modelName}Update as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/', ...after);
@@ -133,7 +133,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.updateMany) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.updateMany || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.updateMany || defaultBeforeAfter;
     setupRoute('/many', 'put', before, ${modelName}UpdateMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/many', ...after);
@@ -141,7 +141,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.upsert) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.upsert || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.upsert || defaultBeforeAfter;
     setupRoute('/', 'patch', before, ${modelName}Upsert as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/', ...after);
@@ -149,7 +149,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.delete) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.delete || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.delete || defaultBeforeAfter;
     setupRoute('/', 'delete', before, ${modelName}Delete as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/', ...after);
@@ -157,7 +157,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.deleteMany) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.deleteMany || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.deleteMany || defaultBeforeAfter;
     setupRoute('/many', 'delete', before, ${modelName}DeleteMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/many', ...after);
@@ -165,7 +165,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.aggregate) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.aggregate || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.aggregate || defaultBeforeAfter;
     setupRoute('/aggregate', 'get', before, ${modelName}Aggregate as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/aggregate', ...after);
@@ -173,7 +173,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.count) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.count || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.count || defaultBeforeAfter;
     setupRoute('/count', 'get', before, ${modelName}Count as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/count', ...after);
@@ -181,7 +181,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   }
 
   if (config.enableAll || config?.groupBy) {
-    const { before = [], after = [], inputValidator, outputValidator) = config.groupBy || defaultBeforeAfter;
+    const { before = [], after = [], inputValidator, outputValidator } = config.groupBy || defaultBeforeAfter;
     setupRoute('/groupby', 'get', before, ${modelName}GroupBy as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(basePath + '/groupby', ...after);
