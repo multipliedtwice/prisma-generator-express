@@ -285,6 +285,7 @@ Same as `allow` but works in opposite way.
 
 ---
 
-## Rememo.io [Free Kanban & Chat](https://rememo.io)
+#### Credits:
+- [Super Kick Gym](https://en.bjj-bangkok.com)
 
-<img src="https://github.com/multipliedtwice/prisma-generator-express/blob/feat/internal-validation/rememo-192.png?raw=true" alt="Free Kanban & Corporate Chat">
+- [Rememo](https://rememo.io)
