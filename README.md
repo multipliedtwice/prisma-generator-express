@@ -245,7 +245,7 @@ model UserAccount {
 
 ### createValidatorMiddleware(validatorOptions: ValidatorOptions)
 
-Simple wrapper that internally uses `allow` or `forbid` logic for filtering incoming queries and data payloads
+Simple wrapper that internally uses `allow` or `forbid` logic for filtering incoming queries and data payloads. Helps to make sure that schemas from `prisma-zod-generator` is not too permissive.
 
 ```ts
 interface ValidatorOptions {
