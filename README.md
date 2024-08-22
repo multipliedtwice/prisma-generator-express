@@ -286,6 +286,6 @@ Same as `allow` but works in opposite way.
 ---
 
 #### Credits:
-- [Super Kick Gym](https://en.bjj-bangkok.com)
+- Super Kick Gym - [Brazilian Jiu Jitsu in Bangkok](https://en.bjj-bangkok.com)
 
-- [Rememo](https://rememo.io)
+- Rememo - [Free Task Management and Corporate Chat](https://rememo.io)
