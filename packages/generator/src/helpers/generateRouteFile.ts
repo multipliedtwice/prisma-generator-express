@@ -81,7 +81,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   
     middlewaresWithValidators.push(handler);
   
-    router[method](basePath + path, ...middlewaresWithValidators);
+    router[method](removeTrailingSlash(basePath + path), ...middlewaresWithValidators);
   };
 
 
