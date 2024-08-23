@@ -25,7 +25,7 @@ import { ${modelName}DeleteMany } from './${modelName}DeleteMany';
 import { ${modelName}Aggregate } from './${modelName}Aggregate';
 import { ${modelName}Count } from './${modelName}Count';
 import { ${modelName}GroupBy } from './${modelName}GroupBy';
-import { createValidatorMiddleware, sanitizePrefix } from '../createValidatorMiddleware'
+import { createValidatorMiddleware, removeTrailingSlash } from '../createValidatorMiddleware'
 import { RouteConfig, ValidatorConfig } from '../routeConfig'
 import { parseQueryParams } from "../parseQueryParams";
 
@@ -44,8 +44,8 @@ const defaultBeforeAfter = {
  */
 export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   const router = express.Router();
-  const basePath = sanitizePrefix(config.customUrlPrefix || '') +
-                  sanitizePrefix(config.addModelPrefix !== false ? '/${modelName.toLowerCase()}' : '');
+  const basePath = removeTrailingSlash(config.customUrlPrefix || '') +
+                  removeTrailingSlash(config.addModelPrefix !== false ? '/${modelName.toLowerCase()}' : '');
 
   const setupRoute = (
     path: string,
@@ -89,7 +89,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.findFirst || defaultBeforeAfter;
     setupRoute('/first', 'get', before, ${modelName}FindFirst as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/first', ...after);
+      router.use(removeTrailingSlash(basePath) + '/first', ...after);
     }
   }
 
@@ -97,7 +97,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.findMany || defaultBeforeAfter;
     setupRoute('/', 'get', before, ${modelName}FindMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/', ...after);
+      router.use(removeTrailingSlash(basePath + '/'), ...after);
     }
   }
 
@@ -105,7 +105,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.findUnique || defaultBeforeAfter;
     setupRoute('/:id', 'get', before, ${modelName}FindUnique as any, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/:id', ...after);
+      router.use(removeTrailingSlash(basePath) + '/:id', ...after);
     }
   }
 
@@ -113,7 +113,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.create || defaultBeforeAfter;
     setupRoute('/', 'post', before, ${modelName}Create as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/', ...after);
+      router.use(removeTrailingSlash(basePath + '/'), ...after);
     }
   }
 
@@ -121,7 +121,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.createMany || defaultBeforeAfter;
     setupRoute('/many', 'post', before, ${modelName}CreateMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/many', ...after);
+      router.use(removeTrailingSlash(basePath) + '/many', ...after);
     }
   }
 
@@ -129,7 +129,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.update || defaultBeforeAfter;
     setupRoute('/', 'put', before, ${modelName}Update as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/', ...after);
+      router.use(removeTrailingSlash(basePath + '/'), ...after);
     }
   }
 
@@ -137,7 +137,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.updateMany || defaultBeforeAfter;
     setupRoute('/many', 'put', before, ${modelName}UpdateMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/many', ...after);
+      router.use(removeTrailingSlash(basePath) + '/many', ...after);
     }
   }
 
@@ -145,7 +145,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.upsert || defaultBeforeAfter;
     setupRoute('/', 'patch', before, ${modelName}Upsert as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/', ...after);
+      router.use(removeTrailingSlash(basePath + '/'), ...after);
     }
   }
 
@@ -153,7 +153,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.delete || defaultBeforeAfter;
     setupRoute('/', 'delete', before, ${modelName}Delete as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/', ...after);
+      router.use(removeTrailingSlash(basePath + '/'), ...after);
     }
   }
 
@@ -161,7 +161,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.deleteMany || defaultBeforeAfter;
     setupRoute('/many', 'delete', before, ${modelName}DeleteMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/many', ...after);
+      router.use(removeTrailingSlash(basePath) + '/many', ...after);
     }
   }
 
@@ -169,7 +169,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.aggregate || defaultBeforeAfter;
     setupRoute('/aggregate', 'get', before, ${modelName}Aggregate as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/aggregate', ...after);
+      router.use(removeTrailingSlash(basePath) + '/aggregate', ...after);
     }
   }
 
@@ -177,7 +177,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.count || defaultBeforeAfter;
     setupRoute('/count', 'get', before, ${modelName}Count as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/count', ...after);
+      router.use(removeTrailingSlash(basePath) + '/count', ...after);
     }
   }
 
@@ -185,7 +185,7 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     const { before = [], after = [], inputValidator, outputValidator } = config.groupBy || defaultBeforeAfter;
     setupRoute('/groupby', 'get', before, ${modelName}GroupBy as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
-      router.use(basePath + '/groupby', ...after);
+      router.use(removeTrailingSlash(basePath) + '/groupby', ...after);
     }
   }
 

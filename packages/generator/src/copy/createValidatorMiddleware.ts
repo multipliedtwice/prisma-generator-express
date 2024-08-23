@@ -54,6 +54,9 @@ export function createValidatorMiddleware({
   }
 }
 
-export function sanitizePrefix(prefix: string): string {
-  return prefix.replace(/\/+$/, '')
+export function removeTrailingSlash(path: string): string {
+  if (path === '/') {
+    return path
+  }
+  return path.replace(/\/+$/, '')
 }
