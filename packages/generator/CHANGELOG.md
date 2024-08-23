@@ -1,3 +1,10 @@
+## [1.16.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.1...v1.16.2) (2024-08-23)
+
+
+### Bug Fixes
+
+* validator typo that caused ts error ([2b50407](https://github.com/multipliedtwice/prisma-generator-express/commit/2b504070592bae3973794228260bc535f3475839))
+
 ## [1.16.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.0...v1.16.1) (2024-06-17)
 
 
