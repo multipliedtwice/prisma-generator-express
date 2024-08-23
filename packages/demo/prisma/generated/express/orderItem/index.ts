@@ -13,7 +13,10 @@ import { orderItemDeleteMany } from './orderItemDeleteMany'
 import { orderItemAggregate } from './orderItemAggregate'
 import { orderItemCount } from './orderItemCount'
 import { orderItemGroupBy } from './orderItemGroupBy'
-import { createValidatorMiddleware } from '../createValidatorMiddleware'
+import {
+  createValidatorMiddleware,
+  sanitizePrefix,
+} from '../createValidatorMiddleware'
 import { RouteConfig, ValidatorConfig } from '../routeConfig'
 import { parseQueryParams } from '../parseQueryParams'
 
@@ -33,7 +36,8 @@ const defaultBeforeAfter = {
 export function orderItemRouter(config: RouteConfig<RequestHandler>) {
   const router = express.Router()
   const basePath =
-    (config.customUrlPrefix || '') + (config.addModelPrefix ? '/orderitem' : '')
+    sanitizePrefix(config.customUrlPrefix || '') +
+    sanitizePrefix(config.addModelPrefix !== false ? '/orderitem' : '')
 
   const setupRoute = (
     path: string,

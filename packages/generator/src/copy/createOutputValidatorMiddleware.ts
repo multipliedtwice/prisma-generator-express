@@ -30,7 +30,13 @@ export function createOutputValidatorMiddleware({
       const validationResult = schema.safeParse(data)
       if (!validationResult.success) {
         const errors = validationResult.error.errors
-        return next({
+        next({
+          status: 400,
+          message: 'Output validation failed',
+          errors,
+        })
+
+        return res.status(400).json({
           status: 400,
           message: 'Output validation failed',
           errors,

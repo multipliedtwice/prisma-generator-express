@@ -25,7 +25,7 @@ import { ${modelName}DeleteMany } from './${modelName}DeleteMany';
 import { ${modelName}Aggregate } from './${modelName}Aggregate';
 import { ${modelName}Count } from './${modelName}Count';
 import { ${modelName}GroupBy } from './${modelName}GroupBy';
-import { createValidatorMiddleware } from '../createValidatorMiddleware'
+import { createValidatorMiddleware, sanitizePrefix } from '../createValidatorMiddleware'
 import { RouteConfig, ValidatorConfig } from '../routeConfig'
 import { parseQueryParams } from "../parseQueryParams";
 
@@ -44,7 +44,8 @@ const defaultBeforeAfter = {
  */
 export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
   const router = express.Router();
-  const basePath = (config.customUrlPrefix || '') + (config.addModelPrefix ? '/${modelName.toLowerCase()}' : '');
+  const basePath = sanitizePrefix(config.customUrlPrefix || '') +
+                  sanitizePrefix(config.addModelPrefix !== false ? '/${modelName.toLowerCase()}' : '');
 
   const setupRoute = (
     path: string,

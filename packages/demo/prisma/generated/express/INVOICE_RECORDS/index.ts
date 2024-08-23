@@ -13,7 +13,10 @@ import { INVOICE_RECORDSDeleteMany } from './INVOICE_RECORDSDeleteMany'
 import { INVOICE_RECORDSAggregate } from './INVOICE_RECORDSAggregate'
 import { INVOICE_RECORDSCount } from './INVOICE_RECORDSCount'
 import { INVOICE_RECORDSGroupBy } from './INVOICE_RECORDSGroupBy'
-import { createValidatorMiddleware } from '../createValidatorMiddleware'
+import {
+  createValidatorMiddleware,
+  sanitizePrefix,
+} from '../createValidatorMiddleware'
 import { RouteConfig, ValidatorConfig } from '../routeConfig'
 import { parseQueryParams } from '../parseQueryParams'
 
@@ -33,8 +36,8 @@ const defaultBeforeAfter = {
 export function INVOICE_RECORDSRouter(config: RouteConfig<RequestHandler>) {
   const router = express.Router()
   const basePath =
-    (config.customUrlPrefix || '') +
-    (config.addModelPrefix ? '/invoice_records' : '')
+    sanitizePrefix(config.customUrlPrefix || '') +
+    sanitizePrefix(config.addModelPrefix !== false ? '/invoice_records' : '')
 
   const setupRoute = (
     path: string,

@@ -13,7 +13,10 @@ import { PRODUCT_CATALOGDeleteMany } from './PRODUCT_CATALOGDeleteMany'
 import { PRODUCT_CATALOGAggregate } from './PRODUCT_CATALOGAggregate'
 import { PRODUCT_CATALOGCount } from './PRODUCT_CATALOGCount'
 import { PRODUCT_CATALOGGroupBy } from './PRODUCT_CATALOGGroupBy'
-import { createValidatorMiddleware } from '../createValidatorMiddleware'
+import {
+  createValidatorMiddleware,
+  sanitizePrefix,
+} from '../createValidatorMiddleware'
 import { RouteConfig, ValidatorConfig } from '../routeConfig'
 import { parseQueryParams } from '../parseQueryParams'
 
@@ -33,8 +36,8 @@ const defaultBeforeAfter = {
 export function PRODUCT_CATALOGRouter(config: RouteConfig<RequestHandler>) {
   const router = express.Router()
   const basePath =
-    (config.customUrlPrefix || '') +
-    (config.addModelPrefix ? '/product_catalog' : '')
+    sanitizePrefix(config.customUrlPrefix || '') +
+    sanitizePrefix(config.addModelPrefix !== false ? '/product_catalog' : '')
 
   const setupRoute = (
     path: string,

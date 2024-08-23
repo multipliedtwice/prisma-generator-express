@@ -53,3 +53,7 @@ export function createValidatorMiddleware({
     next()
   }
 }
+
+export function sanitizePrefix(prefix: string): string {
+  return prefix.replace(/\/+$/, '')
+}
