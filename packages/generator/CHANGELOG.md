@@ -1,3 +1,10 @@
+## [1.16.5](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.4...v1.16.5) (2024-08-23)
+
+
+### Bug Fixes
+
+* remove trailing slash ([45215b9](https://github.com/multipliedtwice/prisma-generator-express/commit/45215b964670d62ddbf4e5c31d25752fb8875d6f))
+
 ## [1.16.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.3...v1.16.4) (2024-08-23)
 
 
