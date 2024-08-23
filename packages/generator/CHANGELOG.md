@@ -1,3 +1,10 @@
+## [1.16.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.2...v1.16.3) (2024-08-23)
+
+
+### Bug Fixes
+
+* remove trailing slash if  customUrlPrefixi is provided and addModelPrefix is false ([2c230ac](https://github.com/multipliedtwice/prisma-generator-express/commit/2c230ac97a66fd82d20a08d23d9dc33ac74409b7))
+
 ## [1.16.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.1...v1.16.2) (2024-08-23)
 
 
