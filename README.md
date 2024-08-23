@@ -245,7 +245,7 @@ model UserAccount {
 
 ### createValidatorMiddleware(validatorOptions: ValidatorOptions)
 
-Simple wrapper that internally uses `allow` or `forbid` logic for filtering incoming queries and data payloads
+Simple wrapper that internally uses `allow` or `forbid` logic for filtering incoming queries and data payloads. Helps to make sure that schemas from `prisma-zod-generator` is not too permissive.
 
 ```ts
 interface ValidatorOptions {
@@ -285,6 +285,7 @@ Same as `allow` but works in opposite way.
 
 ---
 
-## Rememo.io [Free Kanban & Chat](https://rememo.io)
+#### Credits:
+- Super Kick Gym - [Brazilian Jiu Jitsu in Bangkok](https://en.bjj-bangkok.com)
 
-<img src="https://github.com/multipliedtwice/prisma-generator-express/blob/feat/internal-validation/rememo-192.png?raw=true" alt="Free Kanban & Corporate Chat">
+- Rememo - [Free Task Management and Corporate Chat](https://rememo.io)
