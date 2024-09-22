@@ -1,3 +1,10 @@
+## [1.16.6](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.5...v1.16.6) (2024-09-22)
+
+
+### Bug Fixes
+
+* packages/generator/package.json to reduce vulnerabilities ([1733241](https://github.com/multipliedtwice/prisma-generator-express/commit/173324112e74cbcf855d7f3a83007d332e038466))
+
 ## [1.16.5](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.4...v1.16.5) (2024-08-23)
 
 
