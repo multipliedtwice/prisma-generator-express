@@ -13,7 +13,7 @@ Exposes Prisma API to clients - all operations with database is available, inclu
 When you run `npx prisma generate`, it will:
 
 - Generate service functions that you can import into your Express routes.
-- Router generator function that lets you select which routes to enable in your express app and which middlewares to apply.
+- Create a router generator function that lets you select which routes to enable in your express app and which middlewares to apply.
 
 ## Table of Contents
 
