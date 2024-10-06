@@ -8,7 +8,7 @@
 
 This tool helps you quickly create API endpoints in your Express app using your Prisma models.
 
-When you run `npx prisma generate`, it automatically creates two things:
+When you run `npx prisma generate`, it automatically:
 
 - Exposes Prisma API to clients - all operations with database is available, including all relationships at any depth.
 - Service functions that you can import into your Express routes. By default, these functions handle CRUD operations and output validation. This behavior can be controlled.
