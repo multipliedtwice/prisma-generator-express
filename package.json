@@ -4,9 +4,11 @@
     "packages/*"
   ],
   "devDependencies": {
-    "@commitlint/cli": "19.4.0",
-    "@commitlint/config-conventional": "19.2.2",
-    "husky": "9.1.5"
+    "@commitlint/cli": "20.1.0",
+    "@commitlint/config-conventional": "20.0.0",
+    "@types/node": "^24.7.2",
+    "husky": "9.1.7",
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "prepare": "husky install"

@@ -4,9 +4,7 @@
   "version": "1.16.6",
   "main": "dist/generator.js",
   "license": "MIT",
-  "bin": {
-    "prisma-generator-express": "dist/bin.js"
-  },
+  "bin": "dist/bin.js",
   "engines": {
     "node": ">=20.0"
   },
