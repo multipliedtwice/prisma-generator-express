@@ -6,7 +6,7 @@
   "license": "MIT",
   "bin": "dist/bin.js",
   "engines": {
-    "node": ">=20.0"
+    "node": ">=22.0"
   },
   "scripts": {
     "start": "node dist/bin.js",
