@@ -1,3 +1,10 @@
+# [1.17.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.7...v1.17.0) (2026-03-23)
+
+
+### Features
+
+* **generator:** remove unused generateUpdate, generateUpdateMany, and generateUpsert functions to clean up the codebase and improve maintainability ([143c0d3](https://github.com/multipliedtwice/prisma-generator-express/commit/143c0d3ed2c93bc762fc8826532136bc1250550b))
+
 ## [1.16.7](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.6...v1.16.7) (2025-11-03)
 
 
