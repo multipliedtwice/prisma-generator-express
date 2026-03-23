@@ -21,14 +21,14 @@ export const generateDeleteFunction = (options: {
 ${prismaImportStatement}
 import { Request, Response, NextFunction } from 'express';
 import { RequestHandler, ParamsDictionary } from 'express-serve-static-core';
-import { ZodTypeAny } from 'zod';
+import { ZodType } from 'zod';
 
 interface DeleteRequest extends Request {
   prisma: PrismaClient;
   body: ${argsTypeName};
-  outputValidation?: ZodTypeAny;
+  outputValidation?: ZodType;
   locals?: {
-    outputValidator?: ZodTypeAny;
+    outputValidator?: ZodType;
   };
 }
 

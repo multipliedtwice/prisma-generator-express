@@ -173,7 +173,7 @@ const afterFindFirst: RequestHandler = (
  * 6. Custom middlewares: config.{method}.after[] (not available if req.passToNext is falsy)
  */
 const userAccounRouterConfig: RouteConfig<RequestHandler> = {
-  FindFirst: {
+  findFirst: {
     before: [beforeFindFirst],
     after: [afterFindFirst],
     input: {
@@ -210,7 +210,7 @@ The following properties can be attached to the `req` object to control the beha
 | ---------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------- |
 | `prisma`               | PrismaClient | An instance of PrismaClient that allows the middleware to interact with your database.                                          |
 | `passToNext`           | boolean      | Optional, if `true` - the result of a Prisma request will be passed to the next middleware as `if (req.locals) req.locals.data` |
-| `outputValidation`     | ZodTypeAny   | (Optional) A Zod schema used to validate the data returned from the Prisma query before sending it to the client.               |
+| `outputValidation`     | ZodType   | (Optional) A Zod schema used to validate the data returned from the Prisma query before sending it to the client.               |
 
 ## Router Schema
 
@@ -277,11 +277,11 @@ type QueryParams = string | ParsedQs | string[] | ParsedQs[] | undefined
 
 Recursively converts strings "true", "false", "null", and "number" into correct formats.
 
-### allow<T extends z.ZodTypeAny>( schema: T, allowedPaths: string[] ): ZodEffects<T, any, any>
+### allow<T extends z.ZodType>( schema: T, allowedPaths: string[] )
 
 Accepts schema and `['array.of.allowed.paths']`. Throws an error if provided something that doesn't fit allowed schema.
 
-### forbid<T extends z.ZodTypeAny>( schema: T, forbiddenPaths: string[] ): ZodEffects<T, any, any>
+### forbid<T extends z.ZodType>( schema: T, forbiddenPaths: string[] )
 
 Same as `allow` but works in opposite way.
 

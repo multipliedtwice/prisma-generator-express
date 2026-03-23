@@ -1,10 +1,10 @@
 import { RequestHandler } from 'express'
-import { ZodTypeAny } from 'zod'
+import { ZodType } from 'zod'
 
 export interface ValidatorConfig {
   allow?: string[]
   forbid?: string[]
-  schema: ZodTypeAny
+  schema: ZodType
 }
 
 interface MiddlewareConfig<M> {

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { Request } from 'express'
+import { ZodType } from 'zod'
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -7,7 +8,7 @@ declare module 'express-serve-static-core' {
     passToNext?: boolean
     locals?: {
       data?: any
-      outputValidator?: ZodTypeAny
+      outputValidator?: ZodType | any
     }
   }
 }

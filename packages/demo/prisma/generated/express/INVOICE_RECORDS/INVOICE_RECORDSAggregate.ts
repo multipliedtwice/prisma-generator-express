@@ -4,13 +4,13 @@ import type { PrismaClient } from '../../client'
 import { Request, Response, NextFunction } from 'express'
 import { RequestHandler, ParamsDictionary } from 'express-serve-static-core'
 import { ParsedQs } from 'qs'
-import { ZodTypeAny } from 'zod'
+import { ZodType } from 'zod'
 import { ValidatorConfig } from '../routeConfig'
 
 interface AggregateRequest extends Request {
   prisma: PrismaClient
   query: Partial<Prisma.INVOICE_RECORDSAggregateArgs> & ParsedQs
-  outputValidation?: ZodTypeAny
+  outputValidation?: ZodType
   locals?: {
     outputValidator?: ValidatorConfig
   }

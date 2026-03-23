@@ -4,14 +4,14 @@ import type { PrismaClient } from '../../client'
 import { Request, Response, NextFunction } from 'express'
 import { RequestHandler, ParamsDictionary } from 'express-serve-static-core'
 import { ParsedQs } from 'qs'
-import { ZodTypeAny } from 'zod'
+import { ZodType } from 'zod'
 
 interface CountRequest extends Request {
   prisma: PrismaClient
   query: Partial<Prisma.PRODUCT_CATALOGCountArgs> & ParsedQs
-  outputValidation?: ZodTypeAny
+  outputValidation?: ZodType
   locals?: {
-    outputValidator?: ZodTypeAny
+    outputValidator?: ZodType
   }
 }
 

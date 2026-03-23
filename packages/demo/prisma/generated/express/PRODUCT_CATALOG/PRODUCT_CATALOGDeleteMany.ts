@@ -3,14 +3,14 @@ import type { PrismaClient } from '../../client'
 
 import { Request, Response, NextFunction } from 'express'
 import { RequestHandler, ParamsDictionary } from 'express-serve-static-core'
-import { ZodTypeAny } from 'zod'
+import { ZodType } from 'zod'
 
 interface DeleteManyRequest extends Request {
   prisma: PrismaClient
   body: Prisma.PRODUCT_CATALOGDeleteManyArgs
-  outputValidation?: ZodTypeAny
+  outputValidation?: ZodType
   locals?: {
-    outputValidator?: ZodTypeAny
+    outputValidator?: ZodType
   }
 }
 

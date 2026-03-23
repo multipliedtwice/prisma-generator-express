@@ -42,7 +42,7 @@ export function createValidatorMiddleware({
     }
 
     if (!validationResult.success) {
-      const errors = validationResult.error.errors
+      const errors = validationResult.error.issues
       return next({
         status: 400,
         message: 'Validation failed',

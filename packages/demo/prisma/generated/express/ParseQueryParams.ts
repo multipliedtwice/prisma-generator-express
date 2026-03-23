@@ -4,7 +4,7 @@ import { ParsedQs } from 'qs'
 /**
  * Type definition for possible query parameter types.
  */
-type QueryParams = string | ParsedQs | string[] | ParsedQs[] | undefined
+type QueryParams = string | ParsedQs | string[] | ParsedQs[] | Array<string | ParsedQs> | undefined
 
 /**
  * Parses a query value to convert strings to their respective types.

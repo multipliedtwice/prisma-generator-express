@@ -17,7 +17,7 @@ export function safeJSONparse<T>(
   if (data === 'false') return false
   if (data === 'undefined') return undefined
   if (data === 'null') return null
-  return isJsonString(data) ? JSON.parse(data as string) : data
+  return isJsonString(data) ? JSON.parse(data as string) : data as any
 }
 
 export const isObject = (value: unknown): value is Record<string, unknown> => {

@@ -23,16 +23,16 @@ import {
   ParamsDictionary,
 } from 'express-serve-static-core' 
 import { ParsedQs } from 'qs';
-import { ZodTypeAny } from 'zod';
+import { ZodType } from 'zod';
 
 export interface FindUniqueRequest extends Request {
   prisma: PrismaClient;
   query: ${queryTypeName} & ParsedQs;
-  outputValidation?: ZodTypeAny;
+  outputValidation?: ZodType;
   passToNext?: boolean;
   locals?: {
     data?: ${modelName} | null
-    outputValidator?: ZodTypeAny;
+    outputValidator?: ZodType;
   }
 }
 export type FindUniqueMiddleware = RequestHandler<ParamsDictionary, any, any, ${queryTypeName} & ParsedQs, Record<string, any>>

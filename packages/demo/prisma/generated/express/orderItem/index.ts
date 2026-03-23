@@ -15,7 +15,7 @@ import { orderItemCount } from './orderItemCount'
 import { orderItemGroupBy } from './orderItemGroupBy'
 import {
   createValidatorMiddleware,
-  sanitizePrefix,
+  removeTrailingSlash,
 } from '../createValidatorMiddleware'
 import { RouteConfig, ValidatorConfig } from '../routeConfig'
 import { parseQueryParams } from '../parseQueryParams'
@@ -36,8 +36,8 @@ const defaultBeforeAfter = {
 export function orderItemRouter(config: RouteConfig<RequestHandler>) {
   const router = express.Router()
   const basePath =
-    sanitizePrefix(config.customUrlPrefix || '') +
-    sanitizePrefix(config.addModelPrefix !== false ? '/orderitem' : '')
+    removeTrailingSlash(config.customUrlPrefix || '') +
+    removeTrailingSlash(config.addModelPrefix !== false ? '/orderitem' : '')
 
   const setupRoute = (
     path: string,
@@ -85,7 +85,10 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
 
     middlewaresWithValidators.push(handler)
 
-    router[method](basePath + path, ...middlewaresWithValidators)
+    router[method](
+      removeTrailingSlash(basePath + path),
+      ...middlewaresWithValidators,
+    )
   }
 
   if (config.enableAll || config?.findFirst) {
@@ -104,7 +107,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/first', ...after)
+      router.use(removeTrailingSlash(basePath) + '/first', ...after)
     }
   }
 
@@ -124,7 +127,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/', ...after)
+      router.use(removeTrailingSlash(basePath + '/'), ...after)
     }
   }
 
@@ -144,7 +147,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/:id', ...after)
+      router.use(removeTrailingSlash(basePath) + '/:id', ...after)
     }
   }
 
@@ -164,7 +167,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/', ...after)
+      router.use(removeTrailingSlash(basePath + '/'), ...after)
     }
   }
 
@@ -184,7 +187,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/many', ...after)
+      router.use(removeTrailingSlash(basePath) + '/many', ...after)
     }
   }
 
@@ -204,7 +207,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/', ...after)
+      router.use(removeTrailingSlash(basePath + '/'), ...after)
     }
   }
 
@@ -224,7 +227,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/many', ...after)
+      router.use(removeTrailingSlash(basePath) + '/many', ...after)
     }
   }
 
@@ -244,7 +247,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/', ...after)
+      router.use(removeTrailingSlash(basePath + '/'), ...after)
     }
   }
 
@@ -264,7 +267,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/', ...after)
+      router.use(removeTrailingSlash(basePath + '/'), ...after)
     }
   }
 
@@ -284,7 +287,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/many', ...after)
+      router.use(removeTrailingSlash(basePath) + '/many', ...after)
     }
   }
 
@@ -304,7 +307,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/aggregate', ...after)
+      router.use(removeTrailingSlash(basePath) + '/aggregate', ...after)
     }
   }
 
@@ -324,7 +327,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/count', ...after)
+      router.use(removeTrailingSlash(basePath) + '/count', ...after)
     }
   }
 
@@ -344,7 +347,7 @@ export function orderItemRouter(config: RouteConfig<RequestHandler>) {
       outputValidator,
     )
     if (after.length) {
-      router.use(basePath + '/groupby', ...after)
+      router.use(removeTrailingSlash(basePath) + '/groupby', ...after)
     }
   }
 

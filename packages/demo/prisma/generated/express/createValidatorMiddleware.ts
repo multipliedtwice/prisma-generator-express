@@ -42,7 +42,7 @@ export function createValidatorMiddleware({
     }
 
     if (!validationResult.success) {
-      const errors = validationResult.error.errors
+      const errors = validationResult.error.issues
       return next({
         status: 400,
         message: 'Validation failed',
@@ -54,6 +54,9 @@ export function createValidatorMiddleware({
   }
 }
 
-export function sanitizePrefix(prefix: string): string {
-  return prefix.replace(/\/+$/, '')
+export function removeTrailingSlash(path: string): string {
+  if (path === '/') {
+    return path
+  }
+  return path.replace(/\/+$/, '')
 }

@@ -20,14 +20,16 @@ export const generateUpdateManyFunction = (options: {
 ${prismaImportStatement}
 import { Request, Response, NextFunction } from 'express';
 import { RequestHandler, ParamsDictionary } from 'express-serve-static-core';
-import { ZodTypeAny } from 'zod';
+import { ZodType } from 'zod';
+
+type UpdateManyResult = { count: number };
 
 interface UpdateManyRequest extends Request {
   prisma: PrismaClient;
   body: ${argsTypeName};
-  outputValidation?: ZodTypeAny;
+  outputValidation?: ZodType<UpdateManyResult>;
   locals?: {
-    outputValidator?: ZodTypeAny;
+    outputValidator?: ZodType<UpdateManyResult>;
   };
 }
 
