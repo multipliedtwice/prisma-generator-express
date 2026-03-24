@@ -17,8 +17,10 @@ import { ${modelName}FindMany } from './${modelName}FindMany';
 import { ${modelName}FindUnique } from './${modelName}FindUnique';
 import { ${modelName}Create } from './${modelName}Create';
 import { ${modelName}CreateMany } from './${modelName}CreateMany';
+import { ${modelName}CreateManyAndReturn } from './${modelName}CreateManyAndReturn';
 import { ${modelName}Update } from './${modelName}Update';
 import { ${modelName}UpdateMany } from './${modelName}UpdateMany';
+import { ${modelName}UpdateManyAndReturn } from './${modelName}UpdateManyAndReturn';
 import { ${modelName}Upsert } from './${modelName}Upsert';
 import { ${modelName}Delete } from './${modelName}Delete';
 import { ${modelName}DeleteMany } from './${modelName}DeleteMany';
@@ -125,6 +127,14 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     }
   }
 
+  if (config.enableAll || config?.createManyAndReturn) {
+    const { before = [], after = [], inputValidator, outputValidator } = config.createManyAndReturn || defaultBeforeAfter;
+    setupRoute('/many/return', 'post', before, ${modelName}CreateManyAndReturn as RequestHandler, inputValidator, outputValidator);
+    if (after.length) {
+      router.use(removeTrailingSlash(basePath) + '/many/return', ...after);
+    }
+  }
+
   if (config.enableAll || config?.update) {
     const { before = [], after = [], inputValidator, outputValidator } = config.update || defaultBeforeAfter;
     setupRoute('/', 'put', before, ${modelName}Update as RequestHandler, inputValidator, outputValidator);
@@ -138,6 +148,14 @@ export function ${routerFunctionName}(config: RouteConfig<RequestHandler>) {
     setupRoute('/many', 'put', before, ${modelName}UpdateMany as RequestHandler, inputValidator, outputValidator);
     if (after.length) {
       router.use(removeTrailingSlash(basePath) + '/many', ...after);
+    }
+  }
+
+  if (config.enableAll || config?.updateManyAndReturn) {
+    const { before = [], after = [], inputValidator, outputValidator } = config.updateManyAndReturn || defaultBeforeAfter;
+    setupRoute('/many/return', 'put', before, ${modelName}UpdateManyAndReturn as RequestHandler, inputValidator, outputValidator);
+    if (after.length) {
+      router.use(removeTrailingSlash(basePath) + '/many/return', ...after);
     }
   }
 

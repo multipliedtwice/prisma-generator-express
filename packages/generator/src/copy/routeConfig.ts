@@ -20,8 +20,10 @@ export interface RouteConfig<M> {
   findUnique?: MiddlewareConfig<M>
   create?: MiddlewareConfig<M>
   createMany?: MiddlewareConfig<M>
+  createManyAndReturn?: MiddlewareConfig<M>
   update?: MiddlewareConfig<M>
   updateMany?: MiddlewareConfig<M>
+  updateManyAndReturn?: MiddlewareConfig<M>
   upsert?: MiddlewareConfig<M>
   delete?: MiddlewareConfig<M>
   deleteMany?: MiddlewareConfig<M>
