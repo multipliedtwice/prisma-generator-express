@@ -1,3 +1,10 @@
+# [1.18.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.17.0...v1.18.0) (2026-03-24)
+
+
+### Features
+
+* **routeConfig:** add createManyAndReturn and updateManyAndReturn to RouteConfig interface to support new operations ([5fc9c28](https://github.com/multipliedtwice/prisma-generator-express/commit/5fc9c286f6fe2fd94a1656a6fb057ca673ce29d8))
+
 # [1.17.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.16.7...v1.17.0) (2026-03-23)
 
 
