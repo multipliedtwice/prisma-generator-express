@@ -216,41 +216,36 @@ function assertGuard(delegate: any): void {
   }
 }
 
-const COUNT_PROJECTION_KEYS = new Set(['select', 'include'])
-
 const GUARD_SHAPE_CONFIG_KEYS = new Set([
   'data', 'create', 'update', 'where', 'include', 'select', 'orderBy',
   'cursor', 'take', 'skip', 'distinct', 'having', '_count', '_avg',
   '_sum', '_min', '_max', 'by',
 ])
 
-function stripProjectionKeys(obj: Record<string, any>): Record<string, any> {
+function keepWhereOnly(obj: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {}
-  for (const [key, value] of Object.entries(obj)) {
-    if (COUNT_PROJECTION_KEYS.has(key)) continue
-    result[key] = value
-  }
+  if ('where' in obj) result.where = obj.where
   return result
 }
 
-function stripProjectionForCount(shape: Record<string, any>): Record<string, any> {
+function buildCountShape(shape: Record<string, any>): Record<string, any> {
   if (typeof shape === 'function') {
-    return (...args: any[]) => stripProjectionKeys((shape as Function)(...args))
+    return (...args: any[]) => keepWhereOnly((shape as Function)(...args))
   }
 
   const keys = Object.keys(shape)
   const isSingleShape = keys.length === 0 || keys.every(k => GUARD_SHAPE_CONFIG_KEYS.has(k))
 
   if (isSingleShape) {
-    return stripProjectionKeys(shape)
+    return keepWhereOnly(shape)
   }
 
   const result: Record<string, any> = {}
   for (const [key, variant] of Object.entries(shape)) {
     if (typeof variant === 'function') {
-      result[key] = (...args: any[]) => stripProjectionKeys(variant(...args))
+      result[key] = (...args: any[]) => keepWhereOnly(variant(...args))
     } else if (typeof variant === 'object' && variant !== null) {
-      result[key] = stripProjectionKeys(variant)
+      result[key] = keepWhereOnly(variant)
     } else {
       result[key] = variant
     }
@@ -416,7 +411,7 @@ async function countForPagination(
   const distinctFields = normalizeDistinct(query.distinct)
   const hasDistinct = distinctFields.length > 0
 
-  const countShape = shape ? stripProjectionForCount(shape) : undefined
+  const countShape = shape ? buildCountShape(shape) : undefined
 
   if (hasDistinct) {
     const selectField = distinctFields[0]
