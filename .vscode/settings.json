@@ -8,7 +8,6 @@
     "**/Thumbs.db": true,
     "**/__sapper__": true,
     "**/.retool_types/**": true,
-    "**/*tsconfig.json": true,
     ".cache": true,
     "retool.config.json": true
   }

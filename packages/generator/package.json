@@ -1,47 +1,63 @@
 {
   "name": "prisma-generator-express",
-  "description": "Prisma generator of Express CRUD API",
-  "version": "1.18.0",
-  "main": "dist/generator.js",
+  "description": "Prisma generator for Hono CRUD API with OpenAPI documentation",
+  "version": "1.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "license": "MIT",
   "bin": "dist/bin.js",
   "engines": {
-    "node": ">=22.0"
+    "node": ">=20.0"
   },
   "scripts": {
-    "start": "node dist/bin.js",
+    "build": "rm -rf dist && npx tsc",
     "dev": "npx tsc -w",
-    "build": "npx tsc",
-    "prepack": "yarn build",
-    "test": "jest",
-    "coverage": "jest --coverage",
-    "prepublishOnly": "node copy.js "
+    "start": "node dist/bin.js",
+    "test": "vitest",
+    "coverage": "vitest --coverage",
+    "prepack": "npm run build",
+    "prepublishOnly": "node copy.js"
   },
   "dependencies": {
-    "@prisma/client": "7.5.0",
     "@prisma/generator-helper": "7.5.0",
-    "@prisma/sdk": "4.0.0",
-    "express": "^5.2.1",
-    "lodash": "^4.17.23",
-    "prettier": "3.8.1",
-    "zod": "^4.3.6"
+    "prettier": "3.6.2"
+  },
+  "peerDependencies": {
+    "@prisma/client": ">=6.0.0",
+    "express": ">=4.0.0",
+    "prisma-guard": ">=1.0.0",
+    "prisma-query-builder-ui": ">=1.1.0",
+    "prisma-sql": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "prisma-guard": {
+      "optional": true
+    },
+    "prisma-query-builder-ui": {
+      "optional": true
+    },
+    "prisma-sql": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@prisma/client": "7.5.0",
     "@prisma/internals": "^7.5.0",
-    "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/git": "^10.0.1",
-    "@types/express": "^5.0.6",
-    "@types/jest": "30.0.0",
-    "@types/lodash": "^4.17.24",
-    "@types/node": "25.5.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "24.7.2",
     "@types/prettier": "3.0.0",
-    "jest": "30.3.0",
+    "better-sqlite3": "^12.5.0",
+    "fast-xml-parser": "^5.3.3",
+    "express": "^5.2.1",
+    "lru-cache": "^11.2.4",
+    "pino": "^10.1.0",
+    "pino-pretty": "^13.0.0",
     "prisma": "7.5.0",
-    "semantic-release": "^25.0.3",
-    "ts-jest": "29.4.6",
-    "typescript": "5.9.3"
+    "semantic-release": "^24.2.9",
+    "typescript": "5.9.3",
+    "vitest-mock-extended": "^3.1.0"
   },
-  "homepage": "https://github.com/multipliedtwice/prisma-generator-express/blob/master/README.md",
+  "homepage": "https://github.com/multipliedtwice/prisma-generator-express",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/multipliedtwice/prisma-generator-express.git"
@@ -55,16 +71,33 @@
   ],
   "files": [
     "dist/**/*",
-    "src/**/*",
-    "../../README.md",
-    "../../LICENSE"
+    "src/copy/**/*",
+    "src/client/**/*",
+    "!**/.DS_Store",
+    "README.md",
+    "LICENSE"
   ],
   "release": {
     "branches": [
       "master"
     ],
     "plugins": [
-      "@semantic-release/commit-analyzer",
+      [
+        "@semantic-release/commit-analyzer",
+        {
+          "preset": "angular",
+          "releaseRules": [
+            {
+              "type": "chore",
+              "release": "minor"
+            },
+            {
+              "type": "refactor",
+              "release": "minor"
+            }
+          ]
+        }
+      ],
       "@semantic-release/release-notes-generator",
       [
         "@semantic-release/changelog",

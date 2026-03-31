@@ -1,29 +1,38 @@
-import { isObject } from './misc'
-import { ParsedQs } from 'qs'
+import { isObject, isSafeKey, sanitizeKeys } from './misc'
 
-/**
- * Type definition for possible query parameter types.
- */
-type QueryParams = string | ParsedQs | string[] | ParsedQs[] | Array<string | ParsedQs> | undefined
+type QueryParams =
+  | string
+  | Record<string, unknown>
+  | string[]
+  | Record<string, unknown>[]
+  | undefined
 
-/**
- * Parses a query value to convert strings to their respective types.
- * @param {string} value - The query value to parse.
- * @returns {unknown} The parsed value.
- */
-const parseQueryValue = (value: string): unknown => {
+const NUMERIC_KEYS = new Set(['take', 'skip'])
+
+const parseQueryValue = (value: string, key?: string): unknown => {
+  if (value.startsWith('{') || value.startsWith('[') || value.startsWith('"')) {
+    try {
+      const parsed = JSON.parse(value)
+      return sanitizeKeys(parsed)
+    } catch {
+      // fall through
+    }
+  }
   if (value === 'true') return true
   if (value === 'false') return false
   if (value === 'null') return null
-  if (!isNaN(Number(value))) return Number(value)
+  if (
+    key &&
+    NUMERIC_KEYS.has(key) &&
+    value !== '' &&
+    !isNaN(Number(value)) &&
+    isFinite(Number(value))
+  ) {
+    return Number(value)
+  }
   return value
 }
 
-/**
- * Recursively parses query parameters to convert strings to their respective types.
- * @param {QueryParams} params - The query parameters to parse.
- * @returns {unknown} The parsed query parameters.
- */
 export const parseQueryParams = (params: QueryParams): unknown => {
   if (typeof params === 'string') {
     return parseQueryValue(params)
@@ -33,8 +42,14 @@ export const parseQueryParams = (params: QueryParams): unknown => {
   }
   if (isObject(params)) {
     const parsedParams: Record<string, unknown> = {}
-    for (const key in params) {
-      parsedParams[key] = parseQueryParams(params[key])
+    for (const key of Object.keys(params)) {
+      if (!isSafeKey(key)) continue
+      const raw = params[key]
+      if (typeof raw === 'string') {
+        parsedParams[key] = parseQueryValue(raw, key)
+      } else {
+        parsedParams[key] = raw
+      }
     }
     return parsedParams
   }

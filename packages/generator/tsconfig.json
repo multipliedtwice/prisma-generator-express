@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2018",
+    "target": "ES2020",
     "module": "commonjs",
     "lib": ["esnext"],
     "strict": true,
@@ -12,10 +12,12 @@
     "forceConsistentCasingInFileNames": true,
     "removeComments": true,
     "sourceMap": true,
+    "declaration": true,
     "baseUrl": ".",
     "moduleResolution": "Node",
     "outDir": "./dist",
     "rootDir": "./src",
+    "types": ["node"],
     "newLine": "lf"
   },
   "include": ["src/**/*.ts"],
@@ -24,6 +26,7 @@
     "**/*.test.ts",
     "**/__tests__",
     "**/dest",
-    "src/copy/**/*.ts"
+    "src/copy/**/*.ts",
+    "src/openapi/**/*.ts"
   ]
 }

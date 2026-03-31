@@ -1,36 +1,76 @@
-import { RequestHandler } from 'express'
-import { ZodType } from 'zod'
+import { RequestHandler, Request } from 'express'
 
-export interface ValidatorConfig {
-  allow?: string[]
-  forbid?: string[]
-  schema: ZodType
-}
-
-interface MiddlewareConfig<M> {
-  before?: M[]
+export interface OperationConfig {
+  before?: RequestHandler[]
   after?: RequestHandler[]
-  inputValidator?: ValidatorConfig
-  outputValidator?: ValidatorConfig
+  shape?: Record<string, any>
 }
 
-export interface RouteConfig<M> {
-  findFirst?: MiddlewareConfig<M>
-  findMany?: MiddlewareConfig<M>
-  findUnique?: MiddlewareConfig<M>
-  create?: MiddlewareConfig<M>
-  createMany?: MiddlewareConfig<M>
-  createManyAndReturn?: MiddlewareConfig<M>
-  update?: MiddlewareConfig<M>
-  updateMany?: MiddlewareConfig<M>
-  updateManyAndReturn?: MiddlewareConfig<M>
-  upsert?: MiddlewareConfig<M>
-  delete?: MiddlewareConfig<M>
-  deleteMany?: MiddlewareConfig<M>
-  aggregate?: MiddlewareConfig<M>
-  count?: MiddlewareConfig<M>
-  groupBy?: MiddlewareConfig<M>
-  addModelPrefix?: boolean
+export interface QueryBuilderConfig {
+  enabled?: boolean
+  port?: number
+  host?: string
+  schemaPath?: string
+  databaseUrl?: string
+}
+
+export interface OpenApiServerConfig {
+  url: string
+  description?: string
+}
+
+export interface OpenApiSecuritySchemeConfig {
+  type: string
+  scheme?: string
+  bearerFormat?: string
+  name?: string
+  in?: string
+  description?: string
+}
+
+export interface RouteConfig {
   enableAll?: boolean
+  addModelPrefix?: boolean
   customUrlPrefix?: string
+  specBasePath?: string
+  disableOpenApi?: boolean
+  scalarCdnUrl?: string
+
+  openApiTitle?: string
+  openApiDescription?: string
+  openApiVersion?: string
+  openApiServers?: OpenApiServerConfig[]
+  openApiSecuritySchemes?: Record<string, OpenApiSecuritySchemeConfig>
+  openApiSecurity?: Record<string, string[]>[]
+
+  guard?: {
+    resolveVariant?: (req: Request) => string | undefined
+    variantHeader?: string
+  }
+
+  queryBuilder?: QueryBuilderConfig | false
+
+  pagination?: {
+    defaultLimit?: number
+    maxLimit?: number
+  }
+
+  findUnique?: OperationConfig
+  findUniqueOrThrow?: OperationConfig
+  findFirst?: OperationConfig
+  findFirstOrThrow?: OperationConfig
+  findMany?: OperationConfig
+  findManyPaginated?: OperationConfig
+  create?: OperationConfig
+  createMany?: OperationConfig
+  createManyAndReturn?: OperationConfig
+  update?: OperationConfig
+  updateMany?: OperationConfig
+  updateManyAndReturn?: OperationConfig
+  upsert?: OperationConfig
+  delete?: OperationConfig
+  deleteMany?: OperationConfig
+  aggregate?: OperationConfig
+  count?: OperationConfig
+  groupBy?: OperationConfig
 }

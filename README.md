@@ -2,292 +2,497 @@
 
 [![npm version](https://badge.fury.io/js/prisma-generator-express.svg)](https://badge.fury.io/js/prisma-generator-express)
 [![npm](https://img.shields.io/npm/dt/prisma-generator-express.svg)](https://www.npmjs.com/package/prisma-generator-express)
-[![HitCount](https://hits.dwyl.com/multipliedtwice/prisma-generator-express.svg?style=flat)](http://hits.dwyl.com/multipliedtwice/prisma-generator-express)
-[![Coverage Status](https://codecov.io/github/multipliedtwice/prisma-generator-express/graph/badge.svg?token=TTJ30HVKB8)](https://codecov.io/github/multipliedtwice/prisma-generator-express)
+[![Coverage](https://img.shields.io/codecov/c/github/multipliedtwice/prisma-generator-express/main.svg)](https://codecov.io/gh/multipliedtwice/prisma-generator-express)
 [![npm](https://img.shields.io/npm/l/prisma-generator-express.svg)](LICENSE)
 
-This tool helps you quickly create API endpoints in your Express app using your Prisma models.
+Prisma generator that creates Express CRUD API routes with OpenAPI documentation from your Prisma schema.
 
-Exposes Prisma API to clients - all operations with database is available, including all relationships at any depth.
+Running `npx prisma generate` produces:
 
-When you run `npx prisma generate`, it will:
+- Handler functions for all Prisma operations (findMany, create, update, delete, etc.)
+- Router generator with middleware support (before/after hooks per operation)
+- OpenAPI 3.1 spec (JSON and YAML endpoints registered automatically per router)
+- Documentation helpers for contract view and Scalar UI (require manual mounting)
+- Client-side query parameter encoder
+- Guard/variant shape enforcement via prisma-guard integration
 
-- Generate service (CRUD) functions that you can import into your Express routes.
-- Create a router generator function that lets you select which routes to enable in your express app and which middlewares to apply.
+## Compatibility
 
-## Table of Contents
+### Prisma version
 
-- [Installation](#installation)
-- [Basic Usage](#basic-usage)
-- [Router Generator Usage](#router-generator-usage)
-- [Request Object Properties](#request-object-properties)
-- [Router Schema](#router-schema)
+Minimum supported Prisma version: **6.0.0**
 
-# Installation
+Some operations require newer versions:
 
-Using npm:
+| Operation             | Minimum Prisma version | Notes                                |
+| --------------------- | ---------------------- | ------------------------------------ |
+| `omit` parameter      | 6.2.0                  | Returns 400 on versions 6.0.x–6.1.x |
+| `updateManyAndReturn` | 6.2.0                  | PostgreSQL, CockroachDB, SQLite only |
 
+### Database provider support
+
+Most operations work across all Prisma-supported providers. Exceptions:
+
+| Feature               | PostgreSQL | CockroachDB | MySQL | SQLite | SQL Server | MongoDB |
+| --------------------- | ---------- | ----------- | ----- | ------ | ---------- | ------- |
+| `createManyAndReturn` | ✓          | ✓           | ✗     | ✓      | ✗          | ✗       |
+| `updateManyAndReturn` | ✓          | ✓           | ✗     | ✓      | ✗          | ✗       |
+| `skipDuplicates`      | ✓          | ✓           | ✓     | ✗      | ✗          | ✗       |
+
+Operations not supported by your database provider return `501 Not Implemented` at runtime. The generator emits handlers for all operations regardless of provider — use selective route configuration to expose only supported operations.
+
+## Installation
 ```bash
- npm install prisma-generator-express
+npm install -D prisma-generator-express
 ```
 
-Using yarn:
-
+Peer dependencies:
 ```bash
- yarn add prisma-generator-express
+npm install @prisma/client express
 ```
 
-# Basic usage
+Optional peer dependencies:
+```bash
+npm install prisma-sql         # SQL optimization
+npm install prisma-guard       # Guard shape enforcement
+npm install prisma-query-builder-ui  # Visual query playground
+```
 
-- Include this generator in your schema.prisma file:
+## Setup
 
+Add the generator to your `schema.prisma`:
 ```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
 generator express {
   provider = "prisma-generator-express"
 }
 ```
 
-- Generate your middleware functions by running:
+The generator detects the Prisma client generator automatically. All standard provider values are supported: `prisma-client-js`, `@prisma/client`, and `prisma-client`.
 
+Generate:
 ```bash
-  npx prisma generate
+npx prisma generate
 ```
 
-- Attach Prisma instance
-
+## Usage
 ```ts
-import { PrismaClient } from '@prisma/client'
 import express from 'express'
+import { PrismaClient } from '@prisma/client'
+import { UserRouter } from './generated/User/UserRouter'
 
 const prisma = new PrismaClient()
 const app = express()
 
-app.use(express.json()) // for parsing application/json
-
-// Attach Prisma to every request
 app.use((req, res, next) => {
   req.prisma = prisma
   next()
 })
-```
 
-- Here’s how you can use a generated function in your Express app:
-
-```ts
-import { UserFindUnique } from './generated/api/UserFindUnique' // Adjust the path as necessary
-import { FindUniqueUserSchema } from './prisma-zod-generator/schemas/FindUniqueUser.schema' // Adjust the path as necessary
-import { FindUniqueUserSchemaOutput } from './prisma-zod-generator/schemas/FindUniqueUserOutput.schema' // Adjust the path as necessary
-
-// move this to /helpers
-export function validateQuery(schema: ZodSchema) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      req.query = schema.parse(req.query)
-      next()
-    } catch (error) {
-      res.status(400).json({
-        error: 'Input Validation failed',
-        details: error.errors,
-      })
-    }
-  }
-}
-
-app.get(
-  '/user/:id',
-  validateQuery(FindUniqueUserSchema),
-  async (req, res, next) => {
-    // Attach generated Zod schema for output validation
-    req.outputValidation = FindUniqueUserOutput
-
-    // Use the generated middleware to handle the request
-    await UserFindUnique(req, res, next)
-  },
-)
-```
-
-The `UserFindUnique` function will fetch the user details from the database, validate the output with Zod, and handle the API response.
-
-# Router generator usage
-
-The library will create functions to generate routers per each model in schema. Each route can accept middleware that will be injected right before generated handler is invoked. You can use it to modify/remove/validate request payload. The output validation can be also attached to `req` object on this step.
-
-```ts
-import express, { json } from 'express'
-import type { Response, Request, NextFunction, RequestHandler } from 'express'
-
-import { PrismaClient } from '../prisma/generated/client'
-import { UserAccountRouter } from '../prisma/generated/express/UserAccount'
-import { RouteConfig } from '~prisma/generated/express/routeConfig'
-import { UserAccountFindFirstSchema } from '../prisma/generated/prisma-zod-generator/schemas'
-
-const app = express()
-
-const prisma = new PrismaClient()
-
-/**
- * Middleware to attach Prisma client instance to the request object.
- * This ensures that Prisma client is available in all subsequent middleware and route handlers.
- */
-const addPrisma: RequestHandler = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  req.prisma = prisma
-  next()
-}
-
-/**
- * Run context-related operations or modify `req` properties to control the behavior of the route
- */
-const beforeFindFirst: RequestHandler = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  req.passToNext = true
-  next()
-}
-
-/**
- * if `req.passToNext` is true, then the result of generated middleware
- * will be available in req.locals?.data for modifications
- */
-const afterFindFirst: RequestHandler = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  console.log('req.locals?.data :>> ', req.locals?.data)
-  next()
-}
-
-/**
- * For generated route the middleware order will be as follows:
- * 1. Query parser (kicks in for GET requests)
- * 2. Custom middlewares: config.{method}.before[]
- * 3. Input validator middleware (Optional): config.{method}.input. For GET request validates `req.query`, for others - `req.body`
- * 4. Generated middleware
- * 5. Output validator middleware: config.{method}.input
- * 6. Custom middlewares: config.{method}.after[] (not available if req.passToNext is falsy)
- */
-const userAccounRouterConfig: RouteConfig<RequestHandler> = {
-  findFirst: {
-    before: [beforeFindFirst],
-    after: [afterFindFirst],
-    input: {
-      schema: UserAccountFindFirstSchema, // make sure you set `isGenerateSelect = true` in prisma-zod-generator
-      allow: [
-        'select.id',
-        'select.full_name',
-        'select.emailAddress',
-        'select.orders[].ProductName',
-        'select.orders[].quantity',
-        'where.id',
-        'where.createdAt',
-      ],
-    },
-  },
-  addModelPrefix: true,
+const userConfig = {
   enableAll: true,
-  customUrlPrefix: '/v1',
 }
 
-app.use(addPrisma)
-app.use(UserAccountRouter(userAccounRouterConfig))
+app.use('/', UserRouter(userConfig))
 
 app.listen(3000, () => {
   console.log('Server is running on http://localhost:3000')
 })
 ```
 
-## Request Object Properties
+## Selective routes with middleware
+```ts
+const userConfig = {
+  findMany: {
+    before: [authMiddleware],
+  },
+  create: {
+    before: [authMiddleware, validateBody],
+  },
+  findUnique: {},
+}
 
-The following properties can be attached to the `req` object to control the behavior of generated middleware:
+app.use('/', UserRouter(userConfig))
+```
 
-| Property               | Type         | Description                                                                                                                     |
-| ---------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `prisma`               | PrismaClient | An instance of PrismaClient that allows the middleware to interact with your database.                                          |
-| `passToNext`           | boolean      | Optional, if `true` - the result of a Prisma request will be passed to the next middleware as `if (req.locals) req.locals.data` |
-| `outputValidation`     | ZodType   | (Optional) A Zod schema used to validate the data returned from the Prisma query before sending it to the client.               |
+Only operations listed in the config (or all when `enableAll: true`) are registered. Operations not listed produce no routes.
 
-## Router Schema
+## Guard shapes (variant-based field access)
 
-| Function     | Method   | URL          |
-| ------------ | -------- | ------------ |
-| `findUnique` | `GET`    | `/:id`       |
-| `findFirst`  | `GET`    | `/first`     |
-| `findMany`   | `GET`    | `/`          |
-| `aggregate`  | `GET`    | `/aggregate` |
-| `count`      | `GET`    | `/count`     |
-| `groupBy`    | `GET`    | `/groupby`   |
-| `create`     | `POST`   | `/`          |
-| `createMany` | `POST`   | `/many`      |
-| `update`     | `PUT`    | `/`          |
-| `updateMany` | `PUT`    | `/many`      |
-| `upsert`     | `PATCH`  | `/`          |
-| `delete`     | `DELETE` | `/`          |
-| `deleteMany` | `DELETE` | `/many`      |
+Guard shapes require the `prisma-guard` package for runtime enforcement.
 
-## Skip generation
+### Setup
+```bash
+npm install prisma-guard
+```
 
+Extend your PrismaClient with the guard extension:
+```ts
+import { PrismaClient } from '@prisma/client'
+import { guardExtension } from 'prisma-guard'
+
+const prisma = new PrismaClient().$extends(guardExtension())
+```
+
+### Configuration
+```ts
+const userConfig = {
+  findMany: {
+    shape: {
+      admin: { select: { id: true, email: true, role: true } },
+      public: { select: { id: true, email: true } },
+    },
+  },
+  guard: {
+    variantHeader: 'x-api-variant',
+  },
+}
+
+app.use('/', UserRouter(userConfig))
+```
+
+When a guard shape is configured on an operation, the variant is resolved from the configured header (default: `x-api-variant`) or a custom `resolveVariant` function. The resolved variant selects which shape config to apply. If prisma-guard is not installed or the client is not extended with the guard extension, requests to guarded routes return 500 with an actionable error message.
+
+## Request body format
+
+All write operations accept the full Prisma args object as the JSON request body. The body must be a JSON object — sending `null`, arrays, or other non-object values returns 400.
+```ts
+// Create
+{ "data": { "name": "Alice", "email": "alice@example.com" }, "select": { "id": true } }
+
+// Update
+{ "where": { "id": 1 }, "data": { "name": "Bob" } }
+
+// Delete
+{ "where": { "id": 1 } }
+
+// Upsert
+{ "where": { "id": 1 }, "create": { "name": "Alice" }, "update": { "name": "Bob" } }
+```
+
+Write operations that return records (create, update, delete, upsert, createManyAndReturn, updateManyAndReturn) support `select`, `include`, and `omit` in the request body to control the response shape.
+
+### Bulk operations
+
+`createMany`, `createManyAndReturn`, `updateMany`, and `updateManyAndReturn` accept scalar-only data inputs. Nested relation writes are not supported in bulk operations.
+
+### Batch operation safety
+
+`deleteMany`, `updateMany`, and `updateManyAndReturn` require a `where` field in the request body. Requests without `where` are rejected with 400 to prevent accidental mass operations. Sending `{ "where": {} }` is valid and matches all records — this protection catches accidental omission, not intentional broad operations.
+
+## Query encoding (client side)
+```ts
+import { encodeQueryParams } from './generated/client/encodeQueryParams'
+
+const params = encodeQueryParams({
+  where: { status: 'active', role: { in: ['admin', 'editor'] } },
+  select: { id: true, email: true },
+  take: 20,
+})
+
+const response = await fetch(`/user?${params}`)
+```
+
+Complex values (`where`, `select`, `include`, `omit`, `orderBy`) are JSON-stringified. Primitives (`take`, `skip`) are sent directly. The encoder handles BigInt serialization automatically.
+
+## Response shaping: select, include, omit
+
+Read and single-record write operations support three response shaping parameters:
+
+- **`select`** — choose which fields to include. Set scalar fields to `true`, use nested objects for relations.
+- **`include`** — include relations in addition to all scalar fields. Use nested `include`/`select` for deep loading.
+- **`omit`** — exclude specific scalar fields from the response.
+
+`select` and `include` cannot be used together at the same level. `select` and `omit` cannot be used together at the same level. `omit` can be combined with `include`.
+
+The `omit` parameter requires Prisma 6.2.0+. On versions 6.0.x–6.1.x, requests using `omit` return 400.
+
+## BigInt and Decimal handling
+
+BigInt and Decimal values are serialized as strings in JSON responses. Buffer and Uint8Array values are serialized as base64 strings. The OpenAPI spec documents BigInt and Decimal fields as `type: string`.
+
+On the client side, `encodeQueryParams` handles BigInt serialization automatically.
+
+## Pagination
+
+`findManyPaginated` returns `{ data, total, hasMore }`. When the runtime supports interactive transactions, the count and query execute in a transaction for consistency. On runtimes without interactive transaction support, the queries run independently with eventual consistency on the `total` count.
+
+The `hasMore` field is reliable for forward offset pagination (`skip` + `take`) only. When using cursor-based pagination or negative `take` (backward pagination), `hasMore` may be inaccurate.
+
+Configure default and maximum page sizes:
+```ts
+UserRouter({
+  findManyPaginated: {},
+  pagination: {
+    defaultLimit: 20,
+    maxLimit: 100,
+  },
+})
+```
+
+`pagination.defaultLimit` is applied when the client omits `take`. `pagination.maxLimit` caps `take` by absolute value. Both settings apply to `findMany` and `findManyPaginated`.
+
+## Error handling
+
+All errors are returned as JSON with a `message` field:
+```json
+{ "message": "Unique constraint violation" }
+```
+
+Each generated router installs an error-handling middleware that normalizes errors. Prisma error codes are mapped to appropriate HTTP status codes. Guard errors are mapped as follows: `ShapeError` and `CallerError` → 400, `PolicyError` → 403.
+
+| Status | Description                                |
+| ------ | ------------------------------------------ |
+| 400    | Invalid parameters, body, or query         |
+| 403    | Guard policy rejected                      |
+| 404    | Record not found                           |
+| 409    | Unique constraint or transaction conflict  |
+| 500    | Internal server error                      |
+| 501    | Feature not supported by database provider |
+| 503    | Database connection pool timeout           |
+
+## Security
+
+All incoming JSON bodies and query parameters are sanitized to reject `__proto__`, `constructor`, and `prototype` keys, preventing prototype pollution attacks.
+
+## Documentation endpoints
+
+### Automatic (registered by each router)
+
+Each router automatically registers OpenAPI spec endpoints when not in production:
+
+| Endpoint                | Description           |
+| ----------------------- | --------------------- |
+| `/{model}/openapi.json` | OpenAPI 3.1 JSON spec |
+| `/{model}/openapi.yaml` | OpenAPI 3.1 YAML spec |
+
+Actual paths depend on `customUrlPrefix` and `addModelPrefix` configuration.
+
+### Manual (generated helpers, require mounting)
+
+The generator produces helper functions that you mount yourself. Pass the same config object used for the router to keep docs and runtime in sync:
+```ts
+import {
+  generateCombinedDocs,
+  registerModelDocs,
+} from './generated/combinedDocs'
+
+const userConfig = {
+  findMany: { before: [authMiddleware] },
+  create: {},
+  findUnique: {},
+}
+
+const postConfig = {
+  enableAll: true,
+}
+
+app.use('/', UserRouter(userConfig))
+app.use('/', PostRouter(postConfig))
+
+registerModelDocs(app, '/docs', {
+  User: userConfig,
+  Post: postConfig,
+})
+
+app.get(
+  '/docs',
+  generateCombinedDocs({
+    title: 'My API',
+    modelConfigs: {
+      User: userConfig,
+      Post: postConfig,
+    },
+  }),
+)
+```
+
+| Endpoint                      | Description             |
+| ----------------------------- | ----------------------- |
+| `/docs`                       | Combined index page     |
+| `/docs/{model}`               | Contract view (default) |
+| `/docs/{model}?ui=scalar`     | Scalar interactive UI   |
+| `/docs/{model}?ui=json`       | Raw JSON                |
+| `/docs/{model}?ui=yaml`       | Raw YAML                |
+| `/docs/{model}?ui=playground` | Query playground        |
+
+Disable in production via `NODE_ENV=production` or `DISABLE_OPENAPI=true`. Override with `disableOpenApi: false` in config to force-enable.
+
+### Spec paths and mount prefixes
+
+Use `specBasePath` to set the base path for OpenAPI spec and docs independently of route registration:
+```ts
+const userConfig = {
+  enableAll: true,
+  specBasePath: '/api',
+}
+
+app.use('/api', UserRouter(userConfig))
+```
+
+When `specBasePath` is not set, `customUrlPrefix` is used for both runtime routes and spec paths.
+
+## prisma-sql integration
+
+When `prisma-sql` is installed, the generated handlers automatically attempt to use its `speedExtension` for optimized SQL execution. The extension activates only when a database connector is provided on the request object.
+
+Set `req.postgres` or `req.sqlite` in your middleware to activate the extension:
+```ts
+import { PrismaClient } from '@prisma/client'
+import postgres from 'postgres'
+
+const prisma = new PrismaClient()
+const sql = postgres(process.env.DATABASE_URL!)
+
+app.use((req, res, next) => {
+  req.prisma = prisma
+  req.postgres = sql
+  next()
+})
+```
+
+Without a connector on the request, the handlers use the standard PrismaClient. Set `DEBUG=true` in the environment to enable prisma-sql debug logging.
+
+## Query parameter parsing
+
+GET query values are parsed server-side. Strings starting with `{`, `[`, or `"` are JSON-parsed. The strings `true`, `false`, `null` are converted to their JS equivalents. Numeric conversion only applies to `take` and `skip`. Use `encodeQueryParams` on the client side to avoid encoding issues.
+
+## Router schema
+
+| Operation           | Method | Path             |
+| ------------------- | ------ | ---------------- |
+| findMany            | GET    | `/`              |
+| findFirst           | GET    | `/first`         |
+| findFirstOrThrow    | GET    | `/first/strict`  |
+| findUnique          | GET    | `/unique`        |
+| findUniqueOrThrow   | GET    | `/unique/strict` |
+| findManyPaginated   | GET    | `/paginated`     |
+| count               | GET    | `/count`         |
+| aggregate           | GET    | `/aggregate`     |
+| groupBy             | GET    | `/groupby`       |
+| create              | POST   | `/`              |
+| createMany          | POST   | `/many`          |
+| createManyAndReturn | POST   | `/many/return`   |
+| update              | PUT    | `/`              |
+| updateMany          | PUT    | `/many`          |
+| updateManyAndReturn | PUT    | `/many/return`   |
+| upsert              | PATCH  | `/`              |
+| delete              | DELETE | `/`              |
+| deleteMany          | DELETE | `/many`          |
+
+Paths shown are relative suffixes. Actual paths include the model prefix (e.g., `/user/first`) unless `addModelPrefix: false`, and any `customUrlPrefix`.
+
+## Skipping models
+
+Add `/// generator off` to a model's documentation to skip generation:
 ```prisma
 /// generator off
-model UserAccount {
-  ID           Int         @id @default(autoincrement())
-  full_name    String
-  emailAddress String      @unique
-  createdAt    DateTime    @default(now())
-  orders       orderItem[]
+model InternalLog {
+  id Int @id
 }
 ```
 
-## Helper functions
-
-### createValidatorMiddleware(validatorOptions: ValidatorOptions)
-
-Simple wrapper that internally uses `allow` or `forbid` logic for filtering incoming queries and data payloads. Helps to make sure that schemas from `prisma-zod-generator` is not too permissive.
-
+## Configuration
 ```ts
-interface ValidatorOptions {
-  schema: ZodSchema<any>
-  allowedPaths?: string[] // Fobids all except allowed. For example [`where.user.id`, `select.id`], all other provided inputs will throw an error
-  forbiddenPaths?: string[] // Similar, but allows all, except forbidden
-  target?: 'body' | 'query'
+interface RouteConfig {
+  enableAll?: boolean
+  addModelPrefix?: boolean           // default: true
+  customUrlPrefix?: string
+  specBasePath?: string
+  disableOpenApi?: boolean
+  scalarCdnUrl?: string
+
+  openApiTitle?: string
+  openApiDescription?: string
+  openApiVersion?: string
+  openApiServers?: OpenApiServerConfig[]
+  openApiSecuritySchemes?: Record<string, OpenApiSecuritySchemeConfig>
+  openApiSecurity?: Record<string, string[]>[]
+
+  guard?: {
+    resolveVariant?: (req: Request) => string | undefined
+    variantHeader?: string           // default: 'x-api-variant'
+  }
+
+  queryBuilder?: QueryBuilderConfig | false
+
+  pagination?: {
+    defaultLimit?: number
+    maxLimit?: number
+  }
+
+  // per-operation config
+  findMany?: OperationConfig
+  findUnique?: OperationConfig
+  findUniqueOrThrow?: OperationConfig
+  findFirst?: OperationConfig
+  findFirstOrThrow?: OperationConfig
+  findManyPaginated?: OperationConfig
+  create?: OperationConfig
+  createMany?: OperationConfig
+  createManyAndReturn?: OperationConfig
+  update?: OperationConfig
+  updateMany?: OperationConfig
+  updateManyAndReturn?: OperationConfig
+  upsert?: OperationConfig
+  delete?: OperationConfig
+  deleteMany?: OperationConfig
+  aggregate?: OperationConfig
+  count?: OperationConfig
+  groupBy?: OperationConfig
+}
+
+interface OperationConfig {
+  before?: RequestHandler[]
+  after?: RequestHandler[]
+  shape?: Record<string, any>
+}
+
+interface QueryBuilderConfig {
+  enabled?: boolean
+  port?: number
+  host?: string
+  schemaPath?: string
+  databaseUrl?: string
 }
 ```
 
-### encodeQueryParams(params: Params)
+`customUrlPrefix` is normalized to ensure a leading slash and strip trailing slashes.
 
-It can be used on the frontend to encode Prisma-compatible queries. Alternatively `qs` can be used, but it probably won't work with `OR: [{ blah: false }, { blah: null }]` or some other edge cases.
+`specBasePath` controls the base path used in OpenAPI spec paths and docs examples, independent of `customUrlPrefix`.
 
+`openApiServers` sets the `servers` array in the OpenAPI spec:
 ```ts
-type RecursiveUrlParams = {
-  [key: string]: RecursiveUrlParams | string | boolean | unknown
-}
-type Params = Record<string, RecursiveUrlParams | string>
+UserRouter({
+  enableAll: true,
+  openApiServers: [
+    { url: 'https://api.example.com/v1', description: 'Production' },
+  ],
+})
 ```
 
-### parseQueryParams(params: QueryParams)
-
+`openApiSecuritySchemes` and `openApiSecurity` set the security configuration in the OpenAPI spec:
 ```ts
-type QueryParams = string | ParsedQs | string[] | ParsedQs[] | undefined
+UserRouter({
+  enableAll: true,
+  openApiSecuritySchemes: {
+    bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+  },
+  openApiSecurity: [{ bearerAuth: [] }],
+})
 ```
 
-Recursively converts strings "true", "false", "null", and "number" into correct formats.
+## Environment variables
 
-### allow<T extends z.ZodType>( schema: T, allowedPaths: string[] )
+| Variable          | Default | Description                         |
+| ----------------- | ------- | ----------------------------------- |
+| `DISABLE_OPENAPI` | `false` | Disable OpenAPI endpoints           |
+| `NODE_ENV`        | -       | Set to `production` to disable docs |
+| `DEBUG`           | `false` | Enable prisma-sql debug logging     |
 
-Accepts schema and `['array.of.allowed.paths']`. Throws an error if provided something that doesn't fit allowed schema.
+## License
 
-### forbid<T extends z.ZodType>( schema: T, forbiddenPaths: string[] )
-
-Same as `allow` but works in opposite way.
-
----
-
-#### Credits:
-- Super Kick Gym - [Brazilian Jiu Jitsu in Bangkok](https://en.bjj-bangkok.com)
-
-- Rememo - [Free Task Management and Corporate Chat](https://rememo.io)
+MIT

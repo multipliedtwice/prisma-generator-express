@@ -1,11 +1,12 @@
 {
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     "module": "commonjs",
     "target": "es6",
     "moduleResolution": "node",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node", "express"],
+    "types": ["node"],
     "typeRoots": ["./node_modules/@types"],
     "strict": true
   },
