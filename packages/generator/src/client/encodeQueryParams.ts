@@ -1,4 +1,4 @@
-import { isObject } from '../copy/misc'
+import { isObject } from '../copy/misc.js'
 
 /**
  * Frontend query encoder for prisma-generator-hono

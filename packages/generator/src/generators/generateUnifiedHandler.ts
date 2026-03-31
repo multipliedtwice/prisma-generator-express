@@ -216,6 +216,48 @@ function assertGuard(delegate: any): void {
   }
 }
 
+const COUNT_PROJECTION_KEYS = new Set(['select', 'include'])
+
+const GUARD_SHAPE_CONFIG_KEYS = new Set([
+  'data', 'create', 'update', 'where', 'include', 'select', 'orderBy',
+  'cursor', 'take', 'skip', 'distinct', 'having', '_count', '_avg',
+  '_sum', '_min', '_max', 'by',
+])
+
+function stripProjectionKeys(obj: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    if (COUNT_PROJECTION_KEYS.has(key)) continue
+    result[key] = value
+  }
+  return result
+}
+
+function stripProjectionForCount(shape: Record<string, any>): Record<string, any> {
+  if (typeof shape === 'function') {
+    return (...args: any[]) => stripProjectionKeys((shape as Function)(...args))
+  }
+
+  const keys = Object.keys(shape)
+  const isSingleShape = keys.length === 0 || keys.every(k => GUARD_SHAPE_CONFIG_KEYS.has(k))
+
+  if (isSingleShape) {
+    return stripProjectionKeys(shape)
+  }
+
+  const result: Record<string, any> = {}
+  for (const [key, variant] of Object.entries(shape)) {
+    if (typeof variant === 'function') {
+      result[key] = (...args: any[]) => stripProjectionKeys(variant(...args))
+    } else if (typeof variant === 'object' && variant !== null) {
+      result[key] = stripProjectionKeys(variant)
+    } else {
+      result[key] = variant
+    }
+  }
+  return result
+}
+
 ${generateReadHandlers(modelName, modelNameLower)}
 
 ${generateWriteHandlers(modelName, modelNameLower)}
@@ -374,6 +416,8 @@ async function countForPagination(
   const distinctFields = normalizeDistinct(query.distinct)
   const hasDistinct = distinctFields.length > 0
 
+  const countShape = shape ? stripProjectionForCount(shape) : undefined
+
   if (hasDistinct) {
     const selectField = distinctFields[0]
     const distinctArgs: Record<string, any> = {
@@ -391,8 +435,8 @@ async function countForPagination(
       console.warn('[prisma-generator-express] Distinct count exceeds ' + DISTINCT_COUNT_LIMIT + ', falling back to approximate total')
       const countArgs: Record<string, any> = {}
       if (query.where) countArgs.where = query.where
-      return shape
-        ? await delegate.guard(shape, caller).count(countArgs)
+      return countShape
+        ? await delegate.guard(countShape, caller).count(countArgs)
         : await delegate.count(countArgs)
     }
 
@@ -402,8 +446,8 @@ async function countForPagination(
   const countArgs: Record<string, any> = {}
   if (query.where) countArgs.where = query.where
 
-  return shape
-    ? await delegate.guard(shape, caller).count(countArgs)
+  return countShape
+    ? await delegate.guard(countShape, caller).count(countArgs)
     : await delegate.count(countArgs)
 }
 
