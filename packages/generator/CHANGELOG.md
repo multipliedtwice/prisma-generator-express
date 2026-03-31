@@ -1,3 +1,10 @@
+## [1.21.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.21.0...v1.21.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* **encodeQueryParams.ts:** update import statement to include .js extension for compatibility ([1f96f4f](https://github.com/multipliedtwice/prisma-generator-express/commit/1f96f4f0902de43a346f7c689e47381309514d8c))
+
 # [1.21.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.20.0...v1.21.0) (2026-03-31)
 
 # [1.20.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.19.0...v1.20.0) (2026-03-31)
