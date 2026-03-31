@@ -16,6 +16,30 @@ Running `npx prisma generate` produces:
 - Client-side query parameter encoder
 - Guard/variant shape enforcement via prisma-guard integration
 
+## Table of contents
+
+- [Compatibility](#compatibility)
+- [Installation](#installation)
+- [Setup](#setup)
+- [Usage](#usage)
+- [Selective routes with middleware](#selective-routes-with-middleware)
+- [Guard shapes (prisma-guard integration)](#guard-shapes-prisma-guard-integration)
+- [Request body format](#request-body-format)
+- [Query encoding (client side)](#query-encoding-client-side)
+- [Response shaping: select, include, omit](#response-shaping-select-include-omit)
+- [BigInt and Decimal handling](#bigint-and-decimal-handling)
+- [Pagination](#pagination)
+- [Error handling](#error-handling)
+- [Security](#security)
+- [Documentation endpoints](#documentation-endpoints)
+- [prisma-sql integration](#prisma-sql-integration)
+- [Query parameter parsing](#query-parameter-parsing)
+- [Router schema](#router-schema)
+- [Skipping models](#skipping-models)
+- [Configuration](#configuration)
+- [Environment variables](#environment-variables)
+- [License](#license)
+
 ## Compatibility
 
 ### Prisma version
@@ -54,7 +78,7 @@ npm install @prisma/client express
 Optional peer dependencies:
 ```bash
 npm install prisma-sql         # SQL optimization
-npm install prisma-guard       # Guard shape enforcement
+npm install prisma-guard zod   # Guard shape enforcement
 npm install prisma-query-builder-ui  # Visual query playground
 ```
 
@@ -120,30 +144,171 @@ app.use('/', UserRouter(userConfig))
 
 Only operations listed in the config (or all when `enableAll: true`) are registered. Operations not listed produce no routes.
 
-## Guard shapes (variant-based field access)
+## Guard shapes (prisma-guard integration)
 
-Guard shapes require the `prisma-guard` package for runtime enforcement.
+prisma-generator-express integrates with [prisma-guard](https://github.com/multipliedtwice/prisma-guard) to enforce input validation, query shape restrictions, and tenant isolation on generated routes. When a `shape` is configured on an operation, the handler calls `prisma.model.guard(shape, caller).method(args)` instead of `prisma.model.method(args)`.
 
-### Setup
+### Guard setup
+
+Install prisma-guard and add its generator to your schema:
 ```bash
-npm install prisma-guard
+npm install prisma-guard zod
+```
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator guard {
+  provider = "prisma-guard"
+  output   = "generated/guard"
+}
+
+generator express {
+  provider = "prisma-generator-express"
+}
 ```
 
-Extend your PrismaClient with the guard extension:
+Run `npx prisma generate` to emit both the express routes and the guard artifacts.
+
+Extend PrismaClient with the guard extension and attach it to requests:
 ```ts
+import express from 'express'
 import { PrismaClient } from '@prisma/client'
-import { guardExtension } from 'prisma-guard'
+import { guard } from './generated/guard/client'
+import { UserRouter } from './generated/User/UserRouter'
 
-const prisma = new PrismaClient().$extends(guardExtension())
+const prisma = new PrismaClient().$extends(
+  guard.extension(() => ({
+    // scope context, caller, or any other values
+  }))
+)
+
+const app = express()
+
+app.use((req, res, next) => {
+  req.prisma = prisma
+  next()
+})
+
+app.use('/', UserRouter({
+  findMany: {
+    shape: {
+      where: { name: { contains: true } },
+      take: { max: 50, default: 20 },
+    },
+  },
+}))
+
+app.listen(3000)
 ```
 
-### Configuration
+If prisma-guard is not installed or the client is not extended with the guard extension, requests to guarded routes return 500 with the message: `Guard shapes require prisma-guard extension on PrismaClient. Install: npm install prisma-guard, then extend your client with guardExtension().`
+
+### How guard integration works
+
+Each operation config accepts an optional `shape` property. When present, the generated handler:
+
+1. Stores the shape on `res.locals.guardShape` via middleware
+2. Resolves the caller from `config.guard.resolveVariant(req)`, then from the configured header (default `x-api-variant`), falling back to `undefined`
+3. Calls `prisma.model.guard(shape, caller).method(args)` instead of `prisma.model.method(args)`
+
+When `shape` is absent, the handler calls Prisma directly with no guard enforcement.
+
+### Single shape per operation
+
+A single shape object restricts what the client can do on that operation. No caller routing is needed.
 ```ts
 const userConfig = {
   findMany: {
     shape: {
-      admin: { select: { id: true, email: true, role: true } },
-      public: { select: { id: true, email: true } },
+      where: { email: { contains: true }, role: { equals: true } },
+      orderBy: { createdAt: true },
+      take: { max: 100, default: 25 },
+      skip: true,
+    },
+  },
+  create: {
+    shape: {
+      data: { email: true, name: true, role: 'user' },
+    },
+  },
+  update: {
+    shape: {
+      data: { name: true },
+      where: { id: { equals: true } },
+    },
+  },
+  delete: {
+    shape: {
+      where: { id: { equals: true } },
+    },
+  },
+}
+
+app.use('/', UserRouter(userConfig))
+```
+
+In this example:
+
+- `findMany` allows filtering by `email` (contains) and `role` (equals), sorting by `createdAt`, pagination via `take`/`skip`. All other where fields, orderBy fields, and include/select are rejected.
+- `create` accepts `email` and `name` from the client. `role` is forced to `'user'` regardless of what the client sends.
+- `update` only allows changing `name`, and requires a unique `id` in `where`.
+- `delete` requires a unique `id` in `where`.
+
+### Shape value types in data
+
+Each field in a `data` shape accepts one of four value types:
+```ts
+import { force } from 'prisma-guard'
+
+const config = {
+  create: {
+    shape: {
+      data: {
+        email: true,                          // client-controlled, @zod chains apply
+        name: true,                           // client-controlled
+        role: 'member',                       // forced to 'member', client cannot override
+        isActive: force(true),                // forced to boolean true (force() needed to distinguish from client-controlled)
+        bio: (base) => base.max(500),         // client-controlled with inline validation override
+      },
+    },
+  },
+}
+```
+
+- `true` — client provides the value; `@zod` schema directives from the Prisma schema apply
+- literal value — server forces this value; client input is ignored
+- `force(value)` — same as literal, but required when the forced value is literally `true` (since bare `true` means client-controlled)
+- `(base) => schema` — client provides the value; the function receives the base Zod type and returns a refined schema, bypassing `@zod` chains
+
+### Named shapes (variant-based routing)
+
+Different API consumers often need different shapes for the same operation. Named shapes use a caller value to route to the correct shape.
+```ts
+const userConfig = {
+  findMany: {
+    shape: {
+      admin: {
+        where: { email: { contains: true }, role: { equals: true }, isActive: { equals: true } },
+        include: { posts: true, profile: true },
+        take: { max: 200 },
+      },
+      public: {
+        where: { name: { contains: true } },
+        select: { id: true, name: true },
+        take: { max: 20, default: 10 },
+      },
+    },
+  },
+  create: {
+    shape: {
+      admin: {
+        data: { email: true, name: true, role: true, isActive: true },
+      },
+      editor: {
+        data: { email: true, name: true, role: 'member' },
+      },
     },
   },
   guard: {
@@ -154,7 +319,487 @@ const userConfig = {
 app.use('/', UserRouter(userConfig))
 ```
 
-When a guard shape is configured on an operation, the variant is resolved from the configured header (default: `x-api-variant`) or a custom `resolveVariant` function. The resolved variant selects which shape config to apply. If prisma-guard is not installed or the client is not extended with the guard extension, requests to guarded routes return 500 with an actionable error message.
+The client sends the variant in the configured header:
+```ts
+// Admin frontend
+fetch('/user', {
+  headers: { 'x-api-variant': 'admin' },
+})
+
+// Public frontend
+fetch('/user', {
+  headers: { 'x-api-variant': 'public' },
+})
+```
+
+If the caller is missing or doesn't match any key, the request is rejected with 400 (`CallerError`).
+
+### Custom caller resolution
+
+Use `resolveVariant` for caller logic beyond a simple header:
+```ts
+const userConfig = {
+  findMany: {
+    shape: {
+      admin: { /* ... */ },
+      public: { /* ... */ },
+    },
+  },
+  guard: {
+    resolveVariant: (req) => {
+      if (req.user?.role === 'admin') return 'admin'
+      return 'public'
+    },
+  },
+}
+```
+
+`resolveVariant` takes priority over the header. If both are configured, the header is checked only when `resolveVariant` returns `undefined`.
+
+### Parameterized caller patterns
+
+Caller keys support parameterized path patterns:
+```ts
+const projectConfig = {
+  update: {
+    shape: {
+      '/admin/projects/:id': {
+        data: { title: true, status: true, priority: true },
+        where: { id: { equals: true } },
+      },
+      '/editor/projects/:id': {
+        data: { title: true },
+        where: { id: { equals: true } },
+      },
+    },
+  },
+  guard: {
+    variantHeader: 'x-caller',
+  },
+}
+```
+
+The client sends the full path:
+```ts
+fetch('/project', {
+  method: 'PUT',
+  headers: {
+    'x-caller': '/admin/projects/abc123',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    where: { id: { equals: 'abc123' } },
+    data: { title: 'Updated', status: 'active' },
+  }),
+})
+```
+
+Exact matches are checked first. Parameters (`:id`) are routing-only and are not extracted.
+
+### Forced where conditions
+
+Literal values in `where` shapes are forced server-side and cannot be overridden by the client:
+```ts
+import { force } from 'prisma-guard'
+
+const projectConfig = {
+  findMany: {
+    shape: {
+      where: {
+        status: { equals: 'published' },         // always filter to published
+        isDeleted: { equals: false },             // always exclude deleted
+        isActive: { equals: force(true) },        // force() needed for boolean true
+        title: { contains: true },                // client-controlled
+      },
+      take: { max: 50 },
+    },
+  },
+}
+```
+
+A request with `{ where: { title: { contains: 'demo' } } }` produces:
+```
+WHERE status = 'published'
+  AND isDeleted = false
+  AND isActive = true
+  AND title LIKE '%demo%'
+```
+
+The client cannot bypass the forced conditions.
+
+### Logical combinators (AND, OR, NOT)
+
+Where shapes support `AND`, `OR`, and `NOT`. The combinator value defines which fields are allowed inside it:
+```ts
+const config = {
+  findMany: {
+    shape: {
+      where: {
+        OR: {
+          title: { contains: true },
+          description: { contains: true },
+        },
+        status: { equals: 'published' },       // forced, always applied
+      },
+      take: { max: 50 },
+    },
+  },
+}
+```
+
+Client sends:
+```json
+{
+  "where": {
+    "OR": [
+      { "title": { "contains": "demo" } },
+      { "description": { "contains": "demo" } }
+    ]
+  }
+}
+```
+
+The forced `status = 'published'` is always merged as an AND condition. Forced values inside combinators are lifted to the top-level query, regardless of the combinator type.
+
+### Relation filters in where
+
+Where shapes support relation-level filters. To-many relations use `some`, `every`, `none`. To-one relations use `is`, `isNot`.
+```ts
+const userConfig = {
+  findMany: {
+    shape: {
+      where: {
+        posts: {
+          some: {
+            title: { contains: true },
+            published: { equals: true },          // forced inside the relation
+          },
+        },
+      },
+      take: { max: 50 },
+    },
+  },
+}
+```
+
+The client can filter by `title` inside the relation, but `published = true` is always enforced.
+
+### Select, include, and omit in shapes
+
+Shapes can restrict which response fields and relations the client may request:
+```ts
+const userConfig = {
+  findMany: {
+    shape: {
+      where: { role: { equals: true } },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        posts: {
+          select: { id: true, title: true },
+        },
+        _count: {
+          select: { posts: true },
+        },
+      },
+      take: { max: 50 },
+    },
+  },
+}
+```
+
+The client can only select from the whitelisted fields and relations. Attempting to select unlisted fields (e.g. `passwordHash`) is rejected.
+
+`select` and `include` are mutually exclusive at the same level in both the shape and the client request.
+
+### Nested include with forced where and pagination
+
+Nested includes on to-many relations support `where`, `orderBy`, `cursor`, `take`, and `skip`:
+```ts
+import { force } from 'prisma-guard'
+
+const userConfig = {
+  findMany: {
+    shape: {
+      include: {
+        posts: {
+          where: { isDeleted: { equals: false } },     // forced: never return deleted posts
+          orderBy: { createdAt: true },
+          take: { max: 20, default: 10 },
+          skip: true,
+        },
+        profile: true,                                  // simple include, no constraints
+        _count: {
+          select: {
+            posts: {
+              where: { isDeleted: { equals: false } },  // count only non-deleted
+            },
+          },
+        },
+      },
+      take: { max: 50 },
+    },
+  },
+}
+```
+
+### Mutation return projection
+
+Write operations that return records (`create`, `update`, `upsert`, `delete`, `createManyAndReturn`, `updateManyAndReturn`) support `select` and `include` in the shape:
+```ts
+const userConfig = {
+  create: {
+    shape: {
+      data: { email: true, name: true },
+      include: {
+        profile: true,
+      },
+    },
+  },
+  update: {
+    shape: {
+      data: { name: true },
+      where: { id: { equals: true } },
+      select: {
+        id: true,
+        name: true,
+        updatedAt: true,
+      },
+    },
+  },
+}
+```
+
+The client can include `include` or `select` in the request body. If the shape does not define projection, the client cannot request one. Batch methods (`createMany`, `updateMany`, `deleteMany`) do not support projection.
+
+### Upsert
+
+Upsert uses `create` and `update` shape keys instead of `data`:
+```ts
+import { force } from 'prisma-guard'
+
+const projectConfig = {
+  upsert: {
+    shape: {
+      where: { id: { equals: true } },
+      create: {
+        title: true,
+        status: 'draft',
+        isActive: force(true),
+      },
+      update: {
+        title: true,
+      },
+      select: { id: true, title: true, status: true },
+    },
+  },
+}
+```
+
+All three (`where`, `create`, `update`) are required. Using `data` instead of `create`/`update` is rejected.
+
+### Bulk mutation safety
+
+`updateMany`, `updateManyAndReturn`, and `deleteMany` require `where` in the shape:
+```ts
+const userConfig = {
+  deleteMany: {
+    shape: {
+      where: { isActive: { equals: true }, role: { equals: true } },
+    },
+  },
+  updateMany: {
+    shape: {
+      data: { isActive: true },
+      where: { role: { equals: true } },
+    },
+  },
+}
+```
+
+A shape without `where` on these methods is rejected. Empty resolved where at runtime is also rejected.
+
+### Tenant isolation with guard shapes
+
+When the guard extension is configured with scope context, tenant filters are injected automatically into all top-level operations on scoped models. Guard shapes and scope work together:
+```prisma
+/// @scope-root
+model Tenant {
+  id       String    @id @default(cuid())
+  name     String
+  projects Project[]
+}
+
+model Project {
+  id       String @id @default(cuid())
+  title    String
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+}
+```
+```ts
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { guard } from './generated/guard/client'
+
+const store = new AsyncLocalStorage<{ tenantId: string }>()
+
+const prisma = new PrismaClient().$extends(
+  guard.extension(() => ({
+    Tenant: store.getStore()?.tenantId,
+  }))
+)
+
+app.use((req, res, next) => {
+  const tenantId = req.headers['x-tenant-id'] as string
+  store.run({ tenantId }, () => {
+    req.prisma = prisma
+    next()
+  })
+})
+
+app.use('/', ProjectRouter({
+  findMany: {
+    shape: {
+      where: { title: { contains: true } },
+      take: { max: 50 },
+    },
+  },
+  create: {
+    shape: {
+      data: { title: true },
+    },
+  },
+}))
+```
+
+The scope extension handles tenant isolation at the query level:
+
+- Reads: `AND tenantId = ?` is injected into where
+- Creates: `tenantId` is injected into data (the scope FK does not need to be in the data shape)
+- Updates/deletes: `tenantId` condition is merged into where, scope FK is stripped from data
+- Upsert: scope condition in where, FK injected into create data, FK stripped from update data
+
+The data shape for `create` above only lists `title`. The `tenantId` field is injected by the scope extension automatically — the create completeness check accounts for scope foreign keys.
+
+### Supported shape keys
+
+For reads: `where`, `include`, `select`, `orderBy`, `cursor`, `take`, `skip`, `distinct`, `_count`, `_avg`, `_sum`, `_min`, `_max`, `by`, `having`
+
+For writes: `data`, `where`, `select`, `include` (select/include only on methods that return records)
+
+For upsert: `where`, `create`, `update`, `select`, `include`
+
+### Guard error handling
+
+Guard errors are mapped to HTTP status codes by the generated error-handling middleware:
+
+| Error type    | HTTP status | When                                                              |
+| ------------- | ----------- | ----------------------------------------------------------------- |
+| `ShapeError`  | 400         | Invalid shape config, unknown fields, body validation, type errors |
+| `CallerError` | 400         | Missing/unknown/ambiguous caller, caller in body                  |
+| `PolicyError` | 403         | Scope denied, missing tenant context, rejected findUnique         |
+
+All errors return `{ "message": "..." }` in the response body.
+
+### Complete guard example
+```ts
+import express from 'express'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { PrismaClient } from '@prisma/client'
+import { guard } from './generated/guard/client'
+import { force } from 'prisma-guard'
+import { UserRouter } from './generated/User/UserRouter'
+import { ProjectRouter } from './generated/Project/ProjectRouter'
+
+const store = new AsyncLocalStorage<{ tenantId: string; role: string }>()
+
+const prisma = new PrismaClient().$extends(
+  guard.extension(() => ({
+    Tenant: store.getStore()?.tenantId,
+  }))
+)
+
+const app = express()
+
+app.use((req, res, next) => {
+  const tenantId = req.headers['x-tenant-id'] as string
+  const role = req.headers['x-role'] as string || 'viewer'
+  store.run({ tenantId, role }, () => {
+    req.prisma = prisma
+    next()
+  })
+})
+
+app.use('/', ProjectRouter({
+  findMany: {
+    shape: {
+      admin: {
+        where: { title: { contains: true }, status: { equals: true } },
+        include: { members: true },
+        orderBy: { createdAt: true },
+        take: { max: 200 },
+        skip: true,
+      },
+      viewer: {
+        where: {
+          title: { contains: true },
+          status: { equals: 'published' },
+          isDeleted: { equals: false },
+        },
+        select: { id: true, title: true, createdAt: true },
+        take: { max: 50, default: 20 },
+      },
+    },
+  },
+  create: {
+    shape: {
+      admin: {
+        data: { title: true, status: true, priority: true },
+        include: { members: true },
+      },
+      viewer: {
+        data: { title: true, status: 'draft', priority: 1 },
+      },
+    },
+  },
+  update: {
+    shape: {
+      admin: {
+        data: { title: true, status: true, priority: true },
+        where: { id: { equals: true } },
+      },
+      viewer: {
+        data: { title: true },
+        where: { id: { equals: true } },
+      },
+    },
+  },
+  delete: {
+    shape: {
+      admin: {
+        where: { id: { equals: true } },
+      },
+    },
+  },
+  guard: {
+    resolveVariant: (req) => {
+      const ctx = store.getStore()
+      return ctx?.role === 'admin' ? 'admin' : 'viewer'
+    },
+  },
+}))
+
+app.listen(3000)
+```
+
+In this setup:
+
+- Admins can filter by any allowed field, include relations, and take up to 200 rows
+- Viewers can only see published, non-deleted projects with a restricted field set
+- Create: admins set any allowed field; viewers always create drafts with priority 1
+- Delete: only admins can delete; viewers hitting the delete endpoint get a `CallerError` because there is no `viewer` shape for delete
+- Tenant isolation is automatic — every query is scoped to the tenant from `x-tenant-id`
 
 ## Request body format
 
