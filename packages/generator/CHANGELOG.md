@@ -1,3 +1,10 @@
+# [1.19.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.18.0...v1.19.0) (2026-03-31)
+
+
+### Features
+
+* documentation generator ([91323f8](https://github.com/multipliedtwice/prisma-generator-express/commit/91323f83405afe3f763fe56e361a7f194a396a6c))
+
 # [1.18.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.17.0...v1.18.0) (2026-03-24)
 
 
