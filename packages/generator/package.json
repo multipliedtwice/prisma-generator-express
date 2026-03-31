@@ -71,11 +71,9 @@
   ],
   "files": [
     "dist/**/*",
-    "src/copy/**/*",
-    "src/client/**/*",
-    "!**/.DS_Store",
-    "README.md",
-    "LICENSE"
+    "src/**/*",
+    "../../README.md",
+    "../../LICENSE"
   ],
   "release": {
     "branches": [
