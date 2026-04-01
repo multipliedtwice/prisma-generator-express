@@ -1,3 +1,10 @@
+# [1.24.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.23.0...v1.24.0) (2026-04-01)
+
+
+### Features
+
+* **generator:** enhance OpenAPI model generation by adding relation foreign key fields to required scalars ([4a63b73](https://github.com/multipliedtwice/prisma-generator-express/commit/4a63b735dba0ae739446c8fa5a936491b5aad9bc))
+
 # [1.23.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.22.0...v1.23.0) (2026-03-31)
 
 # [1.22.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.21.1...v1.22.0) (2026-03-31)
