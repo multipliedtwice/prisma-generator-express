@@ -135,7 +135,7 @@ function handleError(error: unknown, next: NextFunction): void {
     "name" in error &&
     error.name === "ShapeError"
   ) {
-    next(new HttpError(400, (error as Error).message));
+    next(new HttpError(400, (error as any).message));
     return;
   }
 
@@ -145,7 +145,7 @@ function handleError(error: unknown, next: NextFunction): void {
     "name" in error &&
     error.name === "CallerError"
   ) {
-    next(new HttpError(400, (error as Error).message));
+    next(new HttpError(400, (error as any).message));
     return;
   }
 
@@ -155,7 +155,7 @@ function handleError(error: unknown, next: NextFunction): void {
     "name" in error &&
     error.name === "PolicyError"
   ) {
-    next(new HttpError(403, (error as Error).message));
+    next(new HttpError(403, (error as any).message));
     return;
   }
 
@@ -169,7 +169,7 @@ function handleError(error: unknown, next: NextFunction): void {
     const issues = (error as any).issues;
     const message = Array.isArray(issues)
       ? issues.map((i: any) => i.message).join("; ")
-      : (error as Error).message;
+      : (error as any).message;
     next(new HttpError(400, message));
     return;
   }
