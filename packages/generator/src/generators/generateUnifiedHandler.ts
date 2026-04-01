@@ -291,11 +291,11 @@ export async function ${functionName}(
 
     let data
     if (shape) {
-      assertGuard(extended.${modelNameLower})
+      assertGuard((extended as any).${modelNameLower})
       const caller = res.locals.guardCaller
-      data = await extended.${modelNameLower}.guard(shape, caller).${op}(query)
+      data = await (extended as any).${modelNameLower}.guard(shape, caller).${op}(query)
     } else {
-      data = await extended.${modelNameLower}.${op}(query)
+      data = await (extended as any).${modelNameLower}.${op}(query)
     }
 
     res.locals.data = data
@@ -322,11 +322,11 @@ export async function ${modelName}FindMany(
 
     let data
     if (shape) {
-      assertGuard(extended.${modelNameLower})
+      assertGuard((extended as any).${modelNameLower})
       const caller = res.locals.guardCaller
-      data = await extended.${modelNameLower}.guard(shape, caller).findMany(query)
+      data = await (extended as any).${modelNameLower}.guard(shape, caller).findMany(query)
     } else {
-      data = await extended.${modelNameLower}.findMany(query)
+      data = await (extended as any).${modelNameLower}.findMany(query)
     }
 
     res.locals.data = data
@@ -393,11 +393,11 @@ ${validationLines ? validationLines + '\n' : ''}    const extended = await getEx
 
     let data
     if (shape) {
-      assertGuard(extended.${modelNameLower})
+      assertGuard((extended as any).${modelNameLower})
       const caller = res.locals.guardCaller
-      data = await extended.${modelNameLower}.guard(shape, caller).${op.method}(body)
+      data = await (extended as any).${modelNameLower}.guard(shape, caller).${op.method}(body)
     } else {
-      data = await extended.${modelNameLower}.${op.method}(body)
+      data = await (extended as any).${modelNameLower}.${op.method}(body)
     }
 
     res.locals.data = data
@@ -468,7 +468,7 @@ export async function ${modelName}FindManyPaginated(req: Request, res: Response,
     const caller = res.locals.guardCaller
 
     if (shape) {
-      assertGuard(extended.${modelNameLower})
+      assertGuard((extended as any).${modelNameLower})
     }
 
     let items: any[]
@@ -492,18 +492,18 @@ export async function ${modelName}FindManyPaginated(req: Request, res: Response,
         ) {
           console.warn('[prisma-generator-express] Interactive transactions not available, pagination queries are non-atomic')
           items = shape
-            ? await extended.${modelNameLower}.guard(shape, caller).findMany(query)
-            : await extended.${modelNameLower}.findMany(query)
-          total = await countForPagination(extended.${modelNameLower}, query, shape, caller)
+            ? await (extended as any).${modelNameLower}.guard(shape, caller).findMany(query)
+            : await (extended as any).${modelNameLower}.findMany(query)
+          total = await countForPagination((extended as any).${modelNameLower}, query, shape, caller)
         } else {
           throw txError
         }
       }
     } else {
       items = shape
-        ? await extended.${modelNameLower}.guard(shape, caller).findMany(query)
-        : await extended.${modelNameLower}.findMany(query)
-      total = await countForPagination(extended.${modelNameLower}, query, shape, caller)
+        ? await (extended as any).${modelNameLower}.guard(shape, caller).findMany(query)
+        : await (extended as any).${modelNameLower}.findMany(query)
+      total = await countForPagination((extended as any).${modelNameLower}, query, shape, caller)
     }
 
     const skip = (query.skip as number) ?? 0

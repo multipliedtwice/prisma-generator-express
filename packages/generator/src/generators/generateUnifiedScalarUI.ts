@@ -40,7 +40,7 @@ export function generateScalarUIHandler(options: {
     isRequired: f.isRequired,
     hasDefaultValue: f.hasDefaultValue,
     isUpdatedAt: Boolean(f.isUpdatedAt),
-    documentation: f.documentation,
+    documentation: f.documentation ?? null,
     isId: Boolean(f.isId),
     isUnique: Boolean(f.isUnique),
     relationFromFields: f.relationFromFields,
@@ -93,8 +93,27 @@ import { OPERATION_DEFS, isOperationEnabled } from '../operationDefinitions.js'
 
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 
-export const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
-export const MODEL_ENUMS = ${JSON.stringify(enumsMeta, null, 2)} as const
+interface FieldMeta {
+  name: string
+  kind: string
+  type: string
+  isList: boolean
+  isRequired: boolean
+  hasDefaultValue: boolean
+  isUpdatedAt: boolean
+  documentation: string | null
+  isId: boolean
+  isUnique: boolean
+  relationFromFields?: string[]
+}
+
+interface EnumMeta {
+  name: string
+  values: { name: string }[]
+}
+
+export const MODEL_FIELDS: FieldMeta[] = ${JSON.stringify(fieldsMeta, null, 2)}
+export const MODEL_ENUMS: EnumMeta[] = ${JSON.stringify(enumsMeta, null, 2)}
 
 const COMPOUND_ID: { fields: string[] } | null = ${JSON.stringify(compoundIdMeta)}
 
@@ -113,8 +132,6 @@ type DocsConfig = RouteConfig & {
   docsTitle?: string
   docsUi?: DocsUI
 }
-
-type FieldMeta = typeof MODEL_FIELDS[number]
 
 interface OpDetail {
   transport: string
@@ -365,11 +382,11 @@ function isPlaygroundAvailable(config: DocsConfig) {
 
 function escapeHtml(input: string) {
   return input
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
 }
 
 function safeJsonForHtml(obj: unknown): string {
