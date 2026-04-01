@@ -109,27 +109,27 @@ export function generateCombinedDocs(config: CombinedDocsConfig) {
         <tbody>
           \${registeredModels.map((m) => {
             const lower = m.toLowerCase()
-            const docsUrl = \\\`\\\${basePath}/\\\${lower}\\\`
-            const scalarUrl = \\\`\\\${basePath}/\\\${lower}?ui=scalar\\\`
-            const jsonUrl = \\\`\\\${basePath}/\\\${lower}?ui=json\\\`
-            const yamlUrl = \\\`\\\${basePath}/\\\${lower}?ui=yaml\\\`
-            const playgroundUrl = \\\`\\\${basePath}/\\\${lower}?ui=playground\\\`
+            const docsUrl = \`\${basePath}/\${lower}\`
+            const scalarUrl = \`\${basePath}/\${lower}?ui=scalar\`
+            const jsonUrl = \`\${basePath}/\${lower}?ui=json\`
+            const yamlUrl = \`\${basePath}/\${lower}?ui=yaml\`
+            const playgroundUrl = \`\${basePath}/\${lower}?ui=playground\`
             const modelCfg = config.modelConfigs[m]
             const modelPlayground = isPlaygroundAvailable(modelCfg)
             const playgroundLink = modelPlayground
-              ? \\\`, <a href="\\\${playgroundUrl}" class="text-inherit underline">playground</a>\\\`
+              ? \`, <a href="\${playgroundUrl}" class="text-inherit underline">playground</a>\`
               : ''
-            return \\\`
+            return \`
               <tr>
-                <td class="text-left py-2 px-2 border-b border-gray-300 align-top">\\\${escapeHtml(m)}</td>
-                <td class="text-left py-2 px-2 border-b border-gray-300 align-top"><a href="\\\${docsUrl}" class="text-inherit underline">\\\${escapeHtml(docsUrl)}</a></td>
+                <td class="text-left py-2 px-2 border-b border-gray-300 align-top">\${escapeHtml(m)}</td>
+                <td class="text-left py-2 px-2 border-b border-gray-300 align-top"><a href="\${docsUrl}" class="text-inherit underline">\${escapeHtml(docsUrl)}</a></td>
                 <td class="text-left py-2 px-2 border-b border-gray-300 align-top">
-                  <a href="\\\${scalarUrl}" class="text-inherit underline">scalar</a>,
-                  <a href="\\\${jsonUrl}" class="text-inherit underline">json</a>,
-                  <a href="\\\${yamlUrl}" class="text-inherit underline">yaml</a>\\\${playgroundLink}
+                  <a href="\${scalarUrl}" class="text-inherit underline">scalar</a>,
+                  <a href="\${jsonUrl}" class="text-inherit underline">json</a>,
+                  <a href="\${yamlUrl}" class="text-inherit underline">yaml</a>\${playgroundLink}
                 </td>
               </tr>
-            \\\`
+            \`
           }).join('')}
         </tbody>
       </table>
@@ -159,8 +159,8 @@ export function registerModelDocs(
   registeredModels.forEach((model) => {
     const handler = docsHandlers[model]
     const cfg = configs[model] || {}
-    const path = \\\`\\\${normalizedBase}/\\\${model.toLowerCase()}\\\`
-    console.log(\\\`  Registered docs: \\\${path}\\\`)
+    const path = \`\${normalizedBase}/\${model.toLowerCase()}\`
+    console.log(\`  Registered docs: \${path}\`)
     app.get(path, handler(cfg))
   })
 }
