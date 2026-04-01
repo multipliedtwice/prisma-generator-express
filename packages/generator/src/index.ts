@@ -3,18 +3,18 @@ import {
   GeneratorOptions,
   DMMF,
 } from '@prisma/generator-helper'
-import { generateUnifiedHandler } from './generators/generateUnifiedHandler'
-import { generateRouterFunction } from './generators/generateRouter'
-import { generateScalarUIHandler } from './generators/generateUnifiedScalarUI'
-import { generateUnifiedDocs } from './generators/generateUnifiedDocs'
-import { generateQueryBuilderHelper } from './generators/generateQueryBuilderHelper'
+import { generateUnifiedHandler } from './generators/generateUnifiedHandler.js'
+import { generateRouterFunction } from './generators/generateRouter.js'
+import { generateScalarUIHandler } from './generators/generateUnifiedScalarUI.js'
+import { generateUnifiedDocs } from './generators/generateUnifiedDocs.js'
+import { generateQueryBuilderHelper } from './generators/generateQueryBuilderHelper.js'
 import {
   generateImportPrismaStatement,
   getRelativeClientPath,
-} from './generators/generateImportPrismaStatement'
-import { writeFileSafely } from './utils/writeFileSafely'
-import { copyFiles } from './utils/copyFiles'
-import { GENERATOR_NAME } from './constants'
+} from './generators/generateImportPrismaStatement.js'
+import { writeFileSafely } from './utils/writeFileSafely.js'
+import { copyFiles } from './utils/copyFiles.js'
+import { GENERATOR_NAME } from './constants.js'
 
 generatorHandler({
   onManifest() {

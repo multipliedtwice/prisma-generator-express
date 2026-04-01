@@ -87,9 +87,9 @@ export function generateScalarUIHandler(options: {
     }))
 
   return `import { Request, Response } from 'express'
-import { buildModelOpenApi } from '../buildModelOpenApi'
-import type { RouteConfig } from '../routeConfig'
-import { OPERATION_DEFS, isOperationEnabled } from '../operationDefinitions'
+import { buildModelOpenApi } from '../buildModelOpenApi.js'
+import type { RouteConfig } from '../routeConfig.js'
+import { OPERATION_DEFS, isOperationEnabled } from '../operationDefinitions.js'
 
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 

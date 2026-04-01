@@ -33,14 +33,6 @@ export async function writeFileSafely({
   let filePath: string
 
   switch (operation) {
-    case 'cacheConfig':
-      filePath = path.join(outputPath, 'cacheConfig.ts')
-      break
-
-    case 'types/inputs':
-      filePath = path.join(outputPath, 'types', 'inputs.ts')
-      break
-
     case 'combinedDocs':
       filePath = path.join(outputPath, 'combinedDocs.ts')
       break

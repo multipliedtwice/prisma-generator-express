@@ -57,10 +57,10 @@ import {
   ${modelName}Aggregate,
   ${modelName}Count,
   ${modelName}GroupBy
-} from './${modelName}Handlers'
-import type { RouteConfig } from '../routeConfig'
-import { parseQueryParams } from '../parseQueryParams'
-import { buildModelOpenApi } from '../buildModelOpenApi'
+} from './${modelName}Handlers.js'
+import type { RouteConfig } from '../routeConfig.js'
+import { parseQueryParams } from '../parseQueryParams.js'
+import { buildModelOpenApi } from '../buildModelOpenApi.js'
 
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 
@@ -140,7 +140,7 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
   if (qbEnabled) {
     const qbConfig = getQueryBuilderConfig(config)
     if (qbConfig) {
-      import('../queryBuilder').then(mod => mod.startQueryBuilder(qbConfig)).catch(() => {})
+      import('../queryBuilder.js').then(mod => mod.startQueryBuilder(qbConfig)).catch((err) => { if (_env.NODE_ENV !== 'production') console.warn('[query-builder]', err) })
     }
   }
 

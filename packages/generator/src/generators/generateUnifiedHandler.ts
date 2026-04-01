@@ -152,6 +152,7 @@ function handleError(error: unknown, next: NextFunction): void {
       return
     }
     if (typeof code === 'string' && code.startsWith('P')) {
+      console.warn('[prisma-generator-express] Unmapped Prisma error code:', code, (error as any).message || '')
       next(new HttpError(500, 'Database operation failed'))
       return
     }
@@ -422,6 +423,14 @@ async function countForPagination(
   const countShape = shape ? buildCountShape(shape) : undefined
 
   if (hasDistinct) {
+    if (shape) {
+      const countArgs: Record<string, any> = {}
+      if (query.where) countArgs.where = query.where
+      return countShape
+        ? await delegate.guard(countShape, caller).count(countArgs)
+        : await delegate.count(countArgs)
+    }
+
     const selectField = distinctFields[0]
     const distinctArgs: Record<string, any> = {
       where: query.where,
@@ -430,17 +439,13 @@ async function countForPagination(
       take: DISTINCT_COUNT_LIMIT + 1,
     }
 
-    const results = shape
-      ? await delegate.guard(shape, caller).findMany(distinctArgs)
-      : await delegate.findMany(distinctArgs)
+    const results = await delegate.findMany(distinctArgs)
 
     if (results.length > DISTINCT_COUNT_LIMIT) {
       console.warn('[prisma-generator-express] Distinct count exceeds ' + DISTINCT_COUNT_LIMIT + ', falling back to approximate total')
       const countArgs: Record<string, any> = {}
       if (query.where) countArgs.where = query.where
-      return countShape
-        ? await delegate.guard(countShape, caller).count(countArgs)
-        : await delegate.count(countArgs)
+      return await delegate.count(countArgs)
     }
 
     return results.length

@@ -123,6 +123,45 @@ function queryParam(
   return param
 }
 
+function scalarUpdateOperations(
+  baseSchema: SchemaObject | RefObject,
+  fieldType: string,
+  fieldKind: string,
+): SchemaObject {
+  const ops: Record<string, SchemaObject | RefObject> = { set: baseSchema }
+
+  if (fieldKind === 'scalar' && NUMERIC_SCALAR_TYPES.has(fieldType)) {
+    ops.increment = baseSchema
+    ops.decrement = baseSchema
+    ops.multiply = baseSchema
+    ops.divide = baseSchema
+  }
+
+  return {
+    oneOf: [
+      baseSchema,
+      { type: 'object', properties: ops },
+    ],
+  }
+}
+
+function listScalarUpdateOperations(
+  itemSchema: SchemaObject | RefObject,
+): SchemaObject {
+  return {
+    type: 'object',
+    properties: {
+      set: { type: 'array', items: itemSchema },
+      push: {
+        oneOf: [
+          itemSchema as SchemaObject,
+          { type: 'array', items: itemSchema },
+        ],
+      },
+    },
+  }
+}
+
 export function buildModelOpenApi(
   modelName: string,
   modelFields: ModelField[],
@@ -220,7 +259,7 @@ function generateOperationSchemas(
       .flatMap((f) => f.relationFromFields!),
   )
 
-  const requiredScalars = fields
+  const requiredCreateScalars = fields
     .filter(
       (f) =>
         (f.kind === 'scalar' || f.kind === 'enum') &&
@@ -231,36 +270,46 @@ function generateOperationSchemas(
     )
     .map((f) => f.name)
 
+  const requiredCreateManyScalars = fields
+    .filter(
+      (f) =>
+        (f.kind === 'scalar' || f.kind === 'enum') &&
+        f.isRequired &&
+        !f.hasDefaultValue &&
+        !f.isUpdatedAt,
+    )
+    .map((f) => f.name)
+
   const createInputSchema: SchemaObject = {
     type: 'object',
-    properties: fieldsToWriteProperties(fields),
+    properties: fieldsToWriteProperties(fields, 'create'),
   }
-  if (requiredScalars.length > 0) {
-    createInputSchema.required = [...requiredScalars]
+  if (requiredCreateScalars.length > 0) {
+    createInputSchema.required = [...requiredCreateScalars]
   }
 
   spec.components.schemas[`${modelName}CreateInput`] = createInputSchema
 
   spec.components.schemas[`${modelName}UpdateInput`] = {
     type: 'object',
-    properties: fieldsToWriteProperties(fields),
+    properties: fieldsToWriteProperties(fields, 'update'),
   }
 
   const createManyInputSchema: SchemaObject = {
     type: 'object',
-    properties: fieldsToBulkWriteProperties(fields),
+    properties: fieldsToBulkWriteProperties(fields, 'create'),
     description:
       'Scalar-only input for bulk create. Nested relation writes are not supported in createMany operations.',
   }
-  if (requiredScalars.length > 0) {
-    createManyInputSchema.required = [...requiredScalars]
+  if (requiredCreateManyScalars.length > 0) {
+    createManyInputSchema.required = [...requiredCreateManyScalars]
   }
 
   spec.components.schemas[`${modelName}CreateManyInput`] = createManyInputSchema
 
   spec.components.schemas[`${modelName}UpdateManyMutationInput`] = {
     type: 'object',
-    properties: fieldsToBulkWriteProperties(fields),
+    properties: fieldsToBulkWriteProperties(fields, 'update'),
     description:
       'Scalar-only input for bulk update. Nested relation writes are not supported in updateMany operations.',
   }
@@ -1092,21 +1141,23 @@ function fieldsToProperties(
 
 function fieldsToWriteProperties(
   fields: ModelField[],
+  mode: 'create' | 'update',
 ): Record<string, SchemaObject | RefObject> {
   const props: Record<string, SchemaObject | RefObject> = {}
   for (const field of fields) {
-    props[field.name] = mapFieldToWriteSchema(field)
+    props[field.name] = mapFieldToWriteSchema(field, mode)
   }
   return props
 }
 
 function fieldsToBulkWriteProperties(
   fields: ModelField[],
+  mode: 'create' | 'update',
 ): Record<string, SchemaObject | RefObject> {
   const props: Record<string, SchemaObject | RefObject> = {}
   for (const field of fields) {
     if (field.kind === 'object') continue
-    props[field.name] = mapFieldToWriteSchema(field)
+    props[field.name] = mapFieldToWriteSchema(field, mode)
   }
   return props
 }
@@ -1171,7 +1222,10 @@ function mapFieldToSchema(field: ModelField): SchemaObject | RefObject {
   return schema
 }
 
-function mapFieldToWriteSchema(field: ModelField): SchemaObject | RefObject {
+function mapFieldToWriteSchema(
+  field: ModelField,
+  mode: 'create' | 'update',
+): SchemaObject | RefObject {
   if (field.kind === 'object') {
     if (field.isList) {
       return {
@@ -1389,21 +1443,31 @@ function mapFieldToWriteSchema(field: ModelField): SchemaObject | RefObject {
     }
   }
 
-  let schema: SchemaObject | RefObject
+  let baseSchema: SchemaObject | RefObject
 
   switch (field.kind) {
     case 'scalar':
-      schema = mapScalarType(field.type)
+      baseSchema = mapScalarType(field.type)
       break
     case 'enum':
-      schema = { $ref: `#/components/schemas/${field.type}` }
+      baseSchema = { $ref: `#/components/schemas/${field.type}` }
       break
     default:
-      schema = { type: 'string' }
+      baseSchema = { type: 'string' }
   }
 
+  let schema: SchemaObject | RefObject
+
   if (field.isList) {
-    schema = { type: 'array', items: schema }
+    if (mode === 'update') {
+      schema = listScalarUpdateOperations(baseSchema)
+    } else {
+      schema = { type: 'array', items: baseSchema }
+    }
+  } else if (mode === 'update') {
+    schema = scalarUpdateOperations(baseSchema, field.type, field.kind)
+  } else {
+    schema = baseSchema
   }
 
   if (!field.isRequired && !field.isList) {
@@ -1417,7 +1481,7 @@ function mapFieldToWriteSchema(field: ModelField): SchemaObject | RefObject {
         description: field.documentation,
       }
     } else if (!('$ref' in schema)) {
-      schema.description = field.documentation
+      (schema as SchemaObject).description = field.documentation
     }
   }
 
