@@ -86,7 +86,7 @@ export function generateScalarUIHandler(options: {
       fields: idx.fields,
     }))
 
-  return `import type { Context } from 'hono'
+  return `import { Request, Response } from 'express'
 import { buildModelOpenApi } from '../buildModelOpenApi'
 import type { RouteConfig } from '../routeConfig'
 import { OPERATION_DEFS, isOperationEnabled } from '../operationDefinitions'
@@ -1359,19 +1359,19 @@ function renderDocs(modelName: string, config: DocsConfig) {
 }
 
 export function ${modelName}Docs(config: DocsConfig = {}) {
-  return (c: Context) => {
+  return (req: Request, res: Response) => {
     const disabled = isOpenApiDisabled(config.disableOpenApi)
-    if (disabled) return c.text('OpenAPI documentation is disabled in production', 404)
+    if (disabled) return res.status(404).send('OpenAPI documentation is disabled in production')
 
-    const rawUi = c.req.query('ui') || config.docsUi || 'docs'
+    const rawUi = (req.query['ui'] as string | undefined) || config.docsUi || 'docs'
     const validUis: DocsUI[] = ['docs', 'scalar', 'json', 'yaml', 'playground']
     const ui: DocsUI = validUis.includes(rawUi as DocsUI) ? (rawUi as DocsUI) : 'docs'
 
     if (ui === 'playground') {
       if (!isPlaygroundAvailable(config)) {
-        return c.text('Query builder is disabled', 404)
+        return res.status(404).send('Query builder is disabled')
       }
-      return c.html(renderPlayground('${modelName}', config))
+      return res.type('html').send(renderPlayground('${modelName}', config))
     }
 
     if (ui === 'yaml') {
@@ -1382,7 +1382,7 @@ export function ${modelName}Docs(config: DocsConfig = {}) {
         config,
         { format: 'yaml' }
       )
-      return c.text(yaml as string, 200, { 'Content-Type': 'application/yaml' })
+      return res.type('application/yaml').send(yaml as string)
     }
 
     const spec = buildModelOpenApi(
@@ -1393,16 +1393,16 @@ export function ${modelName}Docs(config: DocsConfig = {}) {
       { format: 'json' }
     )
 
-    if (ui === 'json') return c.json(spec)
+    if (ui === 'json') return res.json(spec)
 
     const pageTitle = config.docsTitle || \`${modelName} API\`
 
     if (ui === 'scalar') {
-      return c.html(renderScalar('${modelName}', spec, pageTitle, config.scalarCdnUrl))
+      return res.type('html').send(renderScalar('${modelName}', spec, pageTitle, config.scalarCdnUrl))
     }
 
     const html = renderDocs('${modelName}', config)
-    return c.html(html)
+    return res.type('html').send(html)
   }
 }
 `

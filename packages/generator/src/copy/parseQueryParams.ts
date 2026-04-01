@@ -48,7 +48,7 @@ export const parseQueryParams = (params: QueryParams): unknown => {
       if (typeof raw === 'string') {
         parsedParams[key] = parseQueryValue(raw, key)
       } else {
-        parsedParams[key] = raw
+        parsedParams[key] = sanitizeKeys(raw)
       }
     }
     return parsedParams

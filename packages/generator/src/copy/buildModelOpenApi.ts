@@ -214,13 +214,20 @@ function generateOperationSchemas(
     }
   })
 
+  const relationFkFields = new Set(
+    fields
+      .filter((f) => f.kind === 'object' && f.relationFromFields?.length)
+      .flatMap((f) => f.relationFromFields!),
+  )
+
   const requiredScalars = fields
     .filter(
       (f) =>
         (f.kind === 'scalar' || f.kind === 'enum') &&
         f.isRequired &&
         !f.hasDefaultValue &&
-        !f.isUpdatedAt,
+        !f.isUpdatedAt &&
+        !relationFkFields.has(f.name),
     )
     .map((f) => f.name)
 

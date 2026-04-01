@@ -4,7 +4,7 @@ export function generateUnifiedDocs(models: string[]): string {
     .join('\n')
 
   return `${imports}
-import { Request, Response, RequestHandler } from 'express'
+import { Request, Response } from 'express'
 import type { RouteConfig } from './routeConfig'
 
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>

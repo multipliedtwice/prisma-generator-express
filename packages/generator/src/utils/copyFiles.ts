@@ -2,16 +2,7 @@ import { GeneratorOptions } from '@prisma/generator-helper'
 import * as fs from 'fs'
 import * as path from 'path'
 
-export interface CopyFilesConfig {
-  includeCacheUtils?: boolean
-  includeValidatorUtils?: boolean
-}
-
-export async function copyFiles(
-  options: GeneratorOptions,
-  config?: CopyFilesConfig,
-): Promise<void> {
-  const copyConfig = config || {}
+export async function copyFiles(options: GeneratorOptions): Promise<void> {
   const outputPath = options.generator.output?.value
   if (!outputPath) return
 
@@ -34,20 +25,6 @@ export async function copyFiles(
     if (!ok) allCopied = false
   }
 
-  if (copyConfig.includeCacheUtils) {
-    const ok = await copyFile(srcDir, outputPath, 'cacheManager.ts', {
-      required: true,
-    })
-    if (!ok) allCopied = false
-  }
-
-  if (copyConfig.includeValidatorUtils) {
-    const ok = await copyFile(srcDir, outputPath, 'inputValidator.ts', {
-      required: true,
-    })
-    if (!ok) allCopied = false
-  }
-
   const clientDir = path.join(outputPath, 'client')
   if (!fs.existsSync(clientDir)) {
     fs.mkdirSync(clientDir, { recursive: true })
@@ -60,7 +37,7 @@ export async function copyFiles(
     'encodeQueryParams.ts',
     {
       required: true,
-      importRewrites: [{ from: '../copy/misc', to: '../misc' }],
+      importRewrites: [{ from: '../copy/misc.js', to: '../misc.js' }],
     },
   )
   if (!clientOk) allCopied = false

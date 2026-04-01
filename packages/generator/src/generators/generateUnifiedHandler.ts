@@ -13,7 +13,7 @@ export function generateUnifiedHandler(options: UnifiedHandlerOptions): string {
     prismaImportStatement.match(/from ['"](.+?)['"]/)?.[1] || ''
 
   return `
-import { Prisma, PrismaClient } from '${importPath}'
+import { PrismaClient } from '${importPath}'
 import { Request, Response, NextFunction } from 'express'
 import { sanitizeKeys } from '../misc'
 
@@ -348,10 +348,14 @@ function generateWriteHandlers(
     method: string
     requiredFields?: string[]
   }[] = [
-    { name: 'Create', method: 'create' },
-    { name: 'CreateMany', method: 'createMany' },
-    { name: 'CreateManyAndReturn', method: 'createManyAndReturn' },
-    { name: 'Update', method: 'update' },
+    { name: 'Create', method: 'create', requiredFields: ['data'] },
+    { name: 'CreateMany', method: 'createMany', requiredFields: ['data'] },
+    {
+      name: 'CreateManyAndReturn',
+      method: 'createManyAndReturn',
+      requiredFields: ['data'],
+    },
+    { name: 'Update', method: 'update', requiredFields: ['where', 'data'] },
     {
       name: 'UpdateMany',
       method: 'updateMany',
@@ -362,9 +366,13 @@ function generateWriteHandlers(
       method: 'updateManyAndReturn',
       requiredFields: ['where', 'data'],
     },
-    { name: 'Delete', method: 'delete' },
+    { name: 'Delete', method: 'delete', requiredFields: ['where'] },
     { name: 'DeleteMany', method: 'deleteMany', requiredFields: ['where'] },
-    { name: 'Upsert', method: 'upsert' },
+    {
+      name: 'Upsert',
+      method: 'upsert',
+      requiredFields: ['where', 'create', 'update'],
+    },
   ]
 
   return (
