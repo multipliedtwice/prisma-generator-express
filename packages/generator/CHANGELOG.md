@@ -1,3 +1,10 @@
+## [1.26.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.26.0...v1.26.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* **generator:** change type assertion from Error to any for error handling to avoid type errors and improve flexibility in error processing ([4157773](https://github.com/multipliedtwice/prisma-generator-express/commit/4157773769b13a2324ea11c07736eaad77d47797))
+
 # [1.26.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.25.1...v1.26.0) (2026-04-01)
 
 ## [1.25.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.25.0...v1.25.1) (2026-04-01)
