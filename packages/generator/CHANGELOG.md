@@ -1,3 +1,10 @@
+# [1.25.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.24.0...v1.25.0) (2026-04-01)
+
+
+### Features
+
+* fix build ([d1878b4](https://github.com/multipliedtwice/prisma-generator-express/commit/d1878b4d99df6b305d09e038c2d48cd494c744ea))
+
 # [1.24.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.23.0...v1.24.0) (2026-04-01)
 
 
