@@ -125,49 +125,83 @@ async function getExtendedClient(req: Request): Promise<PrismaClient> {
 
 function handleError(error: unknown, next: NextFunction): void {
   if (error instanceof HttpError) {
-    next(error)
-    return
+    next(error);
+    return;
   }
 
-  if (error && typeof error === 'object' && 'name' in error && error.name === 'ShapeError') {
-    next(new HttpError(400, (error as Error).message))
-    return
+  if (
+    error &&
+    typeof error === "object" &&
+    "name" in error &&
+    error.name === "ShapeError"
+  ) {
+    next(new HttpError(400, (error as Error).message));
+    return;
   }
 
-  if (error && typeof error === 'object' && 'name' in error && error.name === 'CallerError') {
-    next(new HttpError(400, (error as Error).message))
-    return
+  if (
+    error &&
+    typeof error === "object" &&
+    "name" in error &&
+    error.name === "CallerError"
+  ) {
+    next(new HttpError(400, (error as Error).message));
+    return;
   }
 
-  if (error && typeof error === 'object' && 'name' in error && error.name === 'PolicyError') {
-    next(new HttpError(403, (error as Error).message))
-    return
+  if (
+    error &&
+    typeof error === "object" &&
+    "name" in error &&
+    error.name === "PolicyError"
+  ) {
+    next(new HttpError(403, (error as Error).message));
+    return;
   }
 
-  if (error && typeof error === 'object' && 'code' in error) {
-    const code = (error as any).code as string
-    const mapped = PRISMA_ERROR_MAP[code]
+  if (
+    error &&
+    typeof error === "object" &&
+    "issues" in error &&
+    "name" in error &&
+    (error as any).name === "ZodError"
+  ) {
+    const issues = (error as any).issues;
+    const message = Array.isArray(issues)
+      ? issues.map((i: any) => i.message).join("; ")
+      : (error as Error).message;
+    next(new HttpError(400, message));
+    return;
+  }
+
+  if (error && typeof error === "object" && "code" in error) {
+    const code = (error as any).code as string;
+    const mapped = PRISMA_ERROR_MAP[code];
     if (mapped) {
-      next(new HttpError(mapped.status, mapped.message))
-      return
+      next(new HttpError(mapped.status, mapped.message));
+      return;
     }
-    if (typeof code === 'string' && code.startsWith('P')) {
-      console.warn('[prisma-generator-express] Unmapped Prisma error code:', code, (error as any).message || '')
-      next(new HttpError(500, 'Database operation failed'))
-      return
-    }
-  }
-
-  if (error && typeof error === 'object' && 'name' in error) {
-    const name = (error as any).name
-    if (name === 'PrismaClientValidationError') {
-      next(new HttpError(400, 'Invalid query parameters'))
-      return
+    if (typeof code === "string" && code.startsWith("P")) {
+      console.warn(
+        "[prisma-generator-express] Unmapped Prisma error code:",
+        code,
+        (error as any).message || "",
+      );
+      next(new HttpError(500, "Database operation failed"));
+      return;
     }
   }
 
-  console.error('[prisma-generator-express] Unhandled error:', error)
-  next(new HttpError(500, 'Internal server error'))
+  if (error && typeof error === "object" && "name" in error) {
+    const name = (error as any).name;
+    if (name === "PrismaClientValidationError") {
+      next(new HttpError(400, "Invalid query parameters"));
+      return;
+    }
+  }
+
+  console.error("[prisma-generator-express] Unhandled error:", error);
+  next(new HttpError(500, "Internal server error"));
 }
 
 function safeParseBody(req: Request): Record<string, any> {
