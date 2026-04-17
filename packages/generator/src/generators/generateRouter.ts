@@ -140,7 +140,7 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
   if (qbEnabled) {
     const qbConfig = getQueryBuilderConfig(config)
     if (qbConfig) {
-      import('../queryBuilder.js').then(mod => mod.startQueryBuilder(qbConfig)).catch((err) => { if (_env.NODE_ENV !== 'production') console.warn('[query-builder]', err) })
+      try { require('../queryBuilder').startQueryBuilder(qbConfig) } catch (err) { if (_env.NODE_ENV !== 'production') console.warn('[query-builder]', err) }
     }
   }
 
