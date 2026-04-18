@@ -418,6 +418,7 @@ const projectConfig = {
 ```
 
 A request with `{ where: { title: { contains: 'demo' } } }` produces:
+
 ```
 WHERE status = 'published'
   AND isDeleted = false
@@ -484,7 +485,7 @@ const userConfig = {
 
 The client can filter by `title` inside the relation, but `published = true` is always enforced.
 
-### Select, include, and omit in shapes
+### Select and include in shapes
 
 Shapes can restrict which response fields and relations the client may request:
 ```ts
@@ -512,6 +513,10 @@ const userConfig = {
 The client can only select from the whitelisted fields and relations. Attempting to select unlisted fields (e.g. `passwordHash`) is rejected.
 
 `select` and `include` are mutually exclusive at the same level in both the shape and the client request.
+
+For read operations, the shape's `select` or `include` serves two roles: it whitelists what the client is allowed to request, and it provides the default projection when the client omits `select`/`include` from the request. If the client sends a request without `select` or `include`, the shape's projection is automatically applied — the client does not need to duplicate the field list. If the client does send `select` or `include`, it is validated against the shape as a whitelist.
+
+This means a single shape declaration like the example above defines both the security boundary (which fields are allowed) and the default API response shape (which fields are returned when the client doesn't specify).
 
 ### Nested include with forced where and pagination
 
@@ -572,6 +577,8 @@ const userConfig = {
 ```
 
 The client can include `include` or `select` in the request body. If the shape does not define projection, the client cannot request one. Batch methods (`createMany`, `updateMany`, `deleteMany`) do not support projection.
+
+For mutations, projection shapes only validate and constrain client-requested projections by default — if the client omits `select`/`include`, Prisma returns the full record. This differs from read operations, where the shape's projection is automatically applied as default. Enable `enforceProjection` in the prisma-guard generator config to always apply mutation projection shapes.
 
 ### Upsert
 
@@ -796,7 +803,7 @@ app.listen(3000)
 In this setup:
 
 - Admins can filter by any allowed field, include relations, and take up to 200 rows
-- Viewers can only see published, non-deleted projects with a restricted field set
+- Viewers can only see published, non-deleted projects with a restricted field set — the `select` shape automatically applies as the default projection, so viewer clients don't need to send `select` in the request
 - Create: admins set any allowed field; viewers always create drafts with priority 1
 - Delete: only admins can delete; viewers hitting the delete endpoint get a `CallerError` because there is no `viewer` shape for delete
 - Tenant isolation is automatic — every query is scoped to the tenant from `x-tenant-id`
@@ -854,6 +861,8 @@ Read and single-record write operations support three response shaping parameter
 `select` and `include` cannot be used together at the same level. `select` and `omit` cannot be used together at the same level. `omit` can be combined with `include`.
 
 The `omit` parameter requires Prisma 6.2.0+. On versions 6.0.x–6.1.x, requests using `omit` return 400.
+
+When using guard shapes, the shape's `select` or `include` defines both the whitelist and the default projection for read operations. See [Select and include in shapes](#select-and-include-in-shapes).
 
 ## BigInt and Decimal handling
 
