@@ -1,3 +1,10 @@
+## [1.34.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.34.2...v1.34.3) (2026-04-19)
+
+
+### Bug Fixes
+
+* remove .js from imports ([1e801a8](https://github.com/multipliedtwice/prisma-generator-express/commit/1e801a8228c9e07f0df5ec08ee179f3d1b81f8f6))
+
 ## [1.34.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.34.1...v1.34.2) (2026-04-19)
 
 
