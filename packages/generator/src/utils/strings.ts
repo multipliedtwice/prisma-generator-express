@@ -3,5 +3,8 @@ export const capitalize = (str: string) =>
 
 export function toCamelCase(str: string) {
   if (!str) return str
-  return str.charAt(0).toLowerCase() + str.slice(1)
+  return str
+    .split('_')
+    .map((part, i) => i === 0 ? part.toLowerCase() : capitalize(part))
+    .join('')
 }

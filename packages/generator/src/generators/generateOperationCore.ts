@@ -416,7 +416,7 @@ export async function ${op}(ctx: OperationContext): Promise<unknown> {
       method: 'updateManyAndReturn',
       requiredFields: ['where', 'data'],
     },
-    { name: 'delete', method: 'delete', requiredFields: ['where'] },
+    { name: 'deleteUnique', method: 'delete', requiredFields: ['where'] },
     {
       name: 'deleteMany',
       method: 'deleteMany',

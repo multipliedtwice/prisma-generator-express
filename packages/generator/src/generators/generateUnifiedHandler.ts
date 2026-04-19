@@ -1,7 +1,16 @@
 import { DMMF } from '@prisma/generator-helper'
+import { toCamelCase } from '../utils/strings.js'
 
 export interface UnifiedHandlerOptions {
   model: DMMF.Model
+}
+
+const CORE_NAME_MAP: Record<string, string> = {
+  delete: 'deleteUnique',
+}
+
+function coreFnName(op: string): string {
+  return CORE_NAME_MAP[op] || op
 }
 
 const ALL_OPS = [
@@ -27,9 +36,10 @@ const ALL_OPS = [
 
 export function generateUnifiedHandler(options: UnifiedHandlerOptions): string {
   const modelName = options.model.name
+  const prefix = toCamelCase(modelName)
 
   const handlers = ALL_OPS.map((op) => {
-    const exportName = `${modelName}${op.charAt(0).toUpperCase() + op.slice(1)}`
+    const exportName = `${prefix}${op.charAt(0).toUpperCase() + op.slice(1)}`
 
     return `
 export async function ${exportName}(
@@ -38,7 +48,7 @@ export async function ${exportName}(
   next: NextFunction,
 ) {
   try {
-    res.locals.data = await core.${op}(buildContext(req, res))
+    res.locals.data = await core.${coreFnName(op)}(buildContext(req, res))
     next()
   } catch (error: unknown) {
     next(mapError(error))

@@ -1,4 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
+import { toCamelCase } from '../utils/strings.js'
 
 export function generateRouterFunction({
   model,
@@ -10,8 +11,9 @@ export function generateRouterFunction({
   relativeClientPath: string
 }): string {
   const modelName = model.name
+  const prefix = toCamelCase(modelName)
   const modelNameLower = modelName.toLowerCase()
-  const routerFunctionName = `${modelName}Router`
+  const routerFunctionName = `${prefix}Router`
 
   const fieldsMeta = model.fields.map((f) => ({
     name: f.name,
@@ -39,24 +41,24 @@ export function generateRouterFunction({
   return `import express, { Request, Response, NextFunction, RequestHandler } from 'express'
 import type { PrismaClient } from '${relativeClientPath}'
 import {
-  ${modelName}FindUnique,
-  ${modelName}FindUniqueOrThrow,
-  ${modelName}FindFirst,
-  ${modelName}FindFirstOrThrow,
-  ${modelName}FindMany,
-  ${modelName}FindManyPaginated,
-  ${modelName}Create,
-  ${modelName}CreateMany,
-  ${modelName}CreateManyAndReturn,
-  ${modelName}Update,
-  ${modelName}UpdateMany,
-  ${modelName}UpdateManyAndReturn,
-  ${modelName}Upsert,
-  ${modelName}Delete,
-  ${modelName}DeleteMany,
-  ${modelName}Aggregate,
-  ${modelName}Count,
-  ${modelName}GroupBy
+  ${prefix}FindUnique,
+  ${prefix}FindUniqueOrThrow,
+  ${prefix}FindFirst,
+  ${prefix}FindFirstOrThrow,
+  ${prefix}FindMany,
+  ${prefix}FindManyPaginated,
+  ${prefix}Create,
+  ${prefix}CreateMany,
+  ${prefix}CreateManyAndReturn,
+  ${prefix}Update,
+  ${prefix}UpdateMany,
+  ${prefix}UpdateManyAndReturn,
+  ${prefix}Upsert,
+  ${prefix}Delete,
+  ${prefix}DeleteMany,
+  ${prefix}Aggregate,
+  ${prefix}Count,
+  ${prefix}GroupBy
 } from './${modelName}Handlers.js'
 import type { RouteConfig } from '../routeConfig.target.js'
 import { parseQueryParams } from '../parseQueryParams.js'
@@ -191,126 +193,126 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
     const opConfig = config.findFirst || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/first\` : '/first'
-    router.get(path, parseQuery, setShape(opConfig), ...before, ${modelName}FindFirst as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindFirst as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.findFirstOrThrow) {
     const opConfig = config.findFirstOrThrow || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/first/strict\` : '/first/strict'
-    router.get(path, parseQuery, setShape(opConfig), ...before, ${modelName}FindFirstOrThrow as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindFirstOrThrow as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.findManyPaginated) {
     const opConfig = config.findManyPaginated || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/paginated\` : '/paginated'
-    router.get(path, parseQuery, setShape(opConfig), ...before, ${modelName}FindManyPaginated as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindManyPaginated as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.aggregate) {
     const opConfig = config.aggregate || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/aggregate\` : '/aggregate'
-    router.get(path, parseQuery, setShape(opConfig), ...before, ${modelName}Aggregate as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}Aggregate as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.count) {
     const opConfig = config.count || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/count\` : '/count'
-    router.get(path, parseQuery, setShape(opConfig), ...before, ${modelName}Count as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}Count as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.groupBy) {
     const opConfig = config.groupBy || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/groupby\` : '/groupby'
-    router.get(path, parseQuery, setShape(opConfig), ...before, ${modelName}GroupBy as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}GroupBy as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.findUniqueOrThrow) {
     const opConfig = config.findUniqueOrThrow || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/unique/strict\` : '/unique/strict'
-    router.get(path, parseQuery, setShape(opConfig), ...before, ${modelName}FindUniqueOrThrow as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindUniqueOrThrow as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.findUnique) {
     const opConfig = config.findUnique || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/unique\` : '/unique'
-    router.get(path, parseQuery, setShape(opConfig), ...before, ${modelName}FindUnique as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindUnique as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.findMany) {
     const opConfig = config.findMany || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
-    router.get(path, parseQuery, setShape(opConfig), ...before, ${modelName}FindMany as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindMany as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.createManyAndReturn) {
     const opConfig = config.createManyAndReturn || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    router.post(path, setShape(opConfig), ...before, ${modelName}CreateManyAndReturn as RequestHandler, ...after, respondCreated)
+    router.post(path, setShape(opConfig), ...before, ${prefix}CreateManyAndReturn as RequestHandler, ...after, respondCreated)
   }
 
   if (config.enableAll || config.createMany) {
     const opConfig = config.createMany || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    router.post(path, setShape(opConfig), ...before, ${modelName}CreateMany as RequestHandler, ...after, respondCreated)
+    router.post(path, setShape(opConfig), ...before, ${prefix}CreateMany as RequestHandler, ...after, respondCreated)
   }
 
   if (config.enableAll || config.create) {
     const opConfig = config.create || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
-    router.post(path, setShape(opConfig), ...before, ${modelName}Create as RequestHandler, ...after, respondCreated)
+    router.post(path, setShape(opConfig), ...before, ${prefix}Create as RequestHandler, ...after, respondCreated)
   }
 
   if (config.enableAll || config.updateManyAndReturn) {
     const opConfig = config.updateManyAndReturn || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    router.put(path, setShape(opConfig), ...before, ${modelName}UpdateManyAndReturn as RequestHandler, ...after, respond)
+    router.put(path, setShape(opConfig), ...before, ${prefix}UpdateManyAndReturn as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.updateMany) {
     const opConfig = config.updateMany || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    router.put(path, setShape(opConfig), ...before, ${modelName}UpdateMany as RequestHandler, ...after, respond)
+    router.put(path, setShape(opConfig), ...before, ${prefix}UpdateMany as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.update) {
     const opConfig = config.update || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
-    router.put(path, setShape(opConfig), ...before, ${modelName}Update as RequestHandler, ...after, respond)
+    router.put(path, setShape(opConfig), ...before, ${prefix}Update as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.upsert) {
     const opConfig = config.upsert || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
-    router.patch(path, setShape(opConfig), ...before, ${modelName}Upsert as RequestHandler, ...after, respond)
+    router.patch(path, setShape(opConfig), ...before, ${prefix}Upsert as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.deleteMany) {
     const opConfig = config.deleteMany || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    router.delete(path, setShape(opConfig), ...before, ${modelName}DeleteMany as RequestHandler, ...after, respond)
+    router.delete(path, setShape(opConfig), ...before, ${prefix}DeleteMany as RequestHandler, ...after, respond)
   }
 
   if (config.enableAll || config.delete) {
     const opConfig = config.delete || defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
-    router.delete(path, setShape(opConfig), ...before, ${modelName}Delete as RequestHandler, ...after, respond)
+    router.delete(path, setShape(opConfig), ...before, ${prefix}Delete as RequestHandler, ...after, respond)
   }
 
   router.use((err: any, _req: Request, res: Response, next: NextFunction) => {
