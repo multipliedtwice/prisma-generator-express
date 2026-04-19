@@ -1,3 +1,10 @@
+# [1.32.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.31.0...v1.32.0) (2026-04-19)
+
+
+### Features
+
+* **generator:** add routeConfig for express and fastify to support multiple frameworks ([9f77487](https://github.com/multipliedtwice/prisma-generator-express/commit/9f7748708827f055648d5d30e6bc08abb1621319))
+
 # [1.31.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.30.0...v1.31.0) (2026-04-19)
 
 
