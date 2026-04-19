@@ -1,59 +1,45 @@
 import { GeneratorOptions } from '@prisma/generator-helper'
 import * as fs from 'fs'
 import * as path from 'path'
+import { Target } from '../constants.js'
 
-export async function copyFiles(options: GeneratorOptions): Promise<void> {
-  const outputPath = options.generator.output?.value
-  if (!outputPath) return
+const SHARED_FILES = [
+  'parseQueryParams.ts',
+  'buildModelOpenApi.ts',
+  'operationDefinitions.ts',
+  'misc.ts',
+  'docsRenderer.ts',
+]
 
-  const srcDir = path.join(__dirname, '..', '..', 'src', 'copy')
+const TARGET_FILES: Record<Target, string[]> = {
+  express: ['routeConfig.ts'],
+  fastify: ['routeConfig.ts'],
+}
 
-  const baseFiles = [
-    'routeConfig.ts',
-    'parseQueryParams.ts',
-    'buildModelOpenApi.ts',
-    'operationDefinitions.ts',
-    'misc.ts',
-  ]
+function resolveTemplateDir(subpath: string): string {
+  const fromSibling = path.join(__dirname, '..', subpath)
+  if (fs.existsSync(fromSibling)) return fromSibling
 
-  let allCopied = true
+  const fromSrc = path.join(__dirname, '..', '..', 'src', subpath)
+  if (fs.existsSync(fromSrc)) return fromSrc
 
-  console.log(`Copying utility files to: ${outputPath}`)
-
-  for (const file of baseFiles) {
-    const ok = await copyFile(srcDir, outputPath, file, { required: true })
-    if (!ok) allCopied = false
-  }
-
-  const clientDir = path.join(outputPath, 'client')
-  if (!fs.existsSync(clientDir)) {
-    fs.mkdirSync(clientDir, { recursive: true })
-  }
-
-  const clientSrcDir = path.join(__dirname, '..', '..', 'src', 'client')
-  const clientOk = await copyFile(
-    clientSrcDir,
-    clientDir,
-    'encodeQueryParams.ts',
-    {
-      required: true,
-      importRewrites: [{ from: '../copy/misc.js', to: '../misc.js' }],
-    },
+  throw new Error(
+    `Template directory "${subpath}" not found. Searched:\n  ${fromSibling}\n  ${fromSrc}\nEnsure template files are included in the published package.`,
   )
-  if (!clientOk) allCopied = false
+}
 
-  if (allCopied) {
-    console.log(`✓ Utility files copied successfully`)
-  } else {
-    throw new Error(
-      'One or more required utility files could not be copied. Generation aborted.',
-    )
-  }
+function getTargetSourceDir(copyBase: string, target: Target): string {
+  if (target === 'express') return copyBase
+  return path.join(copyBase, target)
 }
 
 interface CopyFileOptions {
   required?: boolean
   importRewrites?: Array<{ from: string; to: string }>
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 async function copyFile(
@@ -106,6 +92,54 @@ async function copyFile(
   return true
 }
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+export async function copyFiles(
+  options: GeneratorOptions,
+  target: Target,
+): Promise<void> {
+  const outputPath = options.generator.output?.value
+  if (!outputPath) return
+
+  const copyBase = resolveTemplateDir('copy')
+
+  let allCopied = true
+
+  console.log(`  Copying utility files to: ${outputPath} (target: ${target})`)
+
+  for (const file of SHARED_FILES) {
+    const ok = await copyFile(copyBase, outputPath, file, { required: true })
+    if (!ok) allCopied = false
+  }
+
+  const targetSrcDir = getTargetSourceDir(copyBase, target)
+  for (const file of TARGET_FILES[target]) {
+    const ok = await copyFile(targetSrcDir, outputPath, file, {
+      required: true,
+    })
+    if (!ok) allCopied = false
+  }
+
+  const clientDir = path.join(outputPath, 'client')
+  if (!fs.existsSync(clientDir)) {
+    fs.mkdirSync(clientDir, { recursive: true })
+  }
+
+  const clientSrcDir = resolveTemplateDir('client')
+  const clientOk = await copyFile(
+    clientSrcDir,
+    clientDir,
+    'encodeQueryParams.ts',
+    {
+      required: true,
+      importRewrites: [{ from: '../copy/misc.js', to: '../misc.js' }],
+    },
+  )
+  if (!clientOk) allCopied = false
+
+  if (allCopied) {
+    console.log(`  ✓ Utility files copied successfully`)
+  } else {
+    throw new Error(
+      'One or more required utility files could not be copied. Generation aborted.',
+    )
+  }
 }

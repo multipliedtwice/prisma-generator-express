@@ -41,6 +41,10 @@ export async function writeFileSafely({
       filePath = path.join(outputPath, 'queryBuilder.ts')
       break
 
+    case 'operationRuntime':
+      filePath = path.join(outputPath, 'operationRuntime.ts')
+      break
+
     default:
       if (!model) {
         throw new Error(`Model required for operation: ${operation}`)

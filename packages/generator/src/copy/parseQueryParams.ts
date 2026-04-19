@@ -9,6 +9,8 @@ type QueryParams =
 
 const NUMERIC_KEYS = new Set(['take', 'skip'])
 
+const INTEGER_RE = /^-?\d+$/
+
 const parseQueryValue = (value: string, key?: string): unknown => {
   if (value.startsWith('{') || value.startsWith('[') || value.startsWith('"')) {
     try {
@@ -21,14 +23,8 @@ const parseQueryValue = (value: string, key?: string): unknown => {
   if (value === 'true') return true
   if (value === 'false') return false
   if (value === 'null') return null
-  if (
-    key &&
-    NUMERIC_KEYS.has(key) &&
-    value !== '' &&
-    !isNaN(Number(value)) &&
-    isFinite(Number(value))
-  ) {
-    return Number(value)
+  if (key && NUMERIC_KEYS.has(key) && INTEGER_RE.test(value)) {
+    return parseInt(value, 10)
   }
   return value
 }

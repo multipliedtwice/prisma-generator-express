@@ -4,17 +4,31 @@ import {
   DMMF,
 } from '@prisma/generator-helper'
 import { generateUnifiedHandler } from './generators/generateUnifiedHandler.js'
+import { generateFastifyHandler } from './generators/generateFastifyHandler.js'
 import { generateRouterFunction } from './generators/generateRouter.js'
+import { generateFastifyRouterFunction } from './generators/generateRouterFastify.js'
 import { generateScalarUIHandler } from './generators/generateUnifiedScalarUI.js'
 import { generateUnifiedDocs } from './generators/generateUnifiedDocs.js'
 import { generateQueryBuilderHelper } from './generators/generateQueryBuilderHelper.js'
+import {
+  generateOperationRuntime,
+  generateModelCore,
+} from './generators/generateOperationCore.js'
 import {
   generateImportPrismaStatement,
   getRelativeClientPath,
 } from './generators/generateImportPrismaStatement.js'
 import { writeFileSafely } from './utils/writeFileSafely.js'
 import { copyFiles } from './utils/copyFiles.js'
-import { GENERATOR_NAME } from './constants.js'
+import { GENERATOR_NAME, Target } from './constants.js'
+
+function getTarget(options: GeneratorOptions): Target {
+  const raw = String(
+    (options.generator.config as Record<string, unknown>).target ?? 'express',
+  ).toLowerCase()
+  if (raw === 'express' || raw === 'fastify') return raw
+  throw new Error(`Invalid target "${raw}". Expected "express" or "fastify".`)
+}
 
 generatorHandler({
   onManifest() {
@@ -26,13 +40,28 @@ generatorHandler({
   },
 
   async onGenerate(options: GeneratorOptions) {
-    const prismaImportStatement = generateImportPrismaStatement(options)
+    const target = getTarget(options)
 
-    console.log('\n═══ Prisma Generator Express ═══')
+    console.log(`\n═══ Prisma Generator (${target.toUpperCase()}) ═══`)
+    console.log(`  Target: ${target}`)
 
-    await copyFiles(options)
+    await copyFiles(options, target)
+
+    await writeFileSafely({
+      content: generateOperationRuntime(),
+      options,
+      operation: 'operationRuntime',
+    })
 
     const modelNames: string[] = []
+
+    const generateHandler =
+      target === 'fastify' ? generateFastifyHandler : generateUnifiedHandler
+
+    const generateRouter =
+      target === 'fastify'
+        ? generateFastifyRouterFunction
+        : generateRouterFunction
 
     for (const model of options.dmmf.datamodel.models) {
       if (
@@ -48,9 +77,15 @@ generatorHandler({
       const relativeClientPath = getRelativeClientPath(options, model.name)
 
       await writeFileSafely({
-        content: generateUnifiedHandler({
+        content: generateModelCore({ model: model as DMMF.Model }),
+        options,
+        model: model as DMMF.Model,
+        operation: 'Core',
+      })
+
+      await writeFileSafely({
+        content: generateHandler({
           model: model as DMMF.Model,
-          prismaImportStatement,
         }),
         options,
         model: model as DMMF.Model,
@@ -58,7 +93,7 @@ generatorHandler({
       })
 
       await writeFileSafely({
-        content: generateRouterFunction({
+        content: generateRouter({
           model: model as DMMF.Model,
           enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
           relativeClientPath,
@@ -72,6 +107,7 @@ generatorHandler({
         content: generateScalarUIHandler({
           model: model as DMMF.Model,
           enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
+          target,
         }),
         options,
         model: model as DMMF.Model,
@@ -80,7 +116,7 @@ generatorHandler({
     }
 
     await writeFileSafely({
-      content: generateUnifiedDocs(modelNames),
+      content: generateUnifiedDocs(modelNames, target),
       options,
       operation: 'combinedDocs',
     })
@@ -92,7 +128,7 @@ generatorHandler({
     })
 
     console.log('\n═══ Generation Complete ═══')
-    console.log(`✓ ${modelNames.length} models`)
+    console.log(`✓ ${modelNames.length} models (${target})`)
     console.log(`✓ OpenAPI documentation generated`)
     console.log(`✓ Query builder helper generated`)
     console.log('')

@@ -12,6 +12,7 @@ import { createRequire } from 'module'
 import type { ChildProcess } from 'child_process'
 
 let _process: ChildProcess | null = null
+let _starting: Promise<void> | null = null
 let _stopping = false
 let _cleanupRegistered = false
 
@@ -43,90 +44,105 @@ function findCliPath(): string | null {
 }
 
 export function startQueryBuilder(options: QueryBuilderOptions = {}): void {
-  if (_process) return
+  if (_process || _starting) return
 
-  const env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
+  _starting = doStart(options)
+  _starting.finally(() => { _starting = null })
+}
 
-  if (env.NODE_ENV === 'production') return
+function doStart(options: QueryBuilderOptions): Promise<void> {
+  return new Promise<void>((resolvePromise) => {
+    const env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 
-  const cliPath = findCliPath()
-  if (!cliPath) {
-    console.warn('[query-builder] prisma-query-builder-ui not found. Install: npm install prisma-query-builder-ui')
-    return
-  }
-
-  const port = options.port || 5173
-  const host = options.host || 'localhost'
-  const schemaPath = options.schemaPath || ${schemaPath}
-  const databaseUrl = options.databaseUrl || env.DATABASE_URL || ''
-
-  if (!existsSync(schemaPath)) {
-    console.error('[query-builder] Schema file not found: ' + schemaPath)
-    return
-  }
-
-  let schemaContent: string
-  try {
-    schemaContent = readFileSync(schemaPath, 'utf-8')
-  } catch (err) {
-    console.error('[query-builder] Failed to read schema:', err)
-    return
-  }
-
-  const schemaCwd = dirname(resolve(schemaPath))
-
-  _process = spawn(process.execPath, [cliPath], {
-    stdio: 'inherit',
-    env: {
-      ...env,
-      PORT: String(port),
-      HOST: host,
-      PRISMA_QUERY_BUILDER_MODE: 'embedded',
-      DISABLE_PERSISTENCE: 'true',
-      PRISMA_QUERY_BUILDER_SCHEMA_CONTENT: schemaContent,
-      PRISMA_QUERY_BUILDER_CWD: schemaCwd,
-      DATABASE_URL: databaseUrl,
-    },
-  })
-
-  _process.on('error', (err) => {
-    console.error('[query-builder] Failed to start:', err.message)
-    _process = null
-  })
-
-  _process.on('exit', (code) => {
-    const wasStopping = _stopping
-    _stopping = false
-    _process = null
-    if (!wasStopping && code !== 0) {
-      console.warn('[query-builder] Process exited with code ' + code)
+    if (env.NODE_ENV === 'production') {
+      resolvePromise()
+      return
     }
-  })
 
-  if (!_cleanupRegistered) {
-    _cleanupRegistered = true
+    const cliPath = findCliPath()
+    if (!cliPath) {
+      console.warn('[query-builder] prisma-query-builder-ui not found. Install: npm install prisma-query-builder-ui')
+      resolvePromise()
+      return
+    }
 
-    process.on('exit', () => {
-      stopQueryBuilder()
+    const port = options.port || 5173
+    const host = options.host || 'localhost'
+    const schemaPath = options.schemaPath || ${schemaPath}
+    const databaseUrl = options.databaseUrl || env.DATABASE_URL || ''
+
+    if (!existsSync(schemaPath)) {
+      console.error('[query-builder] Schema file not found: ' + schemaPath)
+      resolvePromise()
+      return
+    }
+
+    let schemaContent: string
+    try {
+      schemaContent = readFileSync(schemaPath, 'utf-8')
+    } catch (err) {
+      console.error('[query-builder] Failed to read schema:', err)
+      resolvePromise()
+      return
+    }
+
+    const schemaCwd = dirname(resolve(schemaPath))
+
+    _process = spawn(process.execPath, [cliPath], {
+      stdio: 'inherit',
+      env: {
+        ...env,
+        PORT: String(port),
+        HOST: host,
+        PRISMA_QUERY_BUILDER_MODE: 'embedded',
+        DISABLE_PERSISTENCE: 'true',
+        PRISMA_QUERY_BUILDER_SCHEMA_CONTENT: schemaContent,
+        PRISMA_QUERY_BUILDER_CWD: schemaCwd,
+        DATABASE_URL: databaseUrl,
+      },
     })
 
-    const handleSigint = () => {
-      stopQueryBuilder()
-      process.removeListener('SIGINT', handleSigint)
-      process.kill(process.pid, 'SIGINT')
+    _process.on('error', (err) => {
+      console.error('[query-builder] Failed to start:', err.message)
+      _process = null
+      resolvePromise()
+    })
+
+    _process.on('exit', (code) => {
+      const wasStopping = _stopping
+      _stopping = false
+      _process = null
+      if (!wasStopping && code !== 0) {
+        console.warn('[query-builder] Process exited with code ' + code)
+      }
+    })
+
+    if (!_cleanupRegistered) {
+      _cleanupRegistered = true
+
+      process.on('exit', () => {
+        stopQueryBuilder()
+      })
+
+      const handleSigint = () => {
+        stopQueryBuilder()
+        process.removeListener('SIGINT', handleSigint)
+        process.kill(process.pid, 'SIGINT')
+      }
+
+      const handleSigterm = () => {
+        stopQueryBuilder()
+        process.removeListener('SIGTERM', handleSigterm)
+        process.kill(process.pid, 'SIGTERM')
+      }
+
+      process.on('SIGINT', handleSigint)
+      process.on('SIGTERM', handleSigterm)
     }
 
-    const handleSigterm = () => {
-      stopQueryBuilder()
-      process.removeListener('SIGTERM', handleSigterm)
-      process.kill(process.pid, 'SIGTERM')
-    }
-
-    process.on('SIGINT', handleSigint)
-    process.on('SIGTERM', handleSigterm)
-  }
-
-  console.log('[query-builder] Starting on http://' + host + ':' + port)
+    console.log('[query-builder] Starting on http://' + host + ':' + port)
+    resolvePromise()
+  })
 }
 
 export function stopQueryBuilder(): void {

@@ -5,7 +5,7 @@
 [![Coverage](https://img.shields.io/codecov/c/github/multipliedtwice/prisma-generator-express/main.svg)](https://codecov.io/gh/multipliedtwice/prisma-generator-express)
 [![npm](https://img.shields.io/npm/l/prisma-generator-express.svg)](LICENSE)
 
-Prisma generator that creates Express CRUD API routes with OpenAPI documentation from your Prisma schema.
+Prisma generator that creates Express or Fastify CRUD API routes with OpenAPI documentation from your Prisma schema.
 
 Running `npx prisma generate` produces:
 
@@ -16,12 +16,15 @@ Running `npx prisma generate` produces:
 - Client-side query parameter encoder
 - Guard/variant shape enforcement via prisma-guard integration
 
+Supports both **Express** and **Fastify** targets via the `target` configuration option.
+
 ## Table of contents
 
 - [Compatibility](#compatibility)
 - [Installation](#installation)
 - [Setup](#setup)
-- [Usage](#usage)
+- [Usage (Express)](#usage-express)
+- [Usage (Fastify)](#usage-fastify)
 - [Selective routes with middleware](#selective-routes-with-middleware)
 - [Guard shapes (prisma-guard integration)](#guard-shapes-prisma-guard-integration)
 - [Request body format](#request-body-format)
@@ -53,6 +56,13 @@ Some operations require newer versions:
 | `omit` parameter      | 6.2.0                  | Returns 400 on versions 6.0.x–6.1.x |
 | `updateManyAndReturn` | 6.2.0                  | PostgreSQL, CockroachDB, SQLite only |
 
+### Framework support
+
+| Framework | Target value | Generated output |
+| --------- | ------------ | ---------------- |
+| Express   | `"express"`  | `express.Router()` factory function per model |
+| Fastify   | `"fastify"`  | Fastify plugin function per model |
+
 ### Database provider support
 
 Most operations work across all Prisma-supported providers. Exceptions:
@@ -66,16 +76,25 @@ Most operations work across all Prisma-supported providers. Exceptions:
 Operations not supported by your database provider return `501 Not Implemented` at runtime. The generator emits handlers for all operations regardless of provider — use selective route configuration to expose only supported operations.
 
 ## Installation
+
 ```bash
 npm install -D prisma-generator-express
 ```
 
-Peer dependencies:
+Peer dependencies for Express:
+
 ```bash
 npm install @prisma/client express
 ```
 
+Peer dependencies for Fastify:
+
+```bash
+npm install @prisma/client fastify
+```
+
 Optional peer dependencies:
+
 ```bash
 npm install prisma-sql         # SQL optimization
 npm install prisma-guard zod   # Guard shape enforcement
@@ -85,6 +104,7 @@ npm install prisma-query-builder-ui  # Visual query playground
 ## Setup
 
 Add the generator to your `schema.prisma`:
+
 ```prisma
 generator client {
   provider = "prisma-client-js"
@@ -95,14 +115,27 @@ generator express {
 }
 ```
 
+To generate Fastify routes instead of Express, set the `target` config:
+
+```prisma
+generator express {
+  provider = "prisma-generator-express"
+  target   = "fastify"
+}
+```
+
+Valid `target` values are `"express"` (default) and `"fastify"`.
+
 The generator detects the Prisma client generator automatically. All standard provider values are supported: `prisma-client-js`, `@prisma/client`, and `prisma-client`.
 
 Generate:
+
 ```bash
 npx prisma generate
 ```
 
-## Usage
+## Usage (Express)
+
 ```ts
 import express from 'express'
 import { PrismaClient } from '@prisma/client'
@@ -127,7 +160,54 @@ app.listen(3000, () => {
 })
 ```
 
+## Usage (Fastify)
+
+When `target = "fastify"`, each model produces a Fastify plugin function instead of an Express router.
+
+```ts
+import Fastify from 'fastify'
+import { PrismaClient } from '@prisma/client'
+import { UserRoutes } from './generated/User/UserRouter'
+
+const prisma = new PrismaClient()
+const fastify = Fastify()
+
+fastify.decorateRequest('prisma', null)
+
+fastify.addHook('onRequest', async (request) => {
+  request.prisma = prisma
+})
+
+const userConfig = {
+  enableAll: true,
+}
+
+fastify.register(async (instance) => {
+  await UserRoutes(instance, userConfig)
+})
+
+fastify.listen({ port: 3000 }, () => {
+  console.log('Server is running on http://localhost:3000')
+})
+```
+
+The generated function signature is `async function ModelRoutes(fastify: FastifyInstance, config?: RouteConfig)`. It registers routes directly on the provided Fastify instance.
+
+### Key differences between Express and Fastify targets
+
+| Aspect | Express | Fastify |
+| ------ | ------- | ------- |
+| Generated function | `ModelRouter(config)` returns `express.Router` | `ModelRoutes(fastify, config)` registers on instance |
+| Mounting | `app.use('/', ModelRouter(config))` | `fastify.register(async (i) => { await ModelRoutes(i, config) })` |
+| Hook types | `before`/`after` are Express `RequestHandler[]` | `before`/`after` are `FastifyHookHandler[]` |
+| Guard resolveVariant | Receives `express.Request` | Receives `FastifyRequest` |
+| Request data | `req.prisma`, `res.locals` | `request.prisma`, `request` properties |
+| Error handling | Express error middleware on the router | Fastify `setErrorHandler` on the instance |
+
 ## Selective routes with middleware
+
+### Express
+
 ```ts
 const userConfig = {
   findMany: {
@@ -142,18 +222,42 @@ const userConfig = {
 app.use('/', UserRouter(userConfig))
 ```
 
+### Fastify
+
+```ts
+const userConfig = {
+  findMany: {
+    before: [async (request, reply) => { /* auth check */ }],
+  },
+  create: {
+    before: [async (request, reply) => { /* auth + validation */ }],
+  },
+  findUnique: {},
+}
+
+fastify.register(async (instance) => {
+  await UserRoutes(instance, userConfig)
+})
+```
+
 Only operations listed in the config (or all when `enableAll: true`) are registered. Operations not listed produce no routes.
+
+Fastify hooks receive `(request: FastifyRequest, reply: FastifyReply)`. If a hook sends a reply (via `reply.send()`), subsequent hooks and the handler are skipped.
 
 ## Guard shapes (prisma-guard integration)
 
 prisma-generator-express integrates with [prisma-guard](https://github.com/multipliedtwice/prisma-guard) to enforce input validation, query shape restrictions, and tenant isolation on generated routes. When a `shape` is configured on an operation, the handler calls `prisma.model.guard(shape, caller).method(args)` instead of `prisma.model.method(args)`.
 
+Guard shapes work identically for both Express and Fastify targets. The only difference is the type of the `resolveVariant` callback parameter (`Request` vs `FastifyRequest`).
+
 ### Guard setup
 
 Install prisma-guard and add its generator to your schema:
+
 ```bash
 npm install prisma-guard zod
 ```
+
 ```prisma
 generator client {
   provider = "prisma-client-js"
@@ -172,6 +276,7 @@ generator express {
 Run `npx prisma generate` to emit both the express routes and the guard artifacts.
 
 Extend PrismaClient with the guard extension and attach it to requests:
+
 ```ts
 import express from 'express'
 import { PrismaClient } from '@prisma/client'
@@ -209,7 +314,7 @@ If prisma-guard is not installed or the client is not extended with the guard ex
 
 Each operation config accepts an optional `shape` property. When present, the generated handler:
 
-1. Stores the shape on `res.locals.guardShape` via middleware
+1. Stores the shape on the request context via middleware (Express: `res.locals.guardShape`, Fastify: `request.guardShape`)
 2. Resolves the caller from `config.guard.resolveVariant(req)`, then from the configured header (default `x-api-variant`), falling back to `undefined`
 3. Calls `prisma.model.guard(shape, caller).method(args)` instead of `prisma.model.method(args)`
 
@@ -218,6 +323,7 @@ When `shape` is absent, the handler calls Prisma directly with no guard enforcem
 ### Single shape per operation
 
 A single shape object restricts what the client can do on that operation. No caller routing is needed.
+
 ```ts
 const userConfig = {
   findMany: {
@@ -259,6 +365,7 @@ In this example:
 ### Shape value types in data
 
 Each field in a `data` shape accepts one of four value types:
+
 ```ts
 import { force } from 'prisma-guard'
 
@@ -285,6 +392,7 @@ const config = {
 ### Named shapes (variant-based routing)
 
 Different API consumers often need different shapes for the same operation. Named shapes use a caller value to route to the correct shape.
+
 ```ts
 const userConfig = {
   findMany: {
@@ -320,6 +428,7 @@ app.use('/', UserRouter(userConfig))
 ```
 
 The client sends the variant in the configured header:
+
 ```ts
 // Admin frontend
 fetch('/user', {
@@ -337,7 +446,9 @@ If the caller is missing or doesn't match any key, the request is rejected with 
 ### Custom caller resolution
 
 Use `resolveVariant` for caller logic beyond a simple header:
+
 ```ts
+// Express
 const userConfig = {
   findMany: {
     shape: {
@@ -354,11 +465,30 @@ const userConfig = {
 }
 ```
 
+```ts
+// Fastify
+const userConfig = {
+  findMany: {
+    shape: {
+      admin: { /* ... */ },
+      public: { /* ... */ },
+    },
+  },
+  guard: {
+    resolveVariant: (request) => {
+      if (request.user?.role === 'admin') return 'admin'
+      return 'public'
+    },
+  },
+}
+```
+
 `resolveVariant` takes priority over the header. If both are configured, the header is checked only when `resolveVariant` returns `undefined`.
 
 ### Parameterized caller patterns
 
 Caller keys support parameterized path patterns:
+
 ```ts
 const projectConfig = {
   update: {
@@ -380,6 +510,7 @@ const projectConfig = {
 ```
 
 The client sends the full path:
+
 ```ts
 fetch('/project', {
   method: 'PUT',
@@ -399,6 +530,7 @@ Exact matches are checked first. Parameters (`:id`) are routing-only and are not
 ### Forced where conditions
 
 Literal values in `where` shapes are forced server-side and cannot be overridden by the client:
+
 ```ts
 import { force } from 'prisma-guard'
 
@@ -421,9 +553,9 @@ A request with `{ where: { title: { contains: 'demo' } } }` produces:
 
 ```
 WHERE status = 'published'
-  AND isDeleted = false
-  AND isActive = true
-  AND title LIKE '%demo%'
+AND isDeleted = false
+AND isActive = true
+AND title LIKE '%demo%'
 ```
 
 The client cannot bypass the forced conditions.
@@ -431,6 +563,7 @@ The client cannot bypass the forced conditions.
 ### Logical combinators (AND, OR, NOT)
 
 Where shapes support `AND`, `OR`, and `NOT`. The combinator value defines which fields are allowed inside it:
+
 ```ts
 const config = {
   findMany: {
@@ -449,6 +582,7 @@ const config = {
 ```
 
 Client sends:
+
 ```json
 {
   "where": {
@@ -465,6 +599,7 @@ The forced `status = 'published'` is always merged as an AND condition. Forced v
 ### Relation filters in where
 
 Where shapes support relation-level filters. To-many relations use `some`, `every`, `none`. To-one relations use `is`, `isNot`.
+
 ```ts
 const userConfig = {
   findMany: {
@@ -488,6 +623,7 @@ The client can filter by `title` inside the relation, but `published = true` is 
 ### Select and include in shapes
 
 Shapes can restrict which response fields and relations the client may request:
+
 ```ts
 const userConfig = {
   findMany: {
@@ -521,6 +657,7 @@ This means a single shape declaration like the example above defines both the se
 ### Nested include with forced where and pagination
 
 Nested includes on to-many relations support `where`, `orderBy`, `cursor`, `take`, and `skip`:
+
 ```ts
 import { force } from 'prisma-guard'
 
@@ -552,6 +689,7 @@ const userConfig = {
 ### Mutation return projection
 
 Write operations that return records (`create`, `update`, `upsert`, `delete`, `createManyAndReturn`, `updateManyAndReturn`) support `select` and `include` in the shape:
+
 ```ts
 const userConfig = {
   create: {
@@ -583,6 +721,7 @@ For mutations, projection shapes only validate and constrain client-requested pr
 ### Upsert
 
 Upsert uses `create` and `update` shape keys instead of `data`:
+
 ```ts
 import { force } from 'prisma-guard'
 
@@ -609,6 +748,7 @@ All three (`where`, `create`, `update`) are required. Using `data` instead of `c
 ### Bulk mutation safety
 
 `updateMany`, `updateManyAndReturn`, and `deleteMany` require `where` in the shape:
+
 ```ts
 const userConfig = {
   deleteMany: {
@@ -630,6 +770,7 @@ A shape without `where` on these methods is rejected. Empty resolved where at ru
 ### Tenant isolation with guard shapes
 
 When the guard extension is configured with scope context, tenant filters are injected automatically into all top-level operations on scoped models. Guard shapes and scope work together:
+
 ```prisma
 /// @scope-root
 model Tenant {
@@ -645,6 +786,7 @@ model Project {
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 }
 ```
+
 ```ts
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { guard } from './generated/guard/client'
@@ -710,6 +852,7 @@ Guard errors are mapped to HTTP status codes by the generated error-handling mid
 All errors return `{ "message": "..." }` in the response body.
 
 ### Complete guard example
+
 ```ts
 import express from 'express'
 import { AsyncLocalStorage } from 'node:async_hooks'
@@ -811,6 +954,7 @@ In this setup:
 ## Request body format
 
 All write operations accept the full Prisma args object as the JSON request body. The body must be a JSON object — sending `null`, arrays, or other non-object values returns 400.
+
 ```ts
 // Create
 { "data": { "name": "Alice", "email": "alice@example.com" }, "select": { "id": true } }
@@ -836,6 +980,7 @@ Write operations that return records (create, update, delete, upsert, createMany
 `deleteMany`, `updateMany`, and `updateManyAndReturn` require a `where` field in the request body. Requests without `where` are rejected with 400 to prevent accidental mass operations. Sending `{ "where": {} }` is valid and matches all records — this protection catches accidental omission, not intentional broad operations.
 
 ## Query encoding (client side)
+
 ```ts
 import { encodeQueryParams } from './generated/client/encodeQueryParams'
 
@@ -876,27 +1021,32 @@ On the client side, `encodeQueryParams` handles BigInt serialization automatical
 
 The `hasMore` field is reliable for forward offset pagination (`skip` + `take`) only. When using cursor-based pagination or negative `take` (backward pagination), `hasMore` may be inaccurate.
 
-Configure default and maximum page sizes:
+When `distinct` is used with `findManyPaginated`, the total count is determined by executing a distinct query up to the configured limit (default: 100,000 rows). If the number of distinct values exceeds this limit, the total falls back to an approximate non-distinct count. When guard shapes are active, the distinct counting query respects the guard's where restrictions.
+
+Configure default and maximum page sizes and the distinct count limit:
+
 ```ts
 UserRouter({
   findManyPaginated: {},
   pagination: {
     defaultLimit: 20,
     maxLimit: 100,
+    distinctCountLimit: 50000,
   },
 })
 ```
 
-`pagination.defaultLimit` is applied when the client omits `take`. `pagination.maxLimit` caps `take` by absolute value. Both settings apply to `findMany` and `findManyPaginated`.
+`pagination.defaultLimit` is applied when the client omits `take`. `pagination.maxLimit` caps `take` by absolute value. `pagination.distinctCountLimit` overrides the default 100,000 row threshold for distinct count estimation. All settings apply to `findMany` and `findManyPaginated`.
 
 ## Error handling
 
 All errors are returned as JSON with a `message` field:
+
 ```json
 { "message": "Unique constraint violation" }
 ```
 
-Each generated router installs an error-handling middleware that normalizes errors. Prisma error codes are mapped to appropriate HTTP status codes. Guard errors are mapped as follows: `ShapeError` and `CallerError` → 400, `PolicyError` → 403.
+Each generated router installs an error-handling middleware (Express) or error handler (Fastify) that normalizes errors. Prisma error codes are mapped to appropriate HTTP status codes. Guard errors are mapped as follows: `ShapeError` and `CallerError` → 400, `PolicyError` → 403.
 
 | Status | Description                                |
 | ------ | ------------------------------------------ |
@@ -927,7 +1077,10 @@ Actual paths depend on `customUrlPrefix` and `addModelPrefix` configuration.
 
 ### Manual (generated helpers, require mounting)
 
-The generator produces helper functions that you mount yourself. Pass the same config object used for the router to keep docs and runtime in sync:
+The generator produces helper functions that you mount yourself. Pass the same config object used for the router to keep docs and runtime in sync.
+
+#### Express
+
 ```ts
 import {
   generateCombinedDocs,
@@ -964,6 +1117,46 @@ app.get(
 )
 ```
 
+#### Fastify
+
+```ts
+import {
+  generateCombinedDocs,
+  registerModelDocs,
+} from './generated/combinedDocs'
+
+const userConfig = {
+  findMany: { before: [async (request, reply) => { /* auth */ }] },
+  create: {},
+  findUnique: {},
+}
+
+const postConfig = {
+  enableAll: true,
+}
+
+fastify.register(async (instance) => {
+  await UserRoutes(instance, userConfig)
+})
+
+fastify.register(async (instance) => {
+  await PostRoutes(instance, postConfig)
+})
+
+registerModelDocs(fastify, '/docs', {
+  User: userConfig,
+  Post: postConfig,
+})
+
+fastify.get('/docs', generateCombinedDocs({
+  title: 'My API',
+  modelConfigs: {
+    User: userConfig,
+    Post: postConfig,
+  },
+}))
+```
+
 | Endpoint                      | Description             |
 | ----------------------------- | ----------------------- |
 | `/docs`                       | Combined index page     |
@@ -978,6 +1171,7 @@ Disable in production via `NODE_ENV=production` or `DISABLE_OPENAPI=true`. Overr
 ### Spec paths and mount prefixes
 
 Use `specBasePath` to set the base path for OpenAPI spec and docs independently of route registration:
+
 ```ts
 const userConfig = {
   enableAll: true,
@@ -993,7 +1187,8 @@ When `specBasePath` is not set, `customUrlPrefix` is used for both runtime route
 
 When `prisma-sql` is installed, the generated handlers automatically attempt to use its `speedExtension` for optimized SQL execution. The extension activates only when a database connector is provided on the request object.
 
-Set `req.postgres` or `req.sqlite` in your middleware to activate the extension:
+Set `req.postgres` or `req.sqlite` (Express) / `request.postgres` or `request.sqlite` (Fastify) in your middleware to activate the extension:
+
 ```ts
 import { PrismaClient } from '@prisma/client'
 import postgres from 'postgres'
@@ -1001,10 +1196,17 @@ import postgres from 'postgres'
 const prisma = new PrismaClient()
 const sql = postgres(process.env.DATABASE_URL!)
 
+// Express
 app.use((req, res, next) => {
   req.prisma = prisma
   req.postgres = sql
   next()
+})
+
+// Fastify
+fastify.addHook('onRequest', async (request) => {
+  request.prisma = prisma
+  request.postgres = sql
 })
 ```
 
@@ -1012,7 +1214,7 @@ Without a connector on the request, the handlers use the standard PrismaClient. 
 
 ## Query parameter parsing
 
-GET query values are parsed server-side. Strings starting with `{`, `[`, or `"` are JSON-parsed. The strings `true`, `false`, `null` are converted to their JS equivalents. Numeric conversion only applies to `take` and `skip`. Use `encodeQueryParams` on the client side to avoid encoding issues.
+GET query values are parsed server-side. Strings starting with `{`, `[`, or `"` are JSON-parsed. The strings `true`, `false`, `null` are converted to their JS equivalents. Numeric conversion applies only to `take` and `skip`, and only when the value is a valid integer (e.g., `"10"` is parsed, `"10.5"` and `""` are not). Use `encodeQueryParams` on the client side to avoid encoding issues.
 
 ## Router schema
 
@@ -1042,6 +1244,7 @@ Paths shown are relative suffixes. Actual paths include the model prefix (e.g., 
 ## Skipping models
 
 Add `/// generator off` to a model's documentation to skip generation:
+
 ```prisma
 /// generator off
 model InternalLog {
@@ -1050,6 +1253,9 @@ model InternalLog {
 ```
 
 ## Configuration
+
+### Express
+
 ```ts
 interface RouteConfig {
   enableAll?: boolean
@@ -1076,6 +1282,7 @@ interface RouteConfig {
   pagination?: {
     defaultLimit?: number
     maxLimit?: number
+    distinctCountLimit?: number      // default: 100000
   }
 
   // per-operation config
@@ -1114,11 +1321,33 @@ interface QueryBuilderConfig {
 }
 ```
 
+### Fastify
+
+The Fastify config is identical except for hook and resolver types:
+
+```ts
+interface OperationConfig {
+  before?: FastifyHookHandler[]
+  after?: FastifyHookHandler[]
+  shape?: Record<string, any>
+}
+
+type FastifyHookHandler = (
+  request: FastifyRequest,
+  reply: FastifyReply,
+) => Promise<void> | void
+```
+
+The `guard.resolveVariant` callback receives `FastifyRequest` instead of `Request`.
+
+### Shared options
+
 `customUrlPrefix` is normalized to ensure a leading slash and strip trailing slashes.
 
 `specBasePath` controls the base path used in OpenAPI spec paths and docs examples, independent of `customUrlPrefix`.
 
 `openApiServers` sets the `servers` array in the OpenAPI spec:
+
 ```ts
 UserRouter({
   enableAll: true,
@@ -1129,6 +1358,7 @@ UserRouter({
 ```
 
 `openApiSecuritySchemes` and `openApiSecurity` set the security configuration in the OpenAPI spec:
+
 ```ts
 UserRouter({
   enableAll: true,

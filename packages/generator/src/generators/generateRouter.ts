@@ -61,6 +61,7 @@ import {
 import type { RouteConfig } from '../routeConfig.js'
 import { parseQueryParams } from '../parseQueryParams.js'
 import { buildModelOpenApi } from '../buildModelOpenApi.js'
+import { transformResult } from '../operationRuntime.js'
 
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 
@@ -80,31 +81,6 @@ function normalizePrefix(p: string): string {
   while (result.length > 1 && result.endsWith('/')) result = result.slice(0, -1)
   if (result === '/') return ''
   return result
-}
-
-function transformResult(value: unknown): unknown {
-  if (value === null || value === undefined) return value
-  if (typeof value === 'bigint') return value.toString()
-  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) {
-    return value.toString('base64')
-  }
-  if (value instanceof Uint8Array) {
-    let binary = ''
-    for (let i = 0; i < value.length; i++) binary += String.fromCharCode(value[i])
-    return btoa(binary)
-  }
-  if (value instanceof Date) return value
-  if (Array.isArray(value)) return value.map(transformResult)
-  if (typeof value === 'object') {
-    const proto = Object.getPrototypeOf(value)
-    if (proto !== Object.prototype && proto !== null) return value
-    const out: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = transformResult(v)
-    }
-    return out
-  }
-  return value
 }
 
 function isQueryBuilderEnabled(config: RouteConfig): boolean {

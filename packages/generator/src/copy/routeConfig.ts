@@ -1,8 +1,13 @@
-import { RequestHandler, Request } from 'express'
+import type { FastifyRequest, FastifyReply } from 'fastify'
+
+export type FastifyHookHandler = (
+  request: FastifyRequest,
+  reply: FastifyReply,
+) => Promise<void> | void
 
 export interface OperationConfig {
-  before?: RequestHandler[]
-  after?: RequestHandler[]
+  before?: FastifyHookHandler[]
+  after?: FastifyHookHandler[]
   shape?: Record<string, any>
 }
 
@@ -44,7 +49,7 @@ export interface RouteConfig {
   openApiSecurity?: Record<string, string[]>[]
 
   guard?: {
-    resolveVariant?: (req: Request) => string | undefined
+    resolveVariant?: (request: FastifyRequest) => string | undefined
     variantHeader?: string
   }
 
@@ -53,6 +58,7 @@ export interface RouteConfig {
   pagination?: {
     defaultLimit?: number
     maxLimit?: number
+    distinctCountLimit?: number
   }
 
   findUnique?: OperationConfig

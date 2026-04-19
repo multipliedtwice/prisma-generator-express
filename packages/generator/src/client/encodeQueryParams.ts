@@ -1,7 +1,7 @@
 import { isObject } from '../copy/misc.js'
 
 /**
- * Frontend query encoder for prisma-generator-hono
+ * Frontend query encoder for prisma-generator-express
  *
  * Encodes complex Prisma query structures as JSON strings in query params.
  * Objects and arrays are JSON-stringified. Primitives are encoded directly.

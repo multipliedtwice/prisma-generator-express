@@ -24,6 +24,7 @@
   "peerDependencies": {
     "@prisma/client": ">=6.0.0",
     "express": ">=4.0.0",
+    "fastify": "^5.0.0",
     "prisma-guard": ">=1.0.0",
     "prisma-query-builder-ui": ">=1.1.0",
     "prisma-sql": ">=1.0.0"
@@ -48,6 +49,7 @@
     "better-sqlite3": "^12.5.0",
     "express": "^5.2.1",
     "fast-xml-parser": "^5.3.3",
+    "fastify": "^5.6.2",
     "lru-cache": "^11.2.4",
     "pino": "^10.1.0",
     "pino-pretty": "^13.0.0",
@@ -65,6 +67,7 @@
   "keywords": [
     "prisma",
     "express",
+    "fastify",
     "crud",
     "generator"
   ],
