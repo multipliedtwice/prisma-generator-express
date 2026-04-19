@@ -31,35 +31,30 @@ function getTarget(options: GeneratorOptions): Target {
   throw new Error(`Invalid target "${raw}". Expected "express" or "fastify".`)
 }
 
-function resolveOutputPath(options: GeneratorOptions, target: Target): string {
-  const explicit = options.generator.output?.value
-
-  if (explicit && explicit.length > 0) {
-    return explicit
-  }
-
-  const schemaDir = path.dirname(options.schemaPath)
-  return path.join(schemaDir, 'generated', target)
-}
-
 generatorHandler({
   onManifest() {
     return {
       version: require('../package.json').version,
-      defaultOutput: '',
+      defaultOutput: '../generated/express',
       prettyName: GENERATOR_NAME,
     }
   },
 
   async onGenerate(options: GeneratorOptions) {
     const target = getTarget(options)
-    const outputPath = resolveOutputPath(options, target)
 
-    options.generator.output = { value: outputPath, fromEnvVar: null }
+    const hasExplicitOutput = !!options.generator.output?.fromEnvVar
+      || (options.generator.config as Record<string, unknown>).output !== undefined
+
+    if (!hasExplicitOutput) {
+      const schemaDir = path.dirname(options.schemaPath)
+      const outputPath = path.join(schemaDir, 'generated', target)
+      options.generator.output = { value: outputPath, fromEnvVar: null }
+    }
 
     console.log(`\n═══ Prisma Generator (${target.toUpperCase()}) ═══`)
     console.log(`  Target: ${target}`)
-    console.log(`  Output: ${outputPath}`)
+    console.log(`  Output: ${options.generator.output?.value}`)
 
     await copyFiles(options, target)
 
