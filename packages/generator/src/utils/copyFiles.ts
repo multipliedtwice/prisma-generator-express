@@ -8,7 +8,6 @@ const SHARED_FILES = [
   'buildModelOpenApi.ts',
   'operationDefinitions.ts',
   'misc.ts',
-  'docsRenderer.ts',
 ]
 
 const TARGET_FILES: Record<Target, string[]> = {
@@ -24,13 +23,24 @@ function resolveTemplateDir(subpath: string): string {
   if (fs.existsSync(fromSrc)) return fromSrc
 
   throw new Error(
-    `Template directory "${subpath}" not found. Searched:\n  ${fromSibling}\n  ${fromSrc}\nEnsure template files are included in the published package.`,
+    `[prisma-generator-express] Template directory "${subpath}" not found.\n` +
+    `  Searched:\n` +
+    `    ${fromSibling}\n` +
+    `    ${fromSrc}\n` +
+    `  Ensure template files are included in the published package.`,
   )
 }
 
 function getTargetSourceDir(copyBase: string, target: Target): string {
   if (target === 'express') return copyBase
-  return path.join(copyBase, target)
+  const targetDir = path.join(copyBase, target)
+  if (!fs.existsSync(targetDir)) {
+    throw new Error(
+      `[prisma-generator-express] Target template directory not found: ${targetDir}\n` +
+      `  Expected directory for target "${target}" at: ${targetDir}`,
+    )
+  }
+  return targetDir
 }
 
 interface CopyFileOptions {
@@ -53,10 +63,10 @@ async function copyFile(
 
   if (!fs.existsSync(srcPath)) {
     if (options?.required) {
-      console.error(`✗ Required source file not found: ${srcPath}`)
+      console.error(`[prisma-generator-express] ✗ Required source file not found: ${srcPath}`)
       return false
     }
-    console.warn(`⚠️  Source file not found: ${srcPath}`)
+    console.warn(`[prisma-generator-express] ⚠️  Source file not found: ${srcPath}`)
     return true
   }
 
@@ -139,7 +149,7 @@ export async function copyFiles(
     console.log(`  ✓ Utility files copied successfully`)
   } else {
     throw new Error(
-      'One or more required utility files could not be copied. Generation aborted.',
+      '[prisma-generator-express] One or more required utility files could not be copied. Generation aborted.',
     )
   }
 }
