@@ -3,6 +3,7 @@ import {
   GeneratorOptions,
   DMMF,
 } from '@prisma/generator-helper'
+import path from 'path'
 import { generateUnifiedHandler } from './generators/generateUnifiedHandler.js'
 import { generateFastifyHandler } from './generators/generateFastifyHandler.js'
 import { generateRouterFunction } from './generators/generateRouter.js'
@@ -30,20 +31,35 @@ function getTarget(options: GeneratorOptions): Target {
   throw new Error(`Invalid target "${raw}". Expected "express" or "fastify".`)
 }
 
+function resolveOutputPath(options: GeneratorOptions, target: Target): string {
+  const explicit = options.generator.output?.value
+
+  if (explicit && explicit.length > 0) {
+    return explicit
+  }
+
+  const schemaDir = path.dirname(options.schemaPath)
+  return path.join(schemaDir, 'generated', target)
+}
+
 generatorHandler({
   onManifest() {
     return {
       version: require('../package.json').version,
-      defaultOutput: '../generated',
+      defaultOutput: '',
       prettyName: GENERATOR_NAME,
     }
   },
 
   async onGenerate(options: GeneratorOptions) {
     const target = getTarget(options)
+    const outputPath = resolveOutputPath(options, target)
+
+    options.generator.output = { value: outputPath, fromEnvVar: null }
 
     console.log(`\n═══ Prisma Generator (${target.toUpperCase()}) ═══`)
     console.log(`  Target: ${target}`)
+    console.log(`  Output: ${outputPath}`)
 
     await copyFiles(options, target)
 
