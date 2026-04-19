@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-import { toCamelCase } from '../utils/strings.js'
+import { toCamelCase } from '../utils/strings'
 
 const CORE_NAME_MAP: Record<string, string> = {
   delete: 'deleteUnique',
@@ -74,8 +74,8 @@ export async function ${exportName}(
   }).join('\n')
 
   return `import type { FastifyRequest, FastifyReply } from 'fastify'
-import * as core from './${modelName}Core.js'
-import type { OperationContext } from '../operationRuntime.js'
+import * as core from './${modelName}Core'
+import type { OperationContext } from '../operationRuntime'
 
 function buildContext(request: FastifyRequest): OperationContext {
   const req = request as any

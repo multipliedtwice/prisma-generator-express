@@ -28,14 +28,14 @@ function findCliPath(): string | null {
     const req = createRequire(resolve(process.cwd(), 'package.json'))
     const pkgJsonPath = req.resolve('prisma-query-builder-ui/package.json')
     const pkgDir = dirname(pkgJsonPath)
-    const cliPath = join(pkgDir, 'bin', 'cli.js')
+    const cliPath = join(pkgDir, 'bin', 'cli')
     if (existsSync(cliPath)) return cliPath
   } catch {}
 
   let dir = process.cwd()
   const root = resolve(dir, '/')
   while (dir !== root) {
-    const candidate = join(dir, 'node_modules', 'prisma-query-builder-ui', 'bin', 'cli.js')
+    const candidate = join(dir, 'node_modules', 'prisma-query-builder-ui', 'bin', 'cli')
     if (existsSync(candidate)) return candidate
     dir = dirname(dir)
   }

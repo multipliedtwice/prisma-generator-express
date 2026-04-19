@@ -1,5 +1,5 @@
-import type { RouteConfig } from './routeConfig.js'
-import { OPERATION_DEFS, isOperationEnabled } from './operationDefinitions.js'
+import type { RouteConfig } from './routeConfig'
+import { OPERATION_DEFS, isOperationEnabled } from './operationDefinitions'
 
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 

@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-import { toCamelCase } from '../utils/strings.js'
+import { toCamelCase } from '../utils/strings'
 
 export interface UnifiedHandlerOptions {
   model: DMMF.Model
@@ -57,8 +57,8 @@ export async function ${exportName}(
   }).join('\n')
 
   return `import { Request, Response, NextFunction } from 'express'
-import * as core from './${modelName}Core.js'
-import { OperationContext, mapError } from '../operationRuntime.js'
+import * as core from './${modelName}Core'
+import { OperationContext, mapError } from '../operationRuntime'
 
 function buildContext(req: Request, res: Response): OperationContext {
   return {

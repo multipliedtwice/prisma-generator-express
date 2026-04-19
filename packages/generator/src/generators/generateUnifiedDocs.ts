@@ -1,11 +1,11 @@
-import { Target } from '../constants.js'
+import { Target } from '../constants'
 
 export function generateUnifiedDocs(
   models: string[],
   target: Target = 'express',
 ): string {
   const imports = models
-    .map((model) => `import { ${model}Docs } from './${model}/${model}Docs.js'`)
+    .map((model) => `import { ${model}Docs } from './${model}/${model}Docs'`)
     .join('\n')
 
   const handlersEntries = models
@@ -17,7 +17,7 @@ export function generateUnifiedDocs(
       ? `import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'`
       : `import { Request, Response } from 'express'`
 
-  const routeConfigImport = `import type { RouteConfig } from './routeConfig.target.js'`
+  const routeConfigImport = `import type { RouteConfig } from './routeConfig.target'`
 
   const handlerType =
     target === 'fastify'

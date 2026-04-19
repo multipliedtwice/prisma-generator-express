@@ -1,7 +1,7 @@
 import { DMMF } from '@prisma/generator-helper'
 
 export function generateOperationRuntime(): string {
-  return `import { sanitizeKeys } from './misc.js'
+  return `import { sanitizeKeys } from './misc'
 
 export interface PaginationConfig {
   defaultLimit?: number
@@ -457,7 +457,7 @@ ${validationLines}
   applyPaginationLimits,
   assertGuard,
   countForPagination,
-} from '../operationRuntime.js'
+} from '../operationRuntime'
 
 export async function findMany(ctx: OperationContext): Promise<unknown> {
   const rawQuery = ctx.parsedQuery || {}

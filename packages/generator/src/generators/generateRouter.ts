@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-import { toCamelCase } from '../utils/strings.js'
+import { toCamelCase } from '../utils/strings'
 
 export function generateRouterFunction({
   model,
@@ -59,11 +59,11 @@ import {
   ${prefix}Aggregate,
   ${prefix}Count,
   ${prefix}GroupBy
-} from './${modelName}Handlers.js'
-import type { RouteConfig } from '../routeConfig.target.js'
-import { parseQueryParams } from '../parseQueryParams.js'
-import { buildModelOpenApi } from '../buildModelOpenApi.js'
-import { transformResult } from '../operationRuntime.js'
+} from './${modelName}Handlers'
+import type { RouteConfig } from '../routeConfig.target'
+import { parseQueryParams } from '../parseQueryParams'
+import { buildModelOpenApi } from '../buildModelOpenApi'
+import { transformResult } from '../operationRuntime'
 
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 

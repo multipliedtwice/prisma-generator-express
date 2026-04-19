@@ -1,4 +1,4 @@
-import { isObject } from '../copy/misc.js'
+import { isObject } from '../copy/misc'
 
 /**
  * Frontend query encoder for prisma-generator-express

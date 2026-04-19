@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-import { Target } from '../constants.js'
+import { Target } from '../constants'
 
 function exampleValueForType(fieldType: string): unknown {
   switch (fieldType) {
@@ -200,7 +200,7 @@ export function generateScalarUIHandler(options: {
       : generateExpressDocsExport(modelName)
 
   return `${frameworkImport}
-import { buildModelOpenApi } from '../buildModelOpenApi.js'
+import { buildModelOpenApi } from '../buildModelOpenApi'
 import {
   renderDocs,
   renderScalar,
@@ -212,7 +212,7 @@ import {
   type DocsUI,
   type DocsConfig,
   type DocsModelContext,
-} from '../docsRenderer.js'
+} from '../docsRenderer'
 
 export const MODEL_FIELDS: FieldMeta[] = ${JSON.stringify(fieldsMeta, null, 2)}
 

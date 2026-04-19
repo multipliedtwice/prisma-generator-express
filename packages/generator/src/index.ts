@@ -4,24 +4,24 @@ import {
   DMMF,
 } from '@prisma/generator-helper'
 import path from 'path'
-import { generateUnifiedHandler } from './generators/generateUnifiedHandler.js'
-import { generateFastifyHandler } from './generators/generateFastifyHandler.js'
-import { generateRouterFunction } from './generators/generateRouter.js'
-import { generateFastifyRouterFunction } from './generators/generateRouterFastify.js'
-import { generateScalarUIHandler } from './generators/generateUnifiedScalarUI.js'
-import { generateUnifiedDocs } from './generators/generateUnifiedDocs.js'
-import { generateQueryBuilderHelper } from './generators/generateQueryBuilderHelper.js'
+import { generateUnifiedHandler } from './generators/generateUnifiedHandler'
+import { generateFastifyHandler } from './generators/generateFastifyHandler'
+import { generateRouterFunction } from './generators/generateRouter'
+import { generateFastifyRouterFunction } from './generators/generateRouterFastify'
+import { generateScalarUIHandler } from './generators/generateUnifiedScalarUI'
+import { generateUnifiedDocs } from './generators/generateUnifiedDocs'
+import { generateQueryBuilderHelper } from './generators/generateQueryBuilderHelper'
 import {
   generateOperationRuntime,
   generateModelCore,
-} from './generators/generateOperationCore.js'
+} from './generators/generateOperationCore'
 import {
   generateImportPrismaStatement,
   getRelativeClientPath,
-} from './generators/generateImportPrismaStatement.js'
-import { writeFileSafely } from './utils/writeFileSafely.js'
-import { copyFiles } from './utils/copyFiles.js'
-import { GENERATOR_NAME, Target } from './constants.js'
+} from './generators/generateImportPrismaStatement'
+import { writeFileSafely } from './utils/writeFileSafely'
+import { copyFiles } from './utils/copyFiles'
+import { GENERATOR_NAME, Target } from './constants'
 
 function getTarget(options: GeneratorOptions): Target {
   const raw = String(

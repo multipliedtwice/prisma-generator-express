@@ -1,4 +1,4 @@
-import { isObject, isSafeKey, sanitizeKeys } from './misc.js'
+import { isObject, isSafeKey, sanitizeKeys } from './misc'
 
 type QueryParams =
   | string

@@ -1,7 +1,7 @@
 import { GeneratorOptions } from '@prisma/generator-helper'
 import * as fs from 'fs'
 import * as path from 'path'
-import { Target } from '../constants.js'
+import { Target } from '../constants'
 
 const SHARED_FILES = [
   'parseQueryParams.ts',
@@ -124,7 +124,7 @@ export async function copyFiles(
     'encodeQueryParams.ts',
     {
       required: true,
-      importRewrites: [{ from: '../copy/misc.js', to: '../misc.js' }],
+      importRewrites: [{ from: '../copy/misc', to: '../misc' }],
     },
   )
   if (clientErr) errors.push(clientErr)
