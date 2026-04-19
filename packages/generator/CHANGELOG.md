@@ -1,3 +1,10 @@
+## [1.34.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.34.1...v1.34.2) (2026-04-19)
+
+
+### Bug Fixes
+
+* router generator signature ([014c765](https://github.com/multipliedtwice/prisma-generator-express/commit/014c76580ab255aca3d1e34a656a463e1f198c87))
+
 ## [1.34.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.34.0...v1.34.1) (2026-04-19)
 
 
