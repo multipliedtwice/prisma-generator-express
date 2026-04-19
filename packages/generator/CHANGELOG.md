@@ -1,3 +1,10 @@
+# [1.33.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.32.0...v1.33.0) (2026-04-19)
+
+
+### Features
+
+* **generator:** add resolveOutputPath function to determine output path dynamically based on generator options ([6cb68a7](https://github.com/multipliedtwice/prisma-generator-express/commit/6cb68a7020b49432b31bb13c08f3970c4ebc942e))
+
 # [1.32.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.31.0...v1.32.0) (2026-04-19)
 
 
