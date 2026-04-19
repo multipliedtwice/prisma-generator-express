@@ -58,7 +58,7 @@ import {
   ${modelName}Count,
   ${modelName}GroupBy
 } from './${modelName}Handlers.js'
-import type { RouteConfig } from '../routeConfig.js'
+import type { RouteConfig } from '../routeConfig.target.js'
 import { parseQueryParams } from '../parseQueryParams.js'
 import { buildModelOpenApi } from '../buildModelOpenApi.js'
 import { transformResult } from '../operationRuntime.js'

@@ -1,16 +1,3 @@
-import type { FastifyRequest, FastifyReply } from 'fastify'
-
-export type FastifyHookHandler = (
-  request: FastifyRequest,
-  reply: FastifyReply,
-) => Promise<void> | void
-
-export interface OperationConfig {
-  before?: FastifyHookHandler[]
-  after?: FastifyHookHandler[]
-  shape?: Record<string, any>
-}
-
 export interface QueryBuilderConfig {
   enabled?: boolean
   port?: number
@@ -33,7 +20,13 @@ export interface OpenApiSecuritySchemeConfig {
   description?: string
 }
 
-export interface RouteConfig {
+export interface BaseOperationConfig<HookHandler> {
+  before?: HookHandler[]
+  after?: HookHandler[]
+  shape?: Record<string, any>
+}
+
+export interface BaseRouteConfig<HookHandler, RequestType> {
   enableAll?: boolean
   addModelPrefix?: boolean
   customUrlPrefix?: string
@@ -49,7 +42,7 @@ export interface RouteConfig {
   openApiSecurity?: Record<string, string[]>[]
 
   guard?: {
-    resolveVariant?: (request: FastifyRequest) => string | undefined
+    resolveVariant?: (request: RequestType) => string | undefined
     variantHeader?: string
   }
 
@@ -61,22 +54,26 @@ export interface RouteConfig {
     distinctCountLimit?: number
   }
 
-  findUnique?: OperationConfig
-  findUniqueOrThrow?: OperationConfig
-  findFirst?: OperationConfig
-  findFirstOrThrow?: OperationConfig
-  findMany?: OperationConfig
-  findManyPaginated?: OperationConfig
-  create?: OperationConfig
-  createMany?: OperationConfig
-  createManyAndReturn?: OperationConfig
-  update?: OperationConfig
-  updateMany?: OperationConfig
-  updateManyAndReturn?: OperationConfig
-  upsert?: OperationConfig
-  delete?: OperationConfig
-  deleteMany?: OperationConfig
-  aggregate?: OperationConfig
-  count?: OperationConfig
-  groupBy?: OperationConfig
+  findUnique?: BaseOperationConfig<HookHandler>
+  findUniqueOrThrow?: BaseOperationConfig<HookHandler>
+  findFirst?: BaseOperationConfig<HookHandler>
+  findFirstOrThrow?: BaseOperationConfig<HookHandler>
+  findMany?: BaseOperationConfig<HookHandler>
+  findManyPaginated?: BaseOperationConfig<HookHandler>
+  create?: BaseOperationConfig<HookHandler>
+  createMany?: BaseOperationConfig<HookHandler>
+  createManyAndReturn?: BaseOperationConfig<HookHandler>
+  update?: BaseOperationConfig<HookHandler>
+  updateMany?: BaseOperationConfig<HookHandler>
+  updateManyAndReturn?: BaseOperationConfig<HookHandler>
+  upsert?: BaseOperationConfig<HookHandler>
+  delete?: BaseOperationConfig<HookHandler>
+  deleteMany?: BaseOperationConfig<HookHandler>
+  aggregate?: BaseOperationConfig<HookHandler>
+  count?: BaseOperationConfig<HookHandler>
+  groupBy?: BaseOperationConfig<HookHandler>
 }
+
+export type OperationConfig = BaseOperationConfig<any>
+
+export type RouteConfig = BaseRouteConfig<any, any>

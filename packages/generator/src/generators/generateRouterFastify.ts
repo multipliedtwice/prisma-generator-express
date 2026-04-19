@@ -55,7 +55,7 @@ import {
   ${modelName}Count,
   ${modelName}GroupBy,
 } from './${modelName}Handlers.js'
-import type { RouteConfig, FastifyHookHandler } from '../routeConfig.js'
+import type { RouteConfig, FastifyHookHandler } from '../routeConfig.target.js'
 import { parseQueryParams } from '../parseQueryParams.js'
 import { buildModelOpenApi } from '../buildModelOpenApi.js'
 import { mapError, transformResult } from '../operationRuntime.js'

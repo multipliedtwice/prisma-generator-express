@@ -8,11 +8,14 @@ const SHARED_FILES = [
   'buildModelOpenApi.ts',
   'operationDefinitions.ts',
   'misc.ts',
+  'routeConfig.ts',
+  'docsRenderer.ts',
 ]
 
-const TARGET_FILES: Record<Target, string[]> = {
-  express: ['routeConfig.ts'],
-  fastify: ['routeConfig.ts'],
+interface CopyFileOptions {
+  required?: boolean
+  importRewrites?: Array<{ from: string; to: string }>
+  destFilename?: string
 }
 
 function resolveTemplateDir(subpath: string): string {
@@ -32,23 +35,6 @@ function resolveTemplateDir(subpath: string): string {
   )
 }
 
-function getTargetSourceDir(copyBase: string, target: Target): string {
-  if (target === 'express') return copyBase
-  const targetDir = path.join(copyBase, target)
-  if (!fs.existsSync(targetDir)) {
-    throw new Error(
-      `Target template directory not found: ${targetDir}\n` +
-      `  Expected directory for target "${target}".`,
-    )
-  }
-  return targetDir
-}
-
-interface CopyFileOptions {
-  required?: boolean
-  importRewrites?: Array<{ from: string; to: string }>
-}
-
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -60,7 +46,8 @@ function copyFileSync(
   options?: CopyFileOptions,
 ): string | null {
   const srcPath = path.join(srcDir, filename)
-  const destPath = path.join(destDir, filename)
+  const destFilename = options?.destFilename || filename
+  const destPath = path.join(destDir, destFilename)
 
   if (!fs.existsSync(srcPath)) {
     if (options?.required) {
@@ -117,17 +104,13 @@ export async function copyFiles(
     if (err) errors.push(err)
   }
 
-  let targetSrcDir: string
-  try {
-    targetSrcDir = getTargetSourceDir(copyBase, target)
-  } catch (e: any) {
-    throw new Error(e.message)
-  }
-
-  for (const file of TARGET_FILES[target]) {
-    const err = copyFileSync(targetSrcDir, outputPath, file, { required: true })
-    if (err) errors.push(err)
-  }
+  const targetConfigFile = `routeConfig.${target}.ts`
+  const err = copyFileSync(copyBase, outputPath, targetConfigFile, {
+    required: true,
+    destFilename: 'routeConfig.target.ts',
+    importRewrites: [{ from: './routeConfig', to: './routeConfig' }],
+  })
+  if (err) errors.push(err)
 
   const clientDir = path.join(outputPath, 'client')
   if (!fs.existsSync(clientDir)) {

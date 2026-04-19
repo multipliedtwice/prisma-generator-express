@@ -17,7 +17,7 @@ export function generateUnifiedDocs(
       ? `import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'`
       : `import { Request, Response } from 'express'`
 
-  const routeConfigImport = `import type { RouteConfig } from './routeConfig.js'`
+  const routeConfigImport = `import type { RouteConfig } from './routeConfig.target.js'`
 
   const handlerType =
     target === 'fastify'
