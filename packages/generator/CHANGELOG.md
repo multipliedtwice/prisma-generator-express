@@ -1,3 +1,10 @@
+# [1.29.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.28.0...v1.29.0) (2026-04-19)
+
+
+### Features
+
+* fastify support ([bd69530](https://github.com/multipliedtwice/prisma-generator-express/commit/bd69530294c00507c30d0bd6852376dcb1e7e490))
+
 # [1.28.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.27.0...v1.28.0) (2026-04-18)
 
 # [1.27.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.26.1...v1.27.0) (2026-04-17)
