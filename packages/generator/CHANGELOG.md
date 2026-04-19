@@ -1,3 +1,10 @@
+# [1.31.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.30.0...v1.31.0) (2026-04-19)
+
+
+### Bug Fixes
+
+* copyfiles ([10953e1](https://github.com/multipliedtwice/prisma-generator-express/commit/10953e112b924295f1b899b8c24a442bf510532c))
+
 # [1.30.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.29.0...v1.30.0) (2026-04-19)
 
 # [1.29.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.28.0...v1.29.0) (2026-04-19)
