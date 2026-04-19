@@ -16,17 +16,18 @@ const TARGET_FILES: Record<Target, string[]> = {
 }
 
 function resolveTemplateDir(subpath: string): string {
-  const fromSibling = path.join(__dirname, '..', subpath)
-  if (fs.existsSync(fromSibling)) return fromSibling
-
   const fromSrc = path.join(__dirname, '..', '..', 'src', subpath)
   if (fs.existsSync(fromSrc)) return fromSrc
 
+  const fromDist = path.join(__dirname, '..', subpath)
+  if (fs.existsSync(fromDist)) return fromDist
+
   throw new Error(
-    `[prisma-generator-express] Template directory "${subpath}" not found.\n` +
+    `Template directory "${subpath}" not found.\n` +
     `  Searched:\n` +
-    `    ${fromSibling}\n` +
     `    ${fromSrc}\n` +
+    `    ${fromDist}\n` +
+    `  __dirname: ${__dirname}\n` +
     `  Ensure template files are included in the published package.`,
   )
 }
@@ -36,8 +37,8 @@ function getTargetSourceDir(copyBase: string, target: Target): string {
   const targetDir = path.join(copyBase, target)
   if (!fs.existsSync(targetDir)) {
     throw new Error(
-      `[prisma-generator-express] Target template directory not found: ${targetDir}\n` +
-      `  Expected directory for target "${target}" at: ${targetDir}`,
+      `Target template directory not found: ${targetDir}\n` +
+      `  Expected directory for target "${target}".`,
     )
   }
   return targetDir
@@ -52,22 +53,20 @@ function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-async function copyFile(
+function copyFileSync(
   srcDir: string,
   destDir: string,
   filename: string,
   options?: CopyFileOptions,
-): Promise<boolean> {
+): string | null {
   const srcPath = path.join(srcDir, filename)
   const destPath = path.join(destDir, filename)
 
   if (!fs.existsSync(srcPath)) {
     if (options?.required) {
-      console.error(`[prisma-generator-express] ✗ Required source file not found: ${srcPath}`)
-      return false
+      return `Required file not found: ${srcPath}`
     }
-    console.warn(`[prisma-generator-express] ⚠️  Source file not found: ${srcPath}`)
-    return true
+    return null
   }
 
   const destDirPath = path.dirname(destPath)
@@ -98,8 +97,7 @@ async function copyFile(
   }
 
   fs.writeFileSync(destPath, content)
-  console.log(`  ✓ Copied: ${filename}`)
-  return true
+  return null
 }
 
 export async function copyFiles(
@@ -110,22 +108,25 @@ export async function copyFiles(
   if (!outputPath) return
 
   const copyBase = resolveTemplateDir('copy')
-
-  let allCopied = true
+  const errors: string[] = []
 
   console.log(`  Copying utility files to: ${outputPath} (target: ${target})`)
 
   for (const file of SHARED_FILES) {
-    const ok = await copyFile(copyBase, outputPath, file, { required: true })
-    if (!ok) allCopied = false
+    const err = copyFileSync(copyBase, outputPath, file, { required: true })
+    if (err) errors.push(err)
   }
 
-  const targetSrcDir = getTargetSourceDir(copyBase, target)
+  let targetSrcDir: string
+  try {
+    targetSrcDir = getTargetSourceDir(copyBase, target)
+  } catch (e: any) {
+    throw new Error(e.message)
+  }
+
   for (const file of TARGET_FILES[target]) {
-    const ok = await copyFile(targetSrcDir, outputPath, file, {
-      required: true,
-    })
-    if (!ok) allCopied = false
+    const err = copyFileSync(targetSrcDir, outputPath, file, { required: true })
+    if (err) errors.push(err)
   }
 
   const clientDir = path.join(outputPath, 'client')
@@ -134,7 +135,7 @@ export async function copyFiles(
   }
 
   const clientSrcDir = resolveTemplateDir('client')
-  const clientOk = await copyFile(
+  const clientErr = copyFileSync(
     clientSrcDir,
     clientDir,
     'encodeQueryParams.ts',
@@ -143,13 +144,16 @@ export async function copyFiles(
       importRewrites: [{ from: '../copy/misc.js', to: '../misc.js' }],
     },
   )
-  if (!clientOk) allCopied = false
+  if (clientErr) errors.push(clientErr)
 
-  if (allCopied) {
-    console.log(`  ✓ Utility files copied successfully`)
-  } else {
+  if (errors.length > 0) {
     throw new Error(
-      '[prisma-generator-express] One or more required utility files could not be copied. Generation aborted.',
+      `Failed to copy ${errors.length} required file(s):\n` +
+      errors.map((e) => `  - ${e}`).join('\n') +
+      `\n  copyBase: ${copyBase}` +
+      `\n  __dirname: ${__dirname}`,
     )
   }
+
+  console.log(`  ✓ Utility files copied successfully`)
 }
