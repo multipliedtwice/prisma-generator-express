@@ -1,3 +1,10 @@
+## [1.34.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.34.0...v1.34.1) (2026-04-19)
+
+
+### Bug Fixes
+
+* typescript errors ([885d86d](https://github.com/multipliedtwice/prisma-generator-express/commit/885d86d4a2715b8b3ad22d9cf2c6407486e82585))
+
 # [1.34.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.33.0...v1.34.0) (2026-04-19)
 
 # [1.33.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.32.0...v1.33.0) (2026-04-19)
