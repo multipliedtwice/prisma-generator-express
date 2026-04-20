@@ -1,3 +1,10 @@
+## [1.34.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.34.3...v1.34.4) (2026-04-20)
+
+
+### Bug Fixes
+
+* **generator:** enhance error mapping in mapError function to provide more detailed messages for various Prisma errors ([38e81a3](https://github.com/multipliedtwice/prisma-generator-express/commit/38e81a31ba984ca7d310d1ed0daddaafb57f2667))
+
 ## [1.34.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.34.2...v1.34.3) (2026-04-19)
 
 
