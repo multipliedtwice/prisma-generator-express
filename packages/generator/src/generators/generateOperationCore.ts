@@ -113,27 +113,45 @@ export function mapError(error: unknown): HttpError {
     const code = (error as any).code as string
     const mapped = PRISMA_ERROR_MAP[code]
     if (mapped) {
-      return new HttpError(mapped.status, mapped.message)
+      const detail = (error as any).message
+      const message = detail
+        ? mapped.message + ': ' + detail
+        : mapped.message
+      return new HttpError(mapped.status, message)
     }
     if (typeof code === 'string' && code.startsWith('P')) {
+      const msg = (error as any).message || 'Database operation failed'
       console.warn(
         '[prisma-generator-express] Unmapped Prisma error code:',
         code,
-        (error as any).message || '',
+        msg,
       )
-      return new HttpError(500, 'Database operation failed')
+      return new HttpError(500, msg)
     }
   }
 
   if (error && typeof error === 'object' && 'name' in error) {
     const name = (error as any).name
     if (name === 'PrismaClientValidationError') {
-      return new HttpError(400, 'Invalid query parameters')
+      return new HttpError(400, (error as any).message || 'Invalid query parameters')
+    }
+    if (name === 'PrismaClientKnownRequestError') {
+      return new HttpError(400, (error as any).message || 'Database request error')
+    }
+    if (name === 'PrismaClientInitializationError') {
+      return new HttpError(503, (error as any).message || 'Database connection failed')
+    }
+    if (name === 'PrismaClientRustPanicError') {
+      return new HttpError(500, (error as any).message || 'Internal database engine error')
+    }
+    if (name === 'PrismaClientUnknownRequestError') {
+      return new HttpError(500, (error as any).message || 'Unknown database error')
     }
   }
 
+  const msg = error instanceof Error ? error.message : String(error)
   console.error('[prisma-generator-express] Unhandled error:', error)
-  return new HttpError(500, 'Internal server error')
+  return new HttpError(500, msg || 'Internal server error')
 }
 
 let _speedExtension: ((opts: any) => any) | null = null
