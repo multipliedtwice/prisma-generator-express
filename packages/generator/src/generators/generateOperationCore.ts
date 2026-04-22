@@ -499,21 +499,29 @@ export async function findManyPaginated(
   const shape = ctx.guardShape
   const caller = ctx.guardCaller
   const distinctCountLimit = ctx.paginationConfig?.distinctCountLimit
+  const delegate = (extended as any).${modelNameLower}
 
   if (shape) {
-    assertGuard((extended as any).${modelNameLower})
+    assertGuard(delegate)
   }
 
   let items: any[]
   let total: number
 
-  if (typeof extended.$transaction === 'function') {
+  if (shape || typeof extended.$transaction !== 'function') {
+    const [data, count] = await Promise.all([
+      shape
+        ? delegate.guard(shape, caller).findMany(query)
+        : delegate.findMany(query),
+      countForPagination(delegate, query, shape, caller, distinctCountLimit),
+    ])
+    items = data
+    total = count
+  } else {
     try {
       const txResult = await extended.$transaction(async (tx: any) => {
-        const d = shape
-          ? await tx.${modelNameLower}.guard(shape, caller).findMany(query)
-          : await tx.${modelNameLower}.findMany(query)
-        const t = await countForPagination(tx.${modelNameLower}, query, shape, caller, distinctCountLimit)
+        const d = await tx.${modelNameLower}.findMany(query)
+        const t = await countForPagination(tx.${modelNameLower}, query, undefined, undefined, distinctCountLimit)
         return { d, t }
       })
       items = txResult.d
@@ -526,31 +534,12 @@ export async function findManyPaginated(
         console.warn(
           '[prisma-generator-express] Interactive transactions not available, pagination queries are non-atomic',
         )
-        items = shape
-          ? await (extended as any).${modelNameLower}.guard(shape, caller).findMany(query)
-          : await (extended as any).${modelNameLower}.findMany(query)
-        total = await countForPagination(
-          (extended as any).${modelNameLower},
-          query,
-          shape,
-          caller,
-          distinctCountLimit,
-        )
+        items = await delegate.findMany(query)
+        total = await countForPagination(delegate, query, undefined, undefined, distinctCountLimit)
       } else {
         throw txError
       }
     }
-  } else {
-    items = shape
-      ? await (extended as any).${modelNameLower}.guard(shape, caller).findMany(query)
-      : await (extended as any).${modelNameLower}.findMany(query)
-    total = await countForPagination(
-      (extended as any).${modelNameLower},
-      query,
-      shape,
-      caller,
-      distinctCountLimit,
-    )
   }
 
   const skip = (query.skip as number) ?? 0
