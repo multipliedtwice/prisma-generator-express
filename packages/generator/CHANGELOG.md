@@ -1,3 +1,5 @@
+# [1.35.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.34.4...v1.35.0) (2026-04-22)
+
 ## [1.34.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.34.3...v1.34.4) (2026-04-20)
 
 
