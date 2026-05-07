@@ -1,3 +1,10 @@
+# [1.36.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.35.0...v1.36.0) (2026-05-07)
+
+
+### Features
+
+* add POST support for read operations with complex query parameters ([a415272](https://github.com/multipliedtwice/prisma-generator-express/commit/a4152723379d344d9f2f7fe1b338d28de9746d60))
+
 # [1.35.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.34.4...v1.35.0) (2026-04-22)
 
 ## [1.34.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.34.3...v1.34.4) (2026-04-20)
