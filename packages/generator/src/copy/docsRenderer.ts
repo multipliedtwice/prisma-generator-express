@@ -1,5 +1,5 @@
 import type { RouteConfig } from './routeConfig'
-import { OPERATION_DEFS, isOperationEnabled } from './operationDefinitions'
+import { OPERATION_DEFS, isOperationEnabled, READ_OPERATION_NAMES } from './operationDefinitions'
 
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 
@@ -553,6 +553,8 @@ export function renderDocs(modelName: string, config: DocsConfig, ctx: DocsModel
   const modelLower = modelName.charAt(0).toLowerCase() + modelName.slice(1)
   const exampleBasePath = buildExampleBasePath(modelName, config)
 
+  const postReadsEnabled = !config.disablePostReads
+
   const scalarFields = ctx.fields.filter((f) => isScalarField(f) || isEnumField(f))
   const relationFields = ctx.fields.filter((f) => isRelationField(f))
 
@@ -561,7 +563,7 @@ export function renderDocs(modelName: string, config: DocsConfig, ctx: DocsModel
   const listRelations = relationFields.filter((f) => f.isList)
   const singleRelations = relationFields.filter((f) => !f.isList)
 
-  const ops = OPERATION_DEFS
+  const getOps = OPERATION_DEFS
     .filter((d) => isOperationEnabled(config as Record<string, any>, d))
     .map((d) => {
       const detail = OP_DETAIL_MAP[d.name]
@@ -580,6 +582,33 @@ export function renderDocs(modelName: string, config: DocsConfig, ctx: DocsModel
         notes: detail ? detail.notes : '',
       }
     })
+
+  const postReadOps = postReadsEnabled
+    ? OPERATION_DEFS
+        .filter((d) => READ_OPERATION_NAMES.has(d.name) && isOperationEnabled(config as Record<string, any>, d))
+        .map((d) => {
+          const detail = OP_DETAIL_MAP[d.name]
+          const postPath = d.name === 'findMany'
+            ? buildFullPath(exampleBasePath, '/read')
+            : buildFullPath(exampleBasePath, d.pathSuffix)
+          return {
+            op: d.name + ' (POST)',
+            method: 'POST',
+            path: postPath,
+            transport: 'POST JSON body',
+            responseDesc: detail ? detail.responseDesc : '',
+            errors: detail ? detail.errors.join(', ') : '',
+            required: detail ? detail.required : [],
+            optional: detail ? detail.optional : [],
+            supportsSelect: detail ? detail.supportsSelect : false,
+            supportsInclude: detail ? detail.supportsInclude : false,
+            supportsOmit: detail ? detail.supportsOmit : false,
+            notes: 'POST alternative for complex queries exceeding URL length limits. Same args as GET but in request body.',
+          }
+        })
+    : []
+
+  const ops = [...getOps, ...postReadOps]
 
   const firstUnique = uniqueFields[0]
   const firstUniqueExample = firstUnique ? exampleValue(ctx, firstUnique.name) : null
@@ -638,6 +667,14 @@ export function renderDocs(modelName: string, config: DocsConfig, ctx: DocsModel
     'import { encodeQueryParams } from "./client/encodeQueryParams"\n\n' +
     'const params = encodeQueryParams(' + JSON.stringify(findManyQueryArgs, null, 2) + ')\n\n' +
     'const res = await fetch(BASE_URL + "' + exampleBasePath + '?" + params)\n' +
+    'const data = await res.json()'
+
+  const findManyPostFetchExample =
+    'const res = await fetch(BASE_URL + "' + exampleBasePath + '/read", {\n' +
+    '  method: "POST",\n' +
+    '  headers: { "Content-Type": "application/json" },\n' +
+    '  body: JSON.stringify(' + JSON.stringify(findManyQueryArgs, null, 2) + ')\n' +
+    '})\n' +
     'const data = await res.json()'
 
   const findUniqueFetchExample = uniqueWhereExample
@@ -844,6 +881,7 @@ export function renderDocs(modelName: string, config: DocsConfig, ctx: DocsModel
   const transportNotes = [
     'GET endpoints: Prisma args as JSON-encoded query parameter strings via encodeQueryParams.',
     'POST/PUT/DELETE/PATCH endpoints: Prisma args as JSON request body. Body must be a JSON object.',
+    'POST read endpoints: All read operations also accept POST with the same args as JSON body instead of query params. Use when query parameters exceed URL length limits. findMany uses POST /read, all others use the same path as GET.',
     'findManyPaginated returns { data, total, hasMore }. hasMore is reliable for forward offset pagination only.',
     'Batch mutations (createMany, updateMany, deleteMany) return { count }. Batch data inputs are scalar-only — nested relation writes are not supported.',
     'findUnique and findFirst return null (not 404) when no record matches. Use the OrThrow variants for 404 behavior.',
@@ -967,6 +1005,7 @@ export function renderDocs(modelName: string, config: DocsConfig, ctx: DocsModel
 
   const runtimeNotes = [
     '<strong>Query parameter parsing:</strong> GET query values are parsed server-side. Strings starting with <span class="font-mono">{</span>, <span class="font-mono">[</span>, or <span class="font-mono">"</span> are JSON-parsed. The strings <span class="font-mono">true</span>, <span class="font-mono">false</span>, <span class="font-mono">null</span> are converted to their JS equivalents. Numeric conversion only applies to <span class="font-mono">take</span> and <span class="font-mono">skip</span>. Use <span class="font-mono">encodeQueryParams</span> to avoid encoding issues.',
+    '<strong>POST read endpoints:</strong> All read operations accept POST as an alternative transport. The request body is a plain JSON object with the same argument structure as the GET query params — no JSON-string encoding needed. POST reads use native JSON types (numbers, booleans, objects) directly. findMany POST read is at <span class="font-mono">/read</span>; all other read operations use the same path as their GET counterpart. Disable with <span class="font-mono">disablePostReads: true</span> in route config.',
     '<strong>Request body validation:</strong> All write endpoints require a JSON object body. Sending <span class="font-mono">null</span>, arrays, or non-object JSON values returns 400.',
     '<strong>Documentation in production:</strong> Docs endpoints are disabled by default when <span class="font-mono">NODE_ENV=production</span> or <span class="font-mono">DISABLE_OPENAPI=true</span>. To enable in production, set <span class="font-mono">disableOpenApi: false</span> in the route config.',
     '<strong>Paginated query atomicity:</strong> findManyPaginated wraps data + count in a database transaction when available. If interactive transactions are not supported (e.g. some edge adapters), the queries run separately and data/total may be slightly inconsistent under concurrent writes.',
@@ -1236,29 +1275,33 @@ export function renderDocs(modelName: string, config: DocsConfig, ctx: DocsModel
         ${codeBlock(findManyFetchExample)}
       </div>
       <div>
-        <h3 class="mt-3.5 mb-2 text-sm">11.2 GET — findUnique</h3>
+        <h3 class="mt-3.5 mb-2 text-sm">11.2 POST — findMany (read)</h3>
+        ${codeBlock(findManyPostFetchExample)}
+      </div>
+      <div>
+        <h3 class="mt-3.5 mb-2 text-sm">11.3 GET — findUnique</h3>
         ${findUniqueFetchExample
           ? codeBlock(findUniqueFetchExample)
           : noUniqueFieldNote}
       </div>
       <div>
-        <h3 class="mt-3.5 mb-2 text-sm">11.3 POST — create</h3>
+        <h3 class="mt-3.5 mb-2 text-sm">11.4 POST — create</h3>
         ${codeBlock(createFetchExample)}
       </div>
       <div>
-        <h3 class="mt-3.5 mb-2 text-sm">11.4 PUT — update</h3>
+        <h3 class="mt-3.5 mb-2 text-sm">11.5 PUT — update</h3>
         ${updateFetchExample
           ? codeBlock(updateFetchExample)
           : noUniqueFieldNote}
       </div>
       <div>
-        <h3 class="mt-3.5 mb-2 text-sm">11.5 DELETE — delete</h3>
+        <h3 class="mt-3.5 mb-2 text-sm">11.6 DELETE — delete</h3>
         ${deleteFetchExample
           ? codeBlock(deleteFetchExample)
           : noUniqueFieldNote}
       </div>
       <div>
-        <h3 class="mt-3.5 mb-2 text-sm">11.6 Guard variant header</h3>
+        <h3 class="mt-3.5 mb-2 text-sm">11.7 Guard variant header</h3>
         ${guardFetchExample
           ? codeBlock(guardFetchExample)
           : noUniqueFieldNote}

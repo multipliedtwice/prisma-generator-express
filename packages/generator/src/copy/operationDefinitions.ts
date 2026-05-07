@@ -88,6 +88,24 @@ export const OPERATION_DEFS: OperationDef[] = [
   },
 ]
 
+export const READ_OPERATION_NAMES = new Set([
+  'findMany',
+  'findUnique',
+  'findUniqueOrThrow',
+  'findFirst',
+  'findFirstOrThrow',
+  'findManyPaginated',
+  'count',
+  'aggregate',
+  'groupBy',
+])
+
+export function getPostReadPathSuffix(opName: string): string {
+  if (opName === 'findMany') return '/read'
+  const def = OPERATION_DEFS.find((d) => d.name === opName)
+  return def ? def.pathSuffix : ''
+}
+
 export function isOperationEnabled(
   config: Record<string, any>,
   def: OperationDef,

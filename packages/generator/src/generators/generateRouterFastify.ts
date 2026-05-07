@@ -59,8 +59,9 @@ import {
 } from './${modelName}Handlers'
 import type { RouteConfig, FastifyHookHandler } from '../routeConfig.target'
 import { parseQueryParams } from '../parseQueryParams'
+import { sanitizeKeys } from '../misc'
 import { buildModelOpenApi } from '../buildModelOpenApi'
-import { mapError, transformResult } from '../operationRuntime'
+import { mapError, transformResult, HttpError } from '../operationRuntime'
 
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 
@@ -100,6 +101,14 @@ function parseQueryHook(request: FastifyRequest): void {
   if (raw && Object.keys(raw).length > 0) {
     ;(request as any).parsedQuery = parseQueryParams(raw)
   }
+}
+
+function parseBodyAsQueryHook(request: FastifyRequest): void {
+  const body = request.body
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new HttpError(400, 'Request body must be a JSON object')
+  }
+  ;(request as any).parsedQuery = sanitizeKeys(body as Record<string, unknown>)
 }
 
 function makeShapeHook(config: RouteConfig, opConfig: any): (request: FastifyRequest) => void {
@@ -161,6 +170,8 @@ export async function ${routerFunctionName}(
       || _env.NODE_ENV === 'production'
     ))
 
+  const postReadsEnabled = !config.disablePostReads
+
   const qbEnabled = isQueryBuilderEnabled(config)
 
   if (qbEnabled) {
@@ -221,6 +232,20 @@ export async function ${routerFunctionName}(
         sendError(reply, error)
       }
     })
+    if (postReadsEnabled) {
+      fastify.post(path, async (request, reply) => {
+        try {
+          parseBodyAsQueryHook(request)
+          makeShapeHook(config, opConfig)(request)
+          if (await runHooks(before, request, reply)) return
+          await ${prefix}FindFirst(request, reply)
+          if (await runHooks(after, request, reply)) return
+          sendResult(request, reply)
+        } catch (error: unknown) {
+          sendError(reply, error)
+        }
+      })
+    }
   }
 
   if (config.enableAll || config.findFirstOrThrow) {
@@ -239,6 +264,20 @@ export async function ${routerFunctionName}(
         sendError(reply, error)
       }
     })
+    if (postReadsEnabled) {
+      fastify.post(path, async (request, reply) => {
+        try {
+          parseBodyAsQueryHook(request)
+          makeShapeHook(config, opConfig)(request)
+          if (await runHooks(before, request, reply)) return
+          await ${prefix}FindFirstOrThrow(request, reply)
+          if (await runHooks(after, request, reply)) return
+          sendResult(request, reply)
+        } catch (error: unknown) {
+          sendError(reply, error)
+        }
+      })
+    }
   }
 
   if (config.enableAll || config.findManyPaginated) {
@@ -257,6 +296,20 @@ export async function ${routerFunctionName}(
         sendError(reply, error)
       }
     })
+    if (postReadsEnabled) {
+      fastify.post(path, async (request, reply) => {
+        try {
+          parseBodyAsQueryHook(request)
+          makeShapeHook(config, opConfig)(request)
+          if (await runHooks(before, request, reply)) return
+          await ${prefix}FindManyPaginated(request, reply)
+          if (await runHooks(after, request, reply)) return
+          sendResult(request, reply)
+        } catch (error: unknown) {
+          sendError(reply, error)
+        }
+      })
+    }
   }
 
   if (config.enableAll || config.aggregate) {
@@ -275,6 +328,20 @@ export async function ${routerFunctionName}(
         sendError(reply, error)
       }
     })
+    if (postReadsEnabled) {
+      fastify.post(path, async (request, reply) => {
+        try {
+          parseBodyAsQueryHook(request)
+          makeShapeHook(config, opConfig)(request)
+          if (await runHooks(before, request, reply)) return
+          await ${prefix}Aggregate(request, reply)
+          if (await runHooks(after, request, reply)) return
+          sendResult(request, reply)
+        } catch (error: unknown) {
+          sendError(reply, error)
+        }
+      })
+    }
   }
 
   if (config.enableAll || config.count) {
@@ -293,6 +360,20 @@ export async function ${routerFunctionName}(
         sendError(reply, error)
       }
     })
+    if (postReadsEnabled) {
+      fastify.post(path, async (request, reply) => {
+        try {
+          parseBodyAsQueryHook(request)
+          makeShapeHook(config, opConfig)(request)
+          if (await runHooks(before, request, reply)) return
+          await ${prefix}Count(request, reply)
+          if (await runHooks(after, request, reply)) return
+          sendResult(request, reply)
+        } catch (error: unknown) {
+          sendError(reply, error)
+        }
+      })
+    }
   }
 
   if (config.enableAll || config.groupBy) {
@@ -311,6 +392,20 @@ export async function ${routerFunctionName}(
         sendError(reply, error)
       }
     })
+    if (postReadsEnabled) {
+      fastify.post(path, async (request, reply) => {
+        try {
+          parseBodyAsQueryHook(request)
+          makeShapeHook(config, opConfig)(request)
+          if (await runHooks(before, request, reply)) return
+          await ${prefix}GroupBy(request, reply)
+          if (await runHooks(after, request, reply)) return
+          sendResult(request, reply)
+        } catch (error: unknown) {
+          sendError(reply, error)
+        }
+      })
+    }
   }
 
   if (config.enableAll || config.findUniqueOrThrow) {
@@ -329,6 +424,20 @@ export async function ${routerFunctionName}(
         sendError(reply, error)
       }
     })
+    if (postReadsEnabled) {
+      fastify.post(path, async (request, reply) => {
+        try {
+          parseBodyAsQueryHook(request)
+          makeShapeHook(config, opConfig)(request)
+          if (await runHooks(before, request, reply)) return
+          await ${prefix}FindUniqueOrThrow(request, reply)
+          if (await runHooks(after, request, reply)) return
+          sendResult(request, reply)
+        } catch (error: unknown) {
+          sendError(reply, error)
+        }
+      })
+    }
   }
 
   if (config.enableAll || config.findUnique) {
@@ -347,6 +456,20 @@ export async function ${routerFunctionName}(
         sendError(reply, error)
       }
     })
+    if (postReadsEnabled) {
+      fastify.post(path, async (request, reply) => {
+        try {
+          parseBodyAsQueryHook(request)
+          makeShapeHook(config, opConfig)(request)
+          if (await runHooks(before, request, reply)) return
+          await ${prefix}FindUnique(request, reply)
+          if (await runHooks(after, request, reply)) return
+          sendResult(request, reply)
+        } catch (error: unknown) {
+          sendError(reply, error)
+        }
+      })
+    }
   }
 
   if (config.enableAll || config.findMany) {
@@ -365,6 +488,21 @@ export async function ${routerFunctionName}(
         sendError(reply, error)
       }
     })
+    if (postReadsEnabled) {
+      const postPath = basePath ? \`\${basePath}/read\` : '/read'
+      fastify.post(postPath, async (request, reply) => {
+        try {
+          parseBodyAsQueryHook(request)
+          makeShapeHook(config, opConfig)(request)
+          if (await runHooks(before, request, reply)) return
+          await ${prefix}FindMany(request, reply)
+          if (await runHooks(after, request, reply)) return
+          sendResult(request, reply)
+        } catch (error: unknown) {
+          sendError(reply, error)
+        }
+      })
+    }
   }
 
   if (config.enableAll || config.createManyAndReturn) {

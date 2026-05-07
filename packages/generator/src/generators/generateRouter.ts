@@ -62,6 +62,7 @@ import {
 } from './${modelName}Handlers'
 import type { RouteConfig } from '../routeConfig.target'
 import { parseQueryParams } from '../parseQueryParams'
+import { sanitizeKeys } from '../misc'
 import { buildModelOpenApi } from '../buildModelOpenApi'
 import { transformResult } from '../operationRuntime'
 
@@ -113,6 +114,8 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
       || _env.NODE_ENV === 'production'
     ))
 
+  const postReadsEnabled = !config.disablePostReads
+
   const qbEnabled = isQueryBuilderEnabled(config)
 
   if (qbEnabled) {
@@ -127,6 +130,14 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
     if (rawQuery && Object.keys(rawQuery).length > 0) {
       res.locals.parsedQuery = parseQueryParams(rawQuery as Record<string, unknown>)
     }
+    next()
+  }
+
+  const parseBodyAsQuery: RequestHandler = (req, res, next) => {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return next({ status: 400, message: 'Request body must be a JSON object' })
+    }
+    res.locals.parsedQuery = sanitizeKeys(req.body)
     next()
   }
 
@@ -194,6 +205,9 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/first\` : '/first'
     router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindFirst as RequestHandler, ...after, respond)
+    if (postReadsEnabled) {
+      router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindFirst as RequestHandler, ...after, respond)
+    }
   }
 
   if (config.enableAll || config.findFirstOrThrow) {
@@ -201,6 +215,9 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/first/strict\` : '/first/strict'
     router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindFirstOrThrow as RequestHandler, ...after, respond)
+    if (postReadsEnabled) {
+      router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindFirstOrThrow as RequestHandler, ...after, respond)
+    }
   }
 
   if (config.enableAll || config.findManyPaginated) {
@@ -208,6 +225,9 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/paginated\` : '/paginated'
     router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindManyPaginated as RequestHandler, ...after, respond)
+    if (postReadsEnabled) {
+      router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindManyPaginated as RequestHandler, ...after, respond)
+    }
   }
 
   if (config.enableAll || config.aggregate) {
@@ -215,6 +235,9 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/aggregate\` : '/aggregate'
     router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}Aggregate as RequestHandler, ...after, respond)
+    if (postReadsEnabled) {
+      router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}Aggregate as RequestHandler, ...after, respond)
+    }
   }
 
   if (config.enableAll || config.count) {
@@ -222,6 +245,9 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/count\` : '/count'
     router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}Count as RequestHandler, ...after, respond)
+    if (postReadsEnabled) {
+      router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}Count as RequestHandler, ...after, respond)
+    }
   }
 
   if (config.enableAll || config.groupBy) {
@@ -229,6 +255,9 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/groupby\` : '/groupby'
     router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}GroupBy as RequestHandler, ...after, respond)
+    if (postReadsEnabled) {
+      router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}GroupBy as RequestHandler, ...after, respond)
+    }
   }
 
   if (config.enableAll || config.findUniqueOrThrow) {
@@ -236,6 +265,9 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/unique/strict\` : '/unique/strict'
     router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindUniqueOrThrow as RequestHandler, ...after, respond)
+    if (postReadsEnabled) {
+      router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindUniqueOrThrow as RequestHandler, ...after, respond)
+    }
   }
 
   if (config.enableAll || config.findUnique) {
@@ -243,6 +275,9 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/unique\` : '/unique'
     router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindUnique as RequestHandler, ...after, respond)
+    if (postReadsEnabled) {
+      router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindUnique as RequestHandler, ...after, respond)
+    }
   }
 
   if (config.enableAll || config.findMany) {
@@ -250,6 +285,10 @@ export function ${routerFunctionName}(config: RouteConfig = {}) {
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
     router.get(path, parseQuery, setShape(opConfig), ...before, ${prefix}FindMany as RequestHandler, ...after, respond)
+    if (postReadsEnabled) {
+      const postPath = basePath ? \`\${basePath}/read\` : '/read'
+      router.post(postPath, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindMany as RequestHandler, ...after, respond)
+    }
   }
 
   if (config.enableAll || config.createManyAndReturn) {

@@ -11,6 +11,7 @@ Running `npx prisma generate` produces:
 
 - Handler functions for all Prisma operations (findMany, create, update, delete, etc.)
 - Router generator with middleware support (before/after hooks per operation)
+- POST read endpoints for all read operations (for complex queries exceeding URL length limits)
 - OpenAPI 3.1 spec (JSON and YAML endpoints registered automatically per router)
 - Documentation helpers for contract view and Scalar UI (require manual mounting)
 - Client-side query parameter encoder
@@ -29,6 +30,7 @@ Supports both **Express** and **Fastify** targets via the `target` configuration
 - [Guard shapes (prisma-guard integration)](#guard-shapes-prisma-guard-integration)
 - [Request body format](#request-body-format)
 - [Query encoding (client side)](#query-encoding-client-side)
+- [POST read endpoints](#post-read-endpoints)
 - [Response shaping: select, include, omit](#response-shaping-select-include-omit)
 - [BigInt and Decimal handling](#bigint-and-decimal-handling)
 - [Pagination](#pagination)
@@ -551,7 +553,7 @@ const projectConfig = {
 
 A request with `{ where: { title: { contains: 'demo' } } }` produces:
 
-```
+```sql
 WHERE status = 'published'
 AND isDeleted = false
 AND isActive = true
@@ -995,6 +997,75 @@ const response = await fetch(`/user?${params}`)
 
 Complex values (`where`, `select`, `include`, `omit`, `orderBy`) are JSON-stringified. Primitives (`take`, `skip`) are sent directly. The encoder handles BigInt serialization automatically.
 
+## POST read endpoints
+
+All read operations are available via POST in addition to GET. POST read endpoints accept the same arguments as their GET counterparts, but as a JSON request body instead of query parameters. This is useful when complex filters, deeply nested `where` clauses, or large `select`/`include` objects exceed URL length limits (typically 2048–8192 characters depending on server, proxy, and CDN configuration).
+
+POST read endpoints are enabled by default. Disable them with `disablePostReads: true` in the route config.
+
+### Path mapping
+
+Most read operations use the same path for both GET and POST. The only exception is `findMany`, which uses a `/read` suffix to avoid conflicting with `POST /` (create).
+
+| Operation         | GET path         | POST path        |
+| ----------------- | ---------------- | ---------------- |
+| findMany          | `/{modelName}/`              | `/{modelName}/read`          |
+| findFirst         | `/{modelName}/first`         | `/{modelName}/first`         |
+| findFirstOrThrow  | `/{modelName}/first/strict`  | `/{modelName}/first/strict`  |
+| findUnique        | `/{modelName}/unique`        | `/{modelName}/unique`        |
+| findUniqueOrThrow | `/{modelName}/unique/strict` | `/{modelName}/unique/strict` |
+| findManyPaginated | `/{modelName}/paginated`     | `/{modelName}/paginated`     |
+| count             | `/{modelName}/count`         | `/{modelName}/count`         |
+| aggregate         | `/{modelName}/aggregate`     | `/{modelName}/aggregate`     |
+| groupBy           | `/{modelName}/groupby`       | `/{modelName}/groupby`       |
+
+### Usage
+
+With GET and `encodeQueryParams`:
+
+```ts
+import { encodeQueryParams } from './generated/client/encodeQueryParams'
+
+const params = encodeQueryParams({
+  where: { status: 'active', role: { in: ['admin', 'editor'] } },
+  select: { id: true, email: true },
+  take: 20,
+})
+
+const response = await fetch(`/user?${params}`)
+```
+
+With POST — same args, no encoding needed:
+
+```ts
+const response = await fetch('/user/read', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    where: { status: 'active', role: { in: ['admin', 'editor'] } },
+    select: { id: true, email: true },
+    take: 20,
+  }),
+})
+```
+
+### Differences from GET
+
+POST read bodies use native JSON types directly — numbers are numbers, booleans are booleans, objects are objects. There is no JSON-string encoding of nested values as with GET query parameters, and no string-to-type coercion is applied. The `encodeQueryParams` utility is not needed for POST reads.
+
+### Guard shapes
+
+POST read endpoints use the same guard shapes, hooks, and middleware as their GET counterparts. The same `before`/`after` hooks run for both GET and POST on the same operation.
+
+### Disabling
+
+```ts
+app.use('/', UserRouter({
+  enableAll: true,
+  disablePostReads: true,
+}))
+```
+
 ## Response shaping: select, include, omit
 
 Read and single-record write operations support three response shaping parameters:
@@ -1070,10 +1141,12 @@ Each router automatically registers OpenAPI spec endpoints when not in productio
 
 | Endpoint                | Description           |
 | ----------------------- | --------------------- |
-| `/{model}/openapi.json` | OpenAPI 3.1 JSON spec |
-| `/{model}/openapi.yaml` | OpenAPI 3.1 YAML spec |
+| `/{modelName}/openapi.json` | OpenAPI 3.1 JSON spec |
+| `/{modelName}/openapi.yaml` | OpenAPI 3.1 YAML spec |
 
 Actual paths depend on `customUrlPrefix` and `addModelPrefix` configuration.
+
+The OpenAPI spec includes POST read endpoints when they are enabled (default). Each POST read operation appears with its own `operationId` and request body schema documenting the native JSON argument types.
 
 ### Manual (generated helpers, require mounting)
 
@@ -1160,11 +1233,11 @@ fastify.get('/docs', generateCombinedDocs({
 | Endpoint                      | Description             |
 | ----------------------------- | ----------------------- |
 | `/docs`                       | Combined index page     |
-| `/docs/{model}`               | Contract view (default) |
-| `/docs/{model}?ui=scalar`     | Scalar interactive UI   |
-| `/docs/{model}?ui=json`       | Raw JSON                |
-| `/docs/{model}?ui=yaml`       | Raw YAML                |
-| `/docs/{model}?ui=playground` | Query playground        |
+| `/docs/{modelName}`               | Contract view (default) |
+| `/docs/{modelName}?ui=scalar`     | Scalar interactive UI   |
+| `/docs/{modelName}?ui=json`       | Raw JSON                |
+| `/docs/{modelName}?ui=yaml`       | Raw YAML                |
+| `/docs/{modelName}?ui=playground` | Query playground        |
 
 Disable in production via `NODE_ENV=production` or `DISABLE_OPENAPI=true`. Override with `disableOpenApi: false` in config to force-enable.
 
@@ -1216,30 +1289,43 @@ Without a connector on the request, the handlers use the standard PrismaClient. 
 
 GET query values are parsed server-side. Strings starting with `{`, `[`, or `"` are JSON-parsed. The strings `true`, `false`, `null` are converted to their JS equivalents. Numeric conversion applies only to `take` and `skip`, and only when the value is a valid integer (e.g., `"10"` is parsed, `"10.5"` and `""` are not). Use `encodeQueryParams` on the client side to avoid encoding issues.
 
+POST read endpoints bypass this parsing entirely — the JSON body is used as-is with native types.
+
 ## Router schema
 
-| Operation           | Method | Path             |
-| ------------------- | ------ | ---------------- |
-| findMany            | GET    | `/`              |
-| findFirst           | GET    | `/first`         |
-| findFirstOrThrow    | GET    | `/first/strict`  |
-| findUnique          | GET    | `/unique`        |
-| findUniqueOrThrow   | GET    | `/unique/strict` |
-| findManyPaginated   | GET    | `/paginated`     |
-| count               | GET    | `/count`         |
-| aggregate           | GET    | `/aggregate`     |
-| groupBy             | GET    | `/groupby`       |
-| create              | POST   | `/`              |
-| createMany          | POST   | `/many`          |
-| createManyAndReturn | POST   | `/many/return`   |
-| update              | PUT    | `/`              |
-| updateMany          | PUT    | `/many`          |
-| updateManyAndReturn | PUT    | `/many/return`   |
-| upsert              | PATCH  | `/`              |
-| delete              | DELETE | `/`              |
-| deleteMany          | DELETE | `/many`          |
+| Operation           | Method | Path             | Notes                              |
+| ------------------- | ------ | ---------------- | ---------------------------------- |
+| findMany            | GET    | `/{modelName}/`              |                                    |
+| findMany            | POST   | `/{modelName}/read`          | POST read alternative              |
+| findFirst           | GET    | `/{modelName}/first`         |                                    |
+| findFirst           | POST   | `/{modelName}/first`         | POST read alternative              |
+| findFirstOrThrow    | GET    | `/{modelName}/first/strict`  |                                    |
+| findFirstOrThrow    | POST   | `/{modelName}/first/strict`  | POST read alternative              |
+| findUnique          | GET    | `/{modelName}/unique`        |                                    |
+| findUnique          | POST   | `/{modelName}/unique`        | POST read alternative              |
+| findUniqueOrThrow   | GET    | `/{modelName}/unique/strict` |                                    |
+| findUniqueOrThrow   | POST   | `/{modelName}/unique/strict` | POST read alternative              |
+| findManyPaginated   | GET    | `/{modelName}/paginated`     |                                    |
+| findManyPaginated   | POST   | `/{modelName}/paginated`     | POST read alternative              |
+| count               | GET    | `/{modelName}/count`         |                                    |
+| count               | POST   | `/{modelName}/count`         | POST read alternative              |
+| aggregate           | GET    | `/{modelName}/aggregate`     |                                    |
+| aggregate           | POST   | `/{modelName}/aggregate`     | POST read alternative              |
+| groupBy             | GET    | `/{modelName}/groupby`       |                                    |
+| groupBy             | POST   | `/{modelName}/groupby`       | POST read alternative              |
+| create              | POST   | `/{modelName}/`              |                                    |
+| createMany          | POST   | `/{modelName}/many`          |                                    |
+| createManyAndReturn | POST   | `/{modelName}/many/return`   |                                    |
+| update              | PUT    | `/{modelName}/`              |                                    |
+| updateMany          | PUT    | `/{modelName}/many`          |                                    |
+| updateManyAndReturn | PUT    | `/{modelName}/many/return`   |                                    |
+| upsert              | PATCH  | `/{modelName}/`              |                                    |
+| delete              | DELETE | `/{modelName}/`              |                                    |
+| deleteMany          | DELETE | `/{modelName}/many`          |                                    |
 
 Paths shown are relative suffixes. Actual paths include the model prefix (e.g., `/user/first`) unless `addModelPrefix: false`, and any `customUrlPrefix`.
+
+POST read endpoints are enabled by default. Set `disablePostReads: true` to remove them.
 
 ## Skipping models
 
@@ -1263,6 +1349,7 @@ interface RouteConfig {
   customUrlPrefix?: string
   specBasePath?: string
   disableOpenApi?: boolean
+  disablePostReads?: boolean         // default: false
   scalarCdnUrl?: string
 
   openApiTitle?: string
@@ -1345,6 +1432,8 @@ The `guard.resolveVariant` callback receives `FastifyRequest` instead of `Reques
 `customUrlPrefix` is normalized to ensure a leading slash and strip trailing slashes.
 
 `specBasePath` controls the base path used in OpenAPI spec paths and docs examples, independent of `customUrlPrefix`.
+
+`disablePostReads` removes all POST read endpoints when set to `true`. POST read endpoints are enabled by default. This is a global setting — there is no per-operation toggle.
 
 `openApiServers` sets the `servers` array in the OpenAPI spec:
 

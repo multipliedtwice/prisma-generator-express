@@ -32,6 +32,7 @@ export interface BaseRouteConfig<HookHandler, RequestType> {
   customUrlPrefix?: string
   specBasePath?: string
   disableOpenApi?: boolean
+  disablePostReads?: boolean
   scalarCdnUrl?: string
 
   openApiTitle?: string

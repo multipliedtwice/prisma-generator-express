@@ -69,6 +69,11 @@ function opPath(basePath: string, name: string): string {
   return `${basePath}${def.pathSuffix}`
 }
 
+function postReadPath(basePath: string, name: string): string {
+  if (name === 'findMany') return `${basePath}/read`
+  return opPath(basePath, name)
+}
+
 function errorRef(): RefObject {
   return { $ref: '#/components/schemas/ErrorResponse' }
 }
@@ -159,6 +164,109 @@ function listScalarUpdateOperations(
         ],
       },
     },
+  }
+}
+
+function findManyBodySchema(): SchemaObject {
+  return {
+    type: 'object',
+    properties: {
+      where: { type: 'object', description: 'Filter conditions' },
+      orderBy: { description: 'Sort order (object or array of objects)' },
+      take: { type: 'integer', description: 'Limit results' },
+      skip: { type: 'integer', description: 'Skip results' },
+      select: { type: 'object', description: 'Select fields' },
+      include: { type: 'object', description: 'Include relations' },
+      omit: { type: 'object', description: 'Omit fields from response' },
+      cursor: { type: 'object', description: 'Cursor for pagination' },
+      distinct: { description: 'Distinct fields (string or array of strings)' },
+    },
+  }
+}
+
+function findUniqueBodySchema(): SchemaObject {
+  return {
+    type: 'object',
+    properties: {
+      where: { type: 'object', description: 'Unique selector' },
+      select: { type: 'object', description: 'Select fields' },
+      include: { type: 'object', description: 'Include relations' },
+      omit: { type: 'object', description: 'Omit fields from response' },
+    },
+    required: ['where'],
+  }
+}
+
+function countBodySchema(): SchemaObject {
+  return {
+    type: 'object',
+    properties: {
+      where: { type: 'object', description: 'Filter conditions' },
+      orderBy: { description: 'Sort order' },
+      take: { type: 'integer', description: 'Limit results' },
+      skip: { type: 'integer', description: 'Skip results' },
+      cursor: { type: 'object', description: 'Cursor for pagination' },
+      select: { description: 'Count specific fields. When provided, returns per-field counts as an object instead of a single integer.' },
+    },
+  }
+}
+
+function aggregateBodySchema(): SchemaObject {
+  return {
+    type: 'object',
+    properties: {
+      where: { type: 'object', description: 'Filter conditions' },
+      orderBy: { description: 'Sort order' },
+      cursor: { type: 'object', description: 'Cursor for pagination' },
+      take: { type: 'integer', description: 'Limit results' },
+      skip: { type: 'integer', description: 'Skip results' },
+      _count: { description: 'Count aggregate (true or field selection object)' },
+      _avg: { type: 'object', description: 'Average aggregate (field selection object)' },
+      _sum: { type: 'object', description: 'Sum aggregate (field selection object)' },
+      _min: { type: 'object', description: 'Min aggregate (field selection object)' },
+      _max: { type: 'object', description: 'Max aggregate (field selection object)' },
+    },
+  }
+}
+
+function groupByBodySchema(): SchemaObject {
+  return {
+    type: 'object',
+    properties: {
+      by: { type: 'array', items: { type: 'string' }, description: 'Fields to group by' },
+      where: { type: 'object', description: 'Filter conditions' },
+      orderBy: { description: 'Sort order. Required when using skip or take.' },
+      having: { type: 'object', description: 'Having conditions (filter object)' },
+      take: { type: 'integer', description: 'Limit results' },
+      skip: { type: 'integer', description: 'Skip results' },
+      _count: { description: 'Count aggregate (true or field selection object)' },
+      _avg: { type: 'object', description: 'Average aggregate (field selection object)' },
+      _sum: { type: 'object', description: 'Sum aggregate (field selection object)' },
+      _min: { type: 'object', description: 'Min aggregate (field selection object)' },
+      _max: { type: 'object', description: 'Max aggregate (field selection object)' },
+    },
+    required: ['by'],
+  }
+}
+
+function getPostReadBodySchema(opName: string): SchemaObject {
+  switch (opName) {
+    case 'findMany':
+    case 'findFirst':
+    case 'findFirstOrThrow':
+    case 'findManyPaginated':
+      return findManyBodySchema()
+    case 'findUnique':
+    case 'findUniqueOrThrow':
+      return findUniqueBodySchema()
+    case 'count':
+      return countBodySchema()
+    case 'aggregate':
+      return aggregateBodySchema()
+    case 'groupBy':
+      return groupByBodySchema()
+    default:
+      return findManyBodySchema()
   }
 }
 
@@ -535,6 +643,41 @@ function getGroupByParams() {
   ]
 }
 
+function addPostReadOperation(
+  spec: OpenApiSpec,
+  path: string,
+  modelName: string,
+  opName: string,
+  summary: string,
+  responseSchema: any,
+  errorCodes: number[],
+  description?: string,
+) {
+  const op: any = {
+    tags: [modelName],
+    summary: summary + ' (POST)',
+    operationId: `${modelName}${opName.charAt(0).toUpperCase() + opName.slice(1)}Post`,
+    description: (description ? description + ' ' : '') +
+      'POST alternative for requests with complex query parameters that may exceed URL length limits. Accepts the same arguments as the GET endpoint but as a JSON request body instead of query parameters.',
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: getPostReadBodySchema(opName),
+        },
+      },
+    },
+    responses: {
+      '200': {
+        description: 'Success',
+        content: { 'application/json': { schema: responseSchema } },
+      },
+    },
+  }
+  addErrorResponses(op, errorCodes)
+  addPath(spec, path, 'post', op)
+}
+
 function generatePaths(
   spec: OpenApiSpec,
   modelName: string,
@@ -542,6 +685,8 @@ function generatePaths(
   config: RouteConfig,
   fields: ModelField[],
 ) {
+  const postReads = !config.disablePostReads
+
   const createInputRef = {
     $ref: `#/components/schemas/${modelName}CreateInput`,
   }
@@ -588,6 +733,18 @@ function generatePaths(
     }
     addErrorResponses(op, [400, 403, 500, 501, 503])
     addPath(spec, opPath(basePath, 'findMany'), 'get', op)
+
+    if (postReads) {
+      addPostReadOperation(
+        spec,
+        postReadPath(basePath, 'findMany'),
+        modelName,
+        'findMany',
+        `List ${modelName}`,
+        { type: 'array', items: responseRef },
+        [400, 403, 500, 501, 503],
+      )
+    }
   }
 
   if (opEnabled(config, 'findUnique')) {
@@ -607,6 +764,19 @@ function generatePaths(
     }
     addErrorResponses(op, [400, 403, 500, 501, 503])
     addPath(spec, opPath(basePath, 'findUnique'), 'get', op)
+
+    if (postReads) {
+      addPostReadOperation(
+        spec,
+        postReadPath(basePath, 'findUnique'),
+        modelName,
+        'findUnique',
+        `Get ${modelName} by unique constraint`,
+        nullableResponseSchema,
+        [400, 403, 500, 501, 503],
+        'Returns null with status 200 when no record matches the unique constraint.',
+      )
+    }
   }
 
   if (opEnabled(config, 'findUniqueOrThrow')) {
@@ -624,6 +794,18 @@ function generatePaths(
     }
     addErrorResponses(op, [400, 403, 404, 500, 501, 503])
     addPath(spec, opPath(basePath, 'findUniqueOrThrow'), 'get', op)
+
+    if (postReads) {
+      addPostReadOperation(
+        spec,
+        postReadPath(basePath, 'findUniqueOrThrow'),
+        modelName,
+        'findUniqueOrThrow',
+        `Get ${modelName} by unique constraint (throws if not found)`,
+        responseRef,
+        [400, 403, 404, 500, 501, 503],
+      )
+    }
   }
 
   if (opEnabled(config, 'findFirst')) {
@@ -642,6 +824,19 @@ function generatePaths(
     }
     addErrorResponses(op, [400, 403, 500, 501, 503])
     addPath(spec, opPath(basePath, 'findFirst'), 'get', op)
+
+    if (postReads) {
+      addPostReadOperation(
+        spec,
+        postReadPath(basePath, 'findFirst'),
+        modelName,
+        'findFirst',
+        `Get first ${modelName}`,
+        nullableResponseSchema,
+        [400, 403, 500, 501, 503],
+        'Returns null with status 200 when no record matches.',
+      )
+    }
   }
 
   if (opEnabled(config, 'findFirstOrThrow')) {
@@ -659,6 +854,18 @@ function generatePaths(
     }
     addErrorResponses(op, [400, 403, 404, 500, 501, 503])
     addPath(spec, opPath(basePath, 'findFirstOrThrow'), 'get', op)
+
+    if (postReads) {
+      addPostReadOperation(
+        spec,
+        postReadPath(basePath, 'findFirstOrThrow'),
+        modelName,
+        'findFirstOrThrow',
+        `Get first ${modelName} (throws if not found)`,
+        responseRef,
+        [400, 403, 404, 500, 501, 503],
+      )
+    }
   }
 
   if (opEnabled(config, 'findManyPaginated')) {
@@ -678,6 +885,19 @@ function generatePaths(
     }
     addErrorResponses(op, [400, 403, 409, 500, 501, 503])
     addPath(spec, opPath(basePath, 'findManyPaginated'), 'get', op)
+
+    if (postReads) {
+      addPostReadOperation(
+        spec,
+        postReadPath(basePath, 'findManyPaginated'),
+        modelName,
+        'findManyPaginated',
+        `List ${modelName} with pagination`,
+        listRef,
+        [400, 403, 409, 500, 501, 503],
+        'Returns paginated results with total count.',
+      )
+    }
   }
 
   if (opEnabled(config, 'create')) {
@@ -1074,6 +1294,23 @@ function generatePaths(
     }
     addErrorResponses(op, [400, 403, 500, 501, 503])
     addPath(spec, opPath(basePath, 'count'), 'get', op)
+
+    if (postReads) {
+      addPostReadOperation(
+        spec,
+        postReadPath(basePath, 'count'),
+        modelName,
+        'count',
+        `Count ${modelName}`,
+        {
+          oneOf: [
+            { type: 'integer', description: 'Total count when select is not provided' },
+            { type: 'object', description: 'Per-field count object when select is provided' },
+          ],
+        },
+        [400, 403, 500, 501, 503],
+      )
+    }
   }
 
   if (opEnabled(config, 'aggregate')) {
@@ -1091,6 +1328,18 @@ function generatePaths(
     }
     addErrorResponses(op, [400, 403, 500, 501, 503])
     addPath(spec, opPath(basePath, 'aggregate'), 'get', op)
+
+    if (postReads) {
+      addPostReadOperation(
+        spec,
+        postReadPath(basePath, 'aggregate'),
+        modelName,
+        'aggregate',
+        `Aggregate ${modelName}`,
+        aggregateRef,
+        [400, 403, 500, 501, 503],
+      )
+    }
   }
 
   if (opEnabled(config, 'groupBy')) {
@@ -1114,6 +1363,19 @@ function generatePaths(
     }
     addErrorResponses(op, [400, 403, 500, 501, 503])
     addPath(spec, opPath(basePath, 'groupBy'), 'get', op)
+
+    if (postReads) {
+      addPostReadOperation(
+        spec,
+        postReadPath(basePath, 'groupBy'),
+        modelName,
+        'groupBy',
+        `Group ${modelName}`,
+        { type: 'array', items: groupByItemRef },
+        [400, 403, 500, 501, 503],
+        'Groups records by the specified fields and returns aggregates.',
+      )
+    }
   }
 }
 
