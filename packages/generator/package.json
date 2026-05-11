@@ -1,7 +1,7 @@
 {
   "name": "prisma-generator-express",
   "description": "Prisma generator for Hono CRUD API with OpenAPI documentation",
-  "version": "1.36.0",
+  "version": "1.37.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "license": "MIT",
