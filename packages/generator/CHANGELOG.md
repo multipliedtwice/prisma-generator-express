@@ -1,3 +1,10 @@
+## [1.37.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.37.0...v1.37.1) (2026-05-11)
+
+
+### Bug Fixes
+
+* update description to reflect support for Express/Fastify CRUD API ([e46020a](https://github.com/multipliedtwice/prisma-generator-express/commit/e46020a16fa55a9c5f1b95e97f98707a19ce7f81))
+
 # [1.37.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.36.0...v1.37.0) (2026-05-11)
 
 # [1.36.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.35.0...v1.36.0) (2026-05-07)
