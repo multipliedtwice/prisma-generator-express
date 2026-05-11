@@ -15,7 +15,7 @@ const parseQueryValue = (value: string, key?: string): unknown => {
   if (value.startsWith('{') || value.startsWith('[') || value.startsWith('"')) {
     try {
       const parsed = JSON.parse(value)
-      return sanitizeKeys(parsed)
+      return parseQueryParams(sanitizeKeys(parsed) as QueryParams)
     } catch {
       // fall through
     }
@@ -34,7 +34,11 @@ export const parseQueryParams = (params: QueryParams): unknown => {
     return parseQueryValue(params)
   }
   if (Array.isArray(params)) {
-    return params.map(parseQueryParams)
+    return params.map((item) =>
+      typeof item === 'string'
+        ? parseQueryValue(item)
+        : parseQueryParams(item as QueryParams),
+    )
   }
   if (isObject(params)) {
     const parsedParams: Record<string, unknown> = {}
@@ -44,7 +48,7 @@ export const parseQueryParams = (params: QueryParams): unknown => {
       if (typeof raw === 'string') {
         parsedParams[key] = parseQueryValue(raw, key)
       } else {
-        parsedParams[key] = sanitizeKeys(raw)
+        parsedParams[key] = parseQueryParams(raw as QueryParams)
       }
     }
     return parsedParams
