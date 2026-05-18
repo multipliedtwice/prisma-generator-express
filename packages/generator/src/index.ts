@@ -16,8 +16,9 @@ import {
   generateModelCore,
 } from './generators/generateOperationCore'
 import {
-  generateImportPrismaStatement,
+
   getRelativeClientPath,
+  getGuardShapesImport,
 } from './generators/generateImportPrismaStatement'
 import { writeFileSafely } from './utils/writeFileSafely'
 import { copyFiles } from './utils/copyFiles'
@@ -69,11 +70,6 @@ generatorHandler({
     const generateHandler =
       target === 'fastify' ? generateFastifyHandler : generateUnifiedHandler
 
-    const generateRouter =
-      target === 'fastify'
-        ? generateFastifyRouterFunction
-        : generateRouterFunction
-
     for (const model of options.dmmf.datamodel.models) {
       if (
         model.documentation &&
@@ -86,6 +82,7 @@ generatorHandler({
       modelNames.push(model.name)
 
       const relativeClientPath = getRelativeClientPath(options, model.name)
+      const guardShapesImport = getGuardShapesImport(options, model.name)
 
       await writeFileSafely({
         content: generateModelCore({ model: model as DMMF.Model }),
@@ -103,12 +100,22 @@ generatorHandler({
         operation: 'Handlers',
       })
 
+      const routerContent =
+        target === 'fastify'
+          ? generateFastifyRouterFunction({
+              model: model as DMMF.Model,
+              enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
+              guardShapesImport,
+            })
+          : generateRouterFunction({
+              model: model as DMMF.Model,
+              enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
+              relativeClientPath,
+              guardShapesImport,
+            })
+
       await writeFileSafely({
-        content: generateRouter({
-          model: model as DMMF.Model,
-          enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
-          relativeClientPath,
-        }),
+        content: routerContent,
         options,
         model: model as DMMF.Model,
         operation: 'Router',

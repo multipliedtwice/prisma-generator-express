@@ -9,6 +9,8 @@ import {
 
 export type { QueryBuilderConfig, OpenApiServerConfig, OpenApiSecuritySchemeConfig }
 
-export type OperationConfig = BaseOperationConfig<RequestHandler>
+export type OperationConfig<TShape = Record<string, any>> =
+  BaseOperationConfig<RequestHandler, TShape>
 
-export type RouteConfig = BaseRouteConfig<RequestHandler, Request>
+export type RouteConfig<TShape = Record<string, any>> =
+  BaseRouteConfig<RequestHandler, Request, TShape>

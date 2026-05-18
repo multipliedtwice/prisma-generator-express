@@ -1,14 +1,17 @@
 import { DMMF } from '@prisma/generator-helper'
 import { toCamelCase } from '../utils/strings'
+import { generateRouteConfigType } from './generateRouteConfigType'
 
 export function generateRouterFunction({
   model,
   enums,
   relativeClientPath,
+  guardShapesImport,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
   relativeClientPath: string
+  guardShapesImport: string | null
 }): string {
   const modelName = model.name
   const prefix = toCamelCase(modelName)
@@ -66,6 +69,7 @@ import { sanitizeKeys } from '../misc'
 import { buildModelOpenApi } from '../buildModelOpenApi'
 import { transformResult } from '../operationRuntime'
 
+${generateRouteConfigType(modelName, 'RequestHandler', guardShapesImport)}
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
@@ -99,7 +103,7 @@ function getQueryBuilderConfig(config: RouteConfig) {
   return {}
 }
 
-export function ${routerFunctionName}(config: RouteConfig = {}) {
+export function ${routerFunctionName}<TCtx = unknown>(config: ${modelName}RouteConfig<TCtx> = {}) {
   const router = express.Router()
 
   router.use(express.json())

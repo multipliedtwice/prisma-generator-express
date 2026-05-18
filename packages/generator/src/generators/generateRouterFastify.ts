@@ -1,12 +1,15 @@
 import { DMMF } from '@prisma/generator-helper'
 import { toCamelCase } from '../utils/strings'
+import { generateRouteConfigType } from './generateRouteConfigType'
 
 export function generateFastifyRouterFunction({
   model,
   enums,
+  guardShapesImport,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
+  guardShapesImport: string | null
 }): string {
   const modelName = model.name
   const prefix = toCamelCase(modelName)
@@ -63,6 +66,7 @@ import { sanitizeKeys } from '../misc'
 import { buildModelOpenApi } from '../buildModelOpenApi'
 import { mapError, transformResult, HttpError } from '../operationRuntime'
 
+${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport)}
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
@@ -156,9 +160,9 @@ function sendError(reply: FastifyReply, error: unknown): void {
   reply.code(httpError.status).send({ message: httpError.message })
 }
 
-export async function ${routerFunctionName}(
+export async function ${routerFunctionName}<TCtx = unknown>(
   fastify: FastifyInstance,
-  config: RouteConfig = {},
+  config: ${modelName}RouteConfig<TCtx> = {},
 ) {
   const customPrefix = normalizePrefix(config.customUrlPrefix || '')
   const modelPrefix = config.addModelPrefix !== false ? '/${modelNameLower}' : ''

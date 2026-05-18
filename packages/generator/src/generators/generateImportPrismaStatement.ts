@@ -76,3 +76,37 @@ export function getRelativeClientPath(
 
   return getRelativeImportPath(routerDirPath, clientGenerator.output.value)
 }
+
+function findGuardGenerator(options: GeneratorOptions) {
+  const byProvider = options.otherGenerators.find(
+    (gen) =>
+      !!gen.provider?.value && gen.provider.value.includes('prisma-guard'),
+  )
+  if (byProvider) return byProvider
+
+  const byConfig = options.otherGenerators.find(
+    (gen) =>
+      !!gen.config &&
+      ('typedGuardShapes' in gen.config ||
+        'onInvalidZod' in gen.config ||
+        'findUniqueMode' in gen.config),
+  )
+  return byConfig || null
+}
+
+export function getGuardShapesImport(
+  options: GeneratorOptions,
+  modelName: string,
+): string | null {
+  const guard = findGuardGenerator(options)
+  if (!guard || !guard.output?.value) return null
+
+  if (guard.config?.typedGuardShapes === 'false') return null
+
+  const outputValue = options.generator.output?.value
+  if (!outputValue) return null
+
+  const fromDir = path.join(outputValue, modelName)
+  const shapesPath = path.join(guard.output.value, 'shapes')
+  return getRelativeImportPath(fromDir, shapesPath)
+}
