@@ -11,6 +11,7 @@ Running `npx prisma generate` produces:
 
 - Handler functions for all Prisma operations (findMany, create, update, delete, etc.)
 - Router generator with middleware support (before/after hooks per operation)
+- POST read endpoints for all read operations (for complex queries exceeding URL length limits)
 - OpenAPI 3.1 spec (JSON and YAML endpoints registered automatically per router)
 - Documentation helpers for contract view and Scalar UI (require manual mounting)
 - Client-side query parameter encoder
@@ -29,6 +30,7 @@ Supports both **Express** and **Fastify** targets via the `target` configuration
 - [Guard shapes (prisma-guard integration)](#guard-shapes-prisma-guard-integration)
 - [Request body format](#request-body-format)
 - [Query encoding (client side)](#query-encoding-client-side)
+- [POST read endpoints](#post-read-endpoints)
 - [Response shaping: select, include, omit](#response-shaping-select-include-omit)
 - [BigInt and Decimal handling](#bigint-and-decimal-handling)
 - [Pagination](#pagination)
@@ -299,8 +301,10 @@ app.use((req, res, next) => {
 app.use('/', UserRouter({
   findMany: {
     shape: {
-      where: { name: { contains: true } },
-      take: { max: 50, default: 20 },
+      default: {
+        where: { name: { contains: true } },
+        take: { max: 50, default: 20 },
+      },
     },
   },
 }))
@@ -320,34 +324,46 @@ Each operation config accepts an optional `shape` property. When present, the ge
 
 When `shape` is absent, the handler calls Prisma directly with no guard enforcement.
 
-### Single shape per operation
+Generated route config types treat `shape` as a named shape map. Use `default` for the normal single-shape case, and add other keys only when you need caller-based variants. The runtime still passes the map to `prisma-guard`; the `default` variant is selected when no caller is provided or no variant matches.
 
-A single shape object restricts what the client can do on that operation. No caller routing is needed.
+### Default shape per operation
+
+In generated route configs, `shape` is always a named shape map. Use the `default` key when an operation has one normal shape and no caller-specific variants.
+
+`default` is used when no caller is provided or when the caller does not match a named variant. If you do not want fallback behavior, omit `default` and define only explicit variants.
 
 ```ts
 const userConfig = {
   findMany: {
     shape: {
-      where: { email: { contains: true }, role: { equals: true } },
-      orderBy: { createdAt: true },
-      take: { max: 100, default: 25 },
-      skip: true,
+      default: {
+        where: { email: { contains: true }, role: { equals: true } },
+        orderBy: { createdAt: true },
+        take: { max: 100, default: 25 },
+        skip: true,
+      },
     },
   },
   create: {
     shape: {
-      data: { email: true, name: true, role: 'user' },
+      default: {
+        data: { email: true, name: true, role: 'user' },
+      },
     },
   },
   update: {
     shape: {
-      data: { name: true },
-      where: { id: { equals: true } },
+      default: {
+        data: { name: true },
+        where: { id: { equals: true } },
+      },
     },
   },
   delete: {
     shape: {
-      where: { id: { equals: true } },
+      default: {
+        where: { id: { equals: true } },
+      },
     },
   },
 }
@@ -372,12 +388,14 @@ import { force } from 'prisma-guard'
 const config = {
   create: {
     shape: {
-      data: {
-        email: true,                          // client-controlled, @zod chains apply
-        name: true,                           // client-controlled
-        role: 'member',                       // forced to 'member', client cannot override
-        isActive: force(true),                // forced to boolean true (force() needed to distinguish from client-controlled)
-        bio: (base) => base.max(500),         // client-controlled with inline validation override
+      default: {
+        data: {
+          email: true,                          // client-controlled, @zod chains apply
+          name: true,                           // client-controlled
+          role: 'member',                       // forced to 'member', client cannot override
+          isActive: force(true),                // forced to boolean true (force() needed to distinguish from client-controlled)
+          bio: (base) => base.max(500),         // client-controlled with inline validation override
+        },
       },
     },
   },
@@ -537,13 +555,15 @@ import { force } from 'prisma-guard'
 const projectConfig = {
   findMany: {
     shape: {
-      where: {
-        status: { equals: 'published' },         // always filter to published
-        isDeleted: { equals: false },             // always exclude deleted
-        isActive: { equals: force(true) },        // force() needed for boolean true
-        title: { contains: true },                // client-controlled
+      default: {
+        where: {
+          status: { equals: 'published' },         // always filter to published
+          isDeleted: { equals: false },             // always exclude deleted
+          isActive: { equals: force(true) },        // force() needed for boolean true
+          title: { contains: true },                // client-controlled
+        },
+        take: { max: 50 },
       },
-      take: { max: 50 },
     },
   },
 }
@@ -551,7 +571,7 @@ const projectConfig = {
 
 A request with `{ where: { title: { contains: 'demo' } } }` produces:
 
-```
+```sql
 WHERE status = 'published'
 AND isDeleted = false
 AND isActive = true
@@ -568,14 +588,16 @@ Where shapes support `AND`, `OR`, and `NOT`. The combinator value defines which 
 const config = {
   findMany: {
     shape: {
-      where: {
-        OR: {
-          title: { contains: true },
-          description: { contains: true },
+      default: {
+        where: {
+          OR: {
+            title: { contains: true },
+            description: { contains: true },
+          },
+          status: { equals: 'published' },       // forced, always applied
         },
-        status: { equals: 'published' },       // forced, always applied
+        take: { max: 50 },
       },
-      take: { max: 50 },
     },
   },
 }
@@ -604,15 +626,17 @@ Where shapes support relation-level filters. To-many relations use `some`, `ever
 const userConfig = {
   findMany: {
     shape: {
-      where: {
-        posts: {
-          some: {
-            title: { contains: true },
-            published: { equals: true },          // forced inside the relation
+      default: {
+        where: {
+          posts: {
+            some: {
+              title: { contains: true },
+              published: { equals: true },          // forced inside the relation
+            },
           },
         },
+        take: { max: 50 },
       },
-      take: { max: 50 },
     },
   },
 }
@@ -628,19 +652,21 @@ Shapes can restrict which response fields and relations the client may request:
 const userConfig = {
   findMany: {
     shape: {
-      where: { role: { equals: true } },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        posts: {
-          select: { id: true, title: true },
+      default: {
+        where: { role: { equals: true } },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          posts: {
+            select: { id: true, title: true },
+          },
+          _count: {
+            select: { posts: true },
+          },
         },
-        _count: {
-          select: { posts: true },
-        },
+        take: { max: 50 },
       },
-      take: { max: 50 },
     },
   },
 }
@@ -664,23 +690,25 @@ import { force } from 'prisma-guard'
 const userConfig = {
   findMany: {
     shape: {
-      include: {
-        posts: {
-          where: { isDeleted: { equals: false } },     // forced: never return deleted posts
-          orderBy: { createdAt: true },
-          take: { max: 20, default: 10 },
-          skip: true,
-        },
-        profile: true,                                  // simple include, no constraints
-        _count: {
-          select: {
-            posts: {
-              where: { isDeleted: { equals: false } },  // count only non-deleted
+      default: {
+        include: {
+          posts: {
+            where: { isDeleted: { equals: false } },     // forced: never return deleted posts
+            orderBy: { createdAt: true },
+            take: { max: 20, default: 10 },
+            skip: true,
+          },
+          profile: true,                                  // simple include, no constraints
+          _count: {
+            select: {
+              posts: {
+                where: { isDeleted: { equals: false } },  // count only non-deleted
+              },
             },
           },
         },
+        take: { max: 50 },
       },
-      take: { max: 50 },
     },
   },
 }
@@ -694,20 +722,24 @@ Write operations that return records (`create`, `update`, `upsert`, `delete`, `c
 const userConfig = {
   create: {
     shape: {
-      data: { email: true, name: true },
-      include: {
-        profile: true,
+      default: {
+        data: { email: true, name: true },
+        include: {
+          profile: true,
+        },
       },
     },
   },
   update: {
     shape: {
-      data: { name: true },
-      where: { id: { equals: true } },
-      select: {
-        id: true,
-        name: true,
-        updatedAt: true,
+      default: {
+        data: { name: true },
+        where: { id: { equals: true } },
+        select: {
+          id: true,
+          name: true,
+          updatedAt: true,
+        },
       },
     },
   },
@@ -728,16 +760,18 @@ import { force } from 'prisma-guard'
 const projectConfig = {
   upsert: {
     shape: {
-      where: { id: { equals: true } },
-      create: {
-        title: true,
-        status: 'draft',
-        isActive: force(true),
+      default: {
+        where: { id: { equals: true } },
+        create: {
+          title: true,
+          status: 'draft',
+          isActive: force(true),
+        },
+        update: {
+          title: true,
+        },
+        select: { id: true, title: true, status: true },
       },
-      update: {
-        title: true,
-      },
-      select: { id: true, title: true, status: true },
     },
   },
 }
@@ -753,13 +787,17 @@ All three (`where`, `create`, `update`) are required. Using `data` instead of `c
 const userConfig = {
   deleteMany: {
     shape: {
-      where: { isActive: { equals: true }, role: { equals: true } },
+      default: {
+        where: { isActive: { equals: true }, role: { equals: true } },
+      },
     },
   },
   updateMany: {
     shape: {
-      data: { isActive: true },
-      where: { role: { equals: true } },
+      default: {
+        data: { isActive: true },
+        where: { role: { equals: true } },
+      },
     },
   },
 }
@@ -810,13 +848,17 @@ app.use((req, res, next) => {
 app.use('/', ProjectRouter({
   findMany: {
     shape: {
-      where: { title: { contains: true } },
-      take: { max: 50 },
+      default: {
+        where: { title: { contains: true } },
+        take: { max: 50 },
+      },
     },
   },
   create: {
     shape: {
-      data: { title: true },
+      default: {
+        data: { title: true },
+      },
     },
   },
 }))
@@ -995,6 +1037,75 @@ const response = await fetch(`/user?${params}`)
 
 Complex values (`where`, `select`, `include`, `omit`, `orderBy`) are JSON-stringified. Primitives (`take`, `skip`) are sent directly. The encoder handles BigInt serialization automatically.
 
+## POST read endpoints
+
+All read operations are available via POST in addition to GET. POST read endpoints accept the same arguments as their GET counterparts, but as a JSON request body instead of query parameters. This is useful when complex filters, deeply nested `where` clauses, or large `select`/`include` objects exceed URL length limits (typically 2048–8192 characters depending on server, proxy, and CDN configuration).
+
+POST read endpoints are enabled by default. Disable them with `disablePostReads: true` in the route config.
+
+### Path mapping
+
+Most read operations use the same path for both GET and POST. The only exception is `findMany`, which uses a `/read` suffix to avoid conflicting with `POST /` (create).
+
+| Operation         | GET path         | POST path        |
+| ----------------- | ---------------- | ---------------- |
+| findMany          | `/{modelName}/`              | `/{modelName}/read`          |
+| findFirst         | `/{modelName}/first`         | `/{modelName}/first`         |
+| findFirstOrThrow  | `/{modelName}/first/strict`  | `/{modelName}/first/strict`  |
+| findUnique        | `/{modelName}/unique`        | `/{modelName}/unique`        |
+| findUniqueOrThrow | `/{modelName}/unique/strict` | `/{modelName}/unique/strict` |
+| findManyPaginated | `/{modelName}/paginated`     | `/{modelName}/paginated`     |
+| count             | `/{modelName}/count`         | `/{modelName}/count`         |
+| aggregate         | `/{modelName}/aggregate`     | `/{modelName}/aggregate`     |
+| groupBy           | `/{modelName}/groupby`       | `/{modelName}/groupby`       |
+
+### Usage
+
+With GET and `encodeQueryParams`:
+
+```ts
+import { encodeQueryParams } from './generated/client/encodeQueryParams'
+
+const params = encodeQueryParams({
+  where: { status: 'active', role: { in: ['admin', 'editor'] } },
+  select: { id: true, email: true },
+  take: 20,
+})
+
+const response = await fetch(`/user?${params}`)
+```
+
+With POST — same args, no encoding needed:
+
+```ts
+const response = await fetch('/user/read', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    where: { status: 'active', role: { in: ['admin', 'editor'] } },
+    select: { id: true, email: true },
+    take: 20,
+  }),
+})
+```
+
+### Differences from GET
+
+POST read bodies use native JSON types directly — numbers are numbers, booleans are booleans, objects are objects. There is no JSON-string encoding of nested values as with GET query parameters, and no string-to-type coercion is applied. The `encodeQueryParams` utility is not needed for POST reads.
+
+### Guard shapes
+
+POST read endpoints use the same guard shapes, hooks, and middleware as their GET counterparts. The same `before`/`after` hooks run for both GET and POST on the same operation.
+
+### Disabling
+
+```ts
+app.use('/', UserRouter({
+  enableAll: true,
+  disablePostReads: true,
+}))
+```
+
 ## Response shaping: select, include, omit
 
 Read and single-record write operations support three response shaping parameters:
@@ -1070,10 +1181,12 @@ Each router automatically registers OpenAPI spec endpoints when not in productio
 
 | Endpoint                | Description           |
 | ----------------------- | --------------------- |
-| `/{model}/openapi.json` | OpenAPI 3.1 JSON spec |
-| `/{model}/openapi.yaml` | OpenAPI 3.1 YAML spec |
+| `/{modelName}/openapi.json` | OpenAPI 3.1 JSON spec |
+| `/{modelName}/openapi.yaml` | OpenAPI 3.1 YAML spec |
 
 Actual paths depend on `customUrlPrefix` and `addModelPrefix` configuration.
+
+The OpenAPI spec includes POST read endpoints when they are enabled (default). Each POST read operation appears with its own `operationId` and request body schema documenting the native JSON argument types.
 
 ### Manual (generated helpers, require mounting)
 
@@ -1160,11 +1273,11 @@ fastify.get('/docs', generateCombinedDocs({
 | Endpoint                      | Description             |
 | ----------------------------- | ----------------------- |
 | `/docs`                       | Combined index page     |
-| `/docs/{model}`               | Contract view (default) |
-| `/docs/{model}?ui=scalar`     | Scalar interactive UI   |
-| `/docs/{model}?ui=json`       | Raw JSON                |
-| `/docs/{model}?ui=yaml`       | Raw YAML                |
-| `/docs/{model}?ui=playground` | Query playground        |
+| `/docs/{modelName}`               | Contract view (default) |
+| `/docs/{modelName}?ui=scalar`     | Scalar interactive UI   |
+| `/docs/{modelName}?ui=json`       | Raw JSON                |
+| `/docs/{modelName}?ui=yaml`       | Raw YAML                |
+| `/docs/{modelName}?ui=playground` | Query playground        |
 
 Disable in production via `NODE_ENV=production` or `DISABLE_OPENAPI=true`. Override with `disableOpenApi: false` in config to force-enable.
 
@@ -1216,30 +1329,43 @@ Without a connector on the request, the handlers use the standard PrismaClient. 
 
 GET query values are parsed server-side. Strings starting with `{`, `[`, or `"` are JSON-parsed. The strings `true`, `false`, `null` are converted to their JS equivalents. Numeric conversion applies only to `take` and `skip`, and only when the value is a valid integer (e.g., `"10"` is parsed, `"10.5"` and `""` are not). Use `encodeQueryParams` on the client side to avoid encoding issues.
 
+POST read endpoints bypass this parsing entirely — the JSON body is used as-is with native types.
+
 ## Router schema
 
-| Operation           | Method | Path             |
-| ------------------- | ------ | ---------------- |
-| findMany            | GET    | `/`              |
-| findFirst           | GET    | `/first`         |
-| findFirstOrThrow    | GET    | `/first/strict`  |
-| findUnique          | GET    | `/unique`        |
-| findUniqueOrThrow   | GET    | `/unique/strict` |
-| findManyPaginated   | GET    | `/paginated`     |
-| count               | GET    | `/count`         |
-| aggregate           | GET    | `/aggregate`     |
-| groupBy             | GET    | `/groupby`       |
-| create              | POST   | `/`              |
-| createMany          | POST   | `/many`          |
-| createManyAndReturn | POST   | `/many/return`   |
-| update              | PUT    | `/`              |
-| updateMany          | PUT    | `/many`          |
-| updateManyAndReturn | PUT    | `/many/return`   |
-| upsert              | PATCH  | `/`              |
-| delete              | DELETE | `/`              |
-| deleteMany          | DELETE | `/many`          |
+| Operation           | Method | Path             | Notes                              |
+| ------------------- | ------ | ---------------- | ---------------------------------- |
+| findMany            | GET    | `/{modelName}/`              |                                    |
+| findMany            | POST   | `/{modelName}/read`          | POST read alternative              |
+| findFirst           | GET    | `/{modelName}/first`         |                                    |
+| findFirst           | POST   | `/{modelName}/first`         | POST read alternative              |
+| findFirstOrThrow    | GET    | `/{modelName}/first/strict`  |                                    |
+| findFirstOrThrow    | POST   | `/{modelName}/first/strict`  | POST read alternative              |
+| findUnique          | GET    | `/{modelName}/unique`        |                                    |
+| findUnique          | POST   | `/{modelName}/unique`        | POST read alternative              |
+| findUniqueOrThrow   | GET    | `/{modelName}/unique/strict` |                                    |
+| findUniqueOrThrow   | POST   | `/{modelName}/unique/strict` | POST read alternative              |
+| findManyPaginated   | GET    | `/{modelName}/paginated`     |                                    |
+| findManyPaginated   | POST   | `/{modelName}/paginated`     | POST read alternative              |
+| count               | GET    | `/{modelName}/count`         |                                    |
+| count               | POST   | `/{modelName}/count`         | POST read alternative              |
+| aggregate           | GET    | `/{modelName}/aggregate`     |                                    |
+| aggregate           | POST   | `/{modelName}/aggregate`     | POST read alternative              |
+| groupBy             | GET    | `/{modelName}/groupby`       |                                    |
+| groupBy             | POST   | `/{modelName}/groupby`       | POST read alternative              |
+| create              | POST   | `/{modelName}/`              |                                    |
+| createMany          | POST   | `/{modelName}/many`          |                                    |
+| createManyAndReturn | POST   | `/{modelName}/many/return`   |                                    |
+| update              | PUT    | `/{modelName}/`              |                                    |
+| updateMany          | PUT    | `/{modelName}/many`          |                                    |
+| updateManyAndReturn | PUT    | `/{modelName}/many/return`   |                                    |
+| upsert              | PATCH  | `/{modelName}/`              |                                    |
+| delete              | DELETE | `/{modelName}/`              |                                    |
+| deleteMany          | DELETE | `/{modelName}/many`          |                                    |
 
 Paths shown are relative suffixes. Actual paths include the model prefix (e.g., `/user/first`) unless `addModelPrefix: false`, and any `customUrlPrefix`.
+
+POST read endpoints are enabled by default. Set `disablePostReads: true` to remove them.
 
 ## Skipping models
 
@@ -1263,6 +1389,7 @@ interface RouteConfig {
   customUrlPrefix?: string
   specBasePath?: string
   disableOpenApi?: boolean
+  disablePostReads?: boolean         // default: false
   scalarCdnUrl?: string
 
   openApiTitle?: string
@@ -1345,6 +1472,8 @@ The `guard.resolveVariant` callback receives `FastifyRequest` instead of `Reques
 `customUrlPrefix` is normalized to ensure a leading slash and strip trailing slashes.
 
 `specBasePath` controls the base path used in OpenAPI spec paths and docs examples, independent of `customUrlPrefix`.
+
+`disablePostReads` removes all POST read endpoints when set to `true`. POST read endpoints are enabled by default. This is a global setting — there is no per-operation toggle.
 
 `openApiServers` sets the `servers` array in the OpenAPI spec:
 

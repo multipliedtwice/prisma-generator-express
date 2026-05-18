@@ -301,8 +301,10 @@ app.use((req, res, next) => {
 app.use('/', UserRouter({
   findMany: {
     shape: {
-      where: { name: { contains: true } },
-      take: { max: 50, default: 20 },
+      default: {
+        where: { name: { contains: true } },
+        take: { max: 50, default: 20 },
+      },
     },
   },
 }))
@@ -322,34 +324,46 @@ Each operation config accepts an optional `shape` property. When present, the ge
 
 When `shape` is absent, the handler calls Prisma directly with no guard enforcement.
 
-### Single shape per operation
+Generated route config types treat `shape` as a named shape map. Use `default` for the normal single-shape case, and add other keys only when you need caller-based variants. The runtime still passes the map to `prisma-guard`; the `default` variant is selected when no caller is provided or no variant matches.
 
-A single shape object restricts what the client can do on that operation. No caller routing is needed.
+### Default shape per operation
+
+In generated route configs, `shape` is always a named shape map. Use the `default` key when an operation has one normal shape and no caller-specific variants.
+
+`default` is used when no caller is provided or when the caller does not match a named variant. If you do not want fallback behavior, omit `default` and define only explicit variants.
 
 ```ts
 const userConfig = {
   findMany: {
     shape: {
-      where: { email: { contains: true }, role: { equals: true } },
-      orderBy: { createdAt: true },
-      take: { max: 100, default: 25 },
-      skip: true,
+      default: {
+        where: { email: { contains: true }, role: { equals: true } },
+        orderBy: { createdAt: true },
+        take: { max: 100, default: 25 },
+        skip: true,
+      },
     },
   },
   create: {
     shape: {
-      data: { email: true, name: true, role: 'user' },
+      default: {
+        data: { email: true, name: true, role: 'user' },
+      },
     },
   },
   update: {
     shape: {
-      data: { name: true },
-      where: { id: { equals: true } },
+      default: {
+        data: { name: true },
+        where: { id: { equals: true } },
+      },
     },
   },
   delete: {
     shape: {
-      where: { id: { equals: true } },
+      default: {
+        where: { id: { equals: true } },
+      },
     },
   },
 }
@@ -374,12 +388,14 @@ import { force } from 'prisma-guard'
 const config = {
   create: {
     shape: {
-      data: {
-        email: true,                          // client-controlled, @zod chains apply
-        name: true,                           // client-controlled
-        role: 'member',                       // forced to 'member', client cannot override
-        isActive: force(true),                // forced to boolean true (force() needed to distinguish from client-controlled)
-        bio: (base) => base.max(500),         // client-controlled with inline validation override
+      default: {
+        data: {
+          email: true,                          // client-controlled, @zod chains apply
+          name: true,                           // client-controlled
+          role: 'member',                       // forced to 'member', client cannot override
+          isActive: force(true),                // forced to boolean true (force() needed to distinguish from client-controlled)
+          bio: (base) => base.max(500),         // client-controlled with inline validation override
+        },
       },
     },
   },
@@ -539,13 +555,15 @@ import { force } from 'prisma-guard'
 const projectConfig = {
   findMany: {
     shape: {
-      where: {
-        status: { equals: 'published' },         // always filter to published
-        isDeleted: { equals: false },             // always exclude deleted
-        isActive: { equals: force(true) },        // force() needed for boolean true
-        title: { contains: true },                // client-controlled
+      default: {
+        where: {
+          status: { equals: 'published' },         // always filter to published
+          isDeleted: { equals: false },             // always exclude deleted
+          isActive: { equals: force(true) },        // force() needed for boolean true
+          title: { contains: true },                // client-controlled
+        },
+        take: { max: 50 },
       },
-      take: { max: 50 },
     },
   },
 }
@@ -570,14 +588,16 @@ Where shapes support `AND`, `OR`, and `NOT`. The combinator value defines which 
 const config = {
   findMany: {
     shape: {
-      where: {
-        OR: {
-          title: { contains: true },
-          description: { contains: true },
+      default: {
+        where: {
+          OR: {
+            title: { contains: true },
+            description: { contains: true },
+          },
+          status: { equals: 'published' },       // forced, always applied
         },
-        status: { equals: 'published' },       // forced, always applied
+        take: { max: 50 },
       },
-      take: { max: 50 },
     },
   },
 }
@@ -606,15 +626,17 @@ Where shapes support relation-level filters. To-many relations use `some`, `ever
 const userConfig = {
   findMany: {
     shape: {
-      where: {
-        posts: {
-          some: {
-            title: { contains: true },
-            published: { equals: true },          // forced inside the relation
+      default: {
+        where: {
+          posts: {
+            some: {
+              title: { contains: true },
+              published: { equals: true },          // forced inside the relation
+            },
           },
         },
+        take: { max: 50 },
       },
-      take: { max: 50 },
     },
   },
 }
@@ -630,19 +652,21 @@ Shapes can restrict which response fields and relations the client may request:
 const userConfig = {
   findMany: {
     shape: {
-      where: { role: { equals: true } },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        posts: {
-          select: { id: true, title: true },
+      default: {
+        where: { role: { equals: true } },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          posts: {
+            select: { id: true, title: true },
+          },
+          _count: {
+            select: { posts: true },
+          },
         },
-        _count: {
-          select: { posts: true },
-        },
+        take: { max: 50 },
       },
-      take: { max: 50 },
     },
   },
 }
@@ -666,23 +690,25 @@ import { force } from 'prisma-guard'
 const userConfig = {
   findMany: {
     shape: {
-      include: {
-        posts: {
-          where: { isDeleted: { equals: false } },     // forced: never return deleted posts
-          orderBy: { createdAt: true },
-          take: { max: 20, default: 10 },
-          skip: true,
-        },
-        profile: true,                                  // simple include, no constraints
-        _count: {
-          select: {
-            posts: {
-              where: { isDeleted: { equals: false } },  // count only non-deleted
+      default: {
+        include: {
+          posts: {
+            where: { isDeleted: { equals: false } },     // forced: never return deleted posts
+            orderBy: { createdAt: true },
+            take: { max: 20, default: 10 },
+            skip: true,
+          },
+          profile: true,                                  // simple include, no constraints
+          _count: {
+            select: {
+              posts: {
+                where: { isDeleted: { equals: false } },  // count only non-deleted
+              },
             },
           },
         },
+        take: { max: 50 },
       },
-      take: { max: 50 },
     },
   },
 }
@@ -696,20 +722,24 @@ Write operations that return records (`create`, `update`, `upsert`, `delete`, `c
 const userConfig = {
   create: {
     shape: {
-      data: { email: true, name: true },
-      include: {
-        profile: true,
+      default: {
+        data: { email: true, name: true },
+        include: {
+          profile: true,
+        },
       },
     },
   },
   update: {
     shape: {
-      data: { name: true },
-      where: { id: { equals: true } },
-      select: {
-        id: true,
-        name: true,
-        updatedAt: true,
+      default: {
+        data: { name: true },
+        where: { id: { equals: true } },
+        select: {
+          id: true,
+          name: true,
+          updatedAt: true,
+        },
       },
     },
   },
@@ -730,16 +760,18 @@ import { force } from 'prisma-guard'
 const projectConfig = {
   upsert: {
     shape: {
-      where: { id: { equals: true } },
-      create: {
-        title: true,
-        status: 'draft',
-        isActive: force(true),
+      default: {
+        where: { id: { equals: true } },
+        create: {
+          title: true,
+          status: 'draft',
+          isActive: force(true),
+        },
+        update: {
+          title: true,
+        },
+        select: { id: true, title: true, status: true },
       },
-      update: {
-        title: true,
-      },
-      select: { id: true, title: true, status: true },
     },
   },
 }
@@ -755,13 +787,17 @@ All three (`where`, `create`, `update`) are required. Using `data` instead of `c
 const userConfig = {
   deleteMany: {
     shape: {
-      where: { isActive: { equals: true }, role: { equals: true } },
+      default: {
+        where: { isActive: { equals: true }, role: { equals: true } },
+      },
     },
   },
   updateMany: {
     shape: {
-      data: { isActive: true },
-      where: { role: { equals: true } },
+      default: {
+        data: { isActive: true },
+        where: { role: { equals: true } },
+      },
     },
   },
 }
@@ -812,13 +848,17 @@ app.use((req, res, next) => {
 app.use('/', ProjectRouter({
   findMany: {
     shape: {
-      where: { title: { contains: true } },
-      take: { max: 50 },
+      default: {
+        where: { title: { contains: true } },
+        take: { max: 50 },
+      },
     },
   },
   create: {
     shape: {
-      data: { title: true },
+      default: {
+        data: { title: true },
+      },
     },
   },
 }))
