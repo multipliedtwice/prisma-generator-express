@@ -1,3 +1,10 @@
+# [1.38.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.37.1...v1.38.0) (2026-05-18)
+
+
+### Features
+
+* enhance route configuration types to support generic shape parameters and add guard shapes import functionality ([d38da45](https://github.com/multipliedtwice/prisma-generator-express/commit/d38da452a2ecb08270761470fd5c64e485364c33))
+
 ## [1.37.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.37.0...v1.37.1) (2026-05-11)
 
 
