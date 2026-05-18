@@ -1,7 +1,7 @@
 {
   "name": "prisma-generator-express",
   "description": "Prisma generator for Express/Fastify CRUD API with OpenAPI documentation",
-  "version": "1.38.0",
+  "version": "1.39.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "license": "MIT",

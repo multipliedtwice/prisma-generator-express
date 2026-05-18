@@ -1,3 +1,10 @@
+# [1.39.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.38.0...v1.39.0) (2026-05-18)
+
+
+### Features
+
+* add support for POST read endpoints to handle complex queries and large request bodies ([2446362](https://github.com/multipliedtwice/prisma-generator-express/commit/2446362df63179a9ac633335ec40e7ccba3921a7))
+
 # [1.38.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.37.1...v1.38.0) (2026-05-18)
 
 
