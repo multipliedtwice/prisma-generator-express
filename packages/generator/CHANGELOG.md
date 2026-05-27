@@ -1,3 +1,10 @@
+# [1.40.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.39.0...v1.40.0) (2026-05-27)
+
+
+### Features
+
+* hono targer ([5a03e13](https://github.com/multipliedtwice/prisma-generator-express/commit/5a03e134ba25087b0462684906f7195f641d9c0b))
+
 # [1.39.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.38.0...v1.39.0) (2026-05-18)
 
 
