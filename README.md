@@ -5,7 +5,7 @@
 [![Coverage](https://img.shields.io/codecov/c/github/multipliedtwice/prisma-generator-express/main.svg)](https://codecov.io/gh/multipliedtwice/prisma-generator-express)
 [![npm](https://img.shields.io/npm/l/prisma-generator-express.svg)](LICENSE)
 
-Prisma generator that creates Express or Fastify CRUD API routes with OpenAPI documentation from your Prisma schema.
+Prisma generator that creates Express, Fastify, or Hono CRUD API routes with OpenAPI documentation from your Prisma schema.
 
 Running `npx prisma generate` produces:
 
@@ -17,15 +17,17 @@ Running `npx prisma generate` produces:
 - Client-side query parameter encoder
 - Guard/variant shape enforcement via prisma-guard integration
 
-Supports both **Express** and **Fastify** targets via the `target` configuration option.
+Supports **Express**, **Fastify**, and **Hono** targets via the `target` configuration option.
 
 ## Table of contents
 
 - [Compatibility](#compatibility)
 - [Installation](#installation)
 - [Setup](#setup)
+- [Path casing in generated endpoints](#path-casing-in-generated-endpoints)
 - [Usage (Express)](#usage-express)
 - [Usage (Fastify)](#usage-fastify)
+- [Usage (Hono)](#usage-hono)
 - [Selective routes with middleware](#selective-routes-with-middleware)
 - [Guard shapes (prisma-guard integration)](#guard-shapes-prisma-guard-integration)
 - [Request body format](#request-body-format)
@@ -64,6 +66,9 @@ Some operations require newer versions:
 | --------- | ------------ | ---------------- |
 | Express   | `"express"`  | `express.Router()` factory function per model |
 | Fastify   | `"fastify"`  | Fastify plugin function per model |
+| Hono      | `"hono"`     | `Hono` instance factory function per model |
+
+The Hono target v1 is tested on Node.js runtimes only. See [Cloudflare Workers and edge runtimes](#cloudflare-workers-and-edge-runtimes).
 
 ### Database provider support
 
@@ -95,12 +100,18 @@ Peer dependencies for Fastify:
 npm install @prisma/client fastify
 ```
 
+Peer dependencies for Hono:
+
+```bash
+npm install @prisma/client hono
+```
+
 Optional peer dependencies:
 
 ```bash
 npm install prisma-sql         # SQL optimization
 npm install prisma-guard zod   # Guard shape enforcement
-npm install prisma-query-builder-ui  # Visual query playground
+npm install prisma-query-builder-ui  # Visual query playground (Express/Fastify only — not auto-started for Hono)
 ```
 
 ## Setup
@@ -117,7 +128,7 @@ generator express {
 }
 ```
 
-To generate Fastify routes instead of Express, set the `target` config:
+To target Fastify or Hono, set the `target` config:
 
 ```prisma
 generator express {
@@ -126,7 +137,14 @@ generator express {
 }
 ```
 
-Valid `target` values are `"express"` (default) and `"fastify"`.
+```prisma
+generator express {
+  provider = "prisma-generator-express"
+  target   = "hono"
+}
+```
+
+Valid `target` values are `"express"` (default), `"fastify"`, and `"hono"`.
 
 The generator detects the Prisma client generator automatically. All standard provider values are supported: `prisma-client-js`, `@prisma/client`, and `prisma-client`.
 
@@ -135,6 +153,26 @@ Generate:
 ```bash
 npx prisma generate
 ```
+
+## Path casing in generated endpoints
+
+Model names are converted to **flat lowercase** in URL paths. There is no kebab-case or snake_case conversion — the model name is lowercased character by character.
+
+| Model name        | URL path             |
+| ----------------- | -------------------- |
+| `User`            | `/user`              |
+| `BlogPost`        | `/blogpost`          |
+| `OrderItem`       | `/orderitem`         |
+| `INVOICE_RECORDS` | `/invoice_records`   |
+| `apiKey`          | `/apikey`            |
+
+Underscores in model names are preserved. Camel-case word boundaries are not preserved.
+
+Throughout this README, `{modelname}` (lowercase) represents the converted path segment. For example, the path `/{modelname}/first` refers to `/user/first` for a `User` model, or `/blogpost/first` for a `BlogPost` model.
+
+The generated directory structure preserves the original model casing — e.g. `generated/BlogPost/BlogPostRouter.ts` — but the runtime URL is `/blogpost`.
+
+To remove the model prefix entirely, set `addModelPrefix: false` in the route config. To replace it with a custom prefix, use `customUrlPrefix`.
 
 ## Usage (Express)
 
@@ -145,6 +183,8 @@ import { UserRouter } from './generated/User/UserRouter'
 
 const prisma = new PrismaClient()
 const app = express()
+
+app.use(express.json())
 
 app.use((req, res, next) => {
   req.prisma = prisma
@@ -161,6 +201,8 @@ app.listen(3000, () => {
   console.log('Server is running on http://localhost:3000')
 })
 ```
+
+`express.json()` is required because write endpoints (`create`, `update`, `delete`, `upsert`) and POST read endpoints accept JSON request bodies.
 
 ## Usage (Fastify)
 
@@ -195,16 +237,138 @@ fastify.listen({ port: 3000 }, () => {
 
 The generated function signature is `async function ModelRoutes(fastify: FastifyInstance, config?: RouteConfig)`. It registers routes directly on the provided Fastify instance.
 
-### Key differences between Express and Fastify targets
+## Usage (Hono)
 
-| Aspect | Express | Fastify |
-| ------ | ------- | ------- |
-| Generated function | `ModelRouter(config)` returns `express.Router` | `ModelRoutes(fastify, config)` registers on instance |
-| Mounting | `app.use('/', ModelRouter(config))` | `fastify.register(async (i) => { await ModelRoutes(i, config) })` |
-| Hook types | `before`/`after` are Express `RequestHandler[]` | `before`/`after` are `FastifyHookHandler[]` |
-| Guard resolveVariant | Receives `express.Request` | Receives `FastifyRequest` |
-| Request data | `req.prisma`, `res.locals` | `request.prisma`, `request` properties |
-| Error handling | Express error middleware on the router | Fastify `setErrorHandler` on the instance |
+When `target = "hono"`, each model produces a function that returns a Hono instance.
+
+```ts
+import { Hono } from 'hono'
+import { PrismaClient } from '@prisma/client'
+import { UserRouter } from './generated/User/UserRouter'
+
+type Env = {
+  Variables: {
+    prisma: PrismaClient
+  }
+}
+
+const prisma = new PrismaClient()
+const app = new Hono<Env>()
+
+app.use('*', async (c, next) => {
+  c.set('prisma', prisma)
+  await next()
+})
+
+const userConfig = {
+  enableAll: true,
+}
+
+app.route('/', UserRouter(userConfig))
+
+export default app
+```
+
+The generated function signature is `UserRouter(config?: RouteConfig): Hono`. Mount with `app.route(prefix, UserRouter(config))`.
+
+PrismaClient is injected via `c.set('prisma', prismaInstance)` in middleware that runs before the router. Declare `prisma` (and any optional connectors like `postgres` / `sqlite`) in your Hono app's `Variables` type so TypeScript can verify the injection. The same pattern applies to optional `postgres` / `sqlite` connectors for [prisma-sql integration](#prisma-sql-integration).
+
+### Hooks (Hono)
+
+Hono hooks are native Hono middleware functions:
+
+```ts
+import type { HonoHookHandler } from './generated/routeConfig.target'
+
+const auth: HonoHookHandler = async (c, next) => {
+  const token = c.req.header('authorization')
+  if (!token) return c.json({ message: 'Unauthorized' }, 401)
+  await next()
+}
+
+const userConfig = {
+  findMany: {
+    before: [auth],
+  },
+}
+```
+
+Call `await next()` to continue the chain. Return a `Response` to short-circuit — subsequent hooks, the main handler, and the response middleware will not run.
+
+### HTTPException normalization
+
+Throwing Hono's `HTTPException` from a hook short-circuits to a JSON error response. The router's `app.onError` catches the exception, preserves the status code, and **normalizes the response body** to `{ "message": err.message }`.
+
+```ts
+import { HTTPException } from 'hono/http-exception'
+
+const auth: HonoHookHandler = async (c, next) => {
+  const token = c.req.header('authorization')
+  if (!token) {
+    throw new HTTPException(401, { message: 'Unauthorized' })
+  }
+  await next()
+}
+```
+
+Custom response bodies attached to `HTTPException` are **not preserved** — the router always returns `{ message: err.message }` with the exception's status code. If you need a custom response body, return a `Response` directly from the hook instead of throwing.
+
+This normalization ensures all errors from generated routes share a single shape, so clients only need to handle one error format.
+
+### Cloudflare Workers and edge runtimes
+
+The Hono target v1 is tested on Node.js runtimes only. The route layer may be portable to edge runtimes (Cloudflare Workers, Deno Deploy, Vercel Edge), but **production edge support is not guaranteed**. Prisma Client edge usage requires compatible Prisma setup, driver adapters, or Prisma Accelerate / Prisma Postgres depending on the database. `prisma-guard` edge compatibility is unverified.
+
+On Cloudflare Workers, you must construct an edge-compatible Prisma client yourself and expose it through your runtime environment. Cloudflare does not provide a built-in Prisma binding — the exact setup depends on your database and Prisma adapter (Prisma Accelerate, `@prisma/adapter-d1`, etc.).
+
+A minimal pattern, assuming you've already wired up an edge-compatible client behind a `PRISMA` binding:
+
+```ts
+type Env = {
+  Bindings: {
+    PRISMA: any
+  }
+  Variables: {
+    prisma: any
+  }
+}
+
+const app = new Hono<Env>()
+
+app.use('*', async (c, next) => {
+  c.set('prisma', c.env.PRISMA)
+  await next()
+})
+
+app.route('/', UserRouter({ enableAll: true }))
+
+export default app
+```
+
+Both `Bindings` (what the runtime injects) and `Variables` (what your middleware sets via `c.set`) need to be declared on the app's `Env` type.
+
+### Query Builder
+
+The Query Builder playground is Node-only and **not auto-started** by the Hono target. The generated `?ui=playground` route can render the playground iframe, but the Hono router does not start the Query Builder server. Start `prisma-query-builder-ui` manually in a separate process and point the config to that server when needed.
+
+### Query string differences
+
+Hono's `c.req.query()` returns a flat `Record<string, string>` — duplicate query keys collapse to the last value. For example, `?take=10&take=20` becomes `{ take: '20' }`. This differs from Express, which parses `?a=1&a=2` into `{ a: ['1', '2'] }`.
+
+The `encodeQueryParams` client utility does not emit duplicate keys, so this only matters for hand-built query strings. All complex Prisma arguments are JSON-encoded into single query values.
+
+### Key differences between targets
+
+| Aspect | Express | Fastify | Hono |
+| ------ | ------- | ------- | ---- |
+| Generated function | `ModelRouter(config)` returns `express.Router` | `ModelRoutes(fastify, config)` registers on instance | `ModelRouter(config)` returns `Hono` instance |
+| Mounting | `app.use('/', ModelRouter(config))` | `fastify.register(async (i) => { await ModelRoutes(i, config) })` | `app.route('/', ModelRouter(config))` |
+| Hook types | `RequestHandler[]` | `FastifyHookHandler[]` | `HonoHookHandler[]` (native middleware) |
+| Hook signature | `(req, res, next)` | `(request, reply)` | `(c, next)` |
+| Guard resolveVariant | `express.Request` | `FastifyRequest` | Hono `Context` |
+| PrismaClient injection | `req.prisma = prisma` | `request.prisma = prisma` | `c.set('prisma', prisma)` |
+| Error handling | Express error middleware | `setErrorHandler` | `app.onError` |
+| Query Builder auto-start | Yes (Node only) | Yes (Node only) | No (manual start) |
 
 ## Selective routes with middleware
 
@@ -242,15 +406,33 @@ fastify.register(async (instance) => {
 })
 ```
 
-Only operations listed in the config (or all when `enableAll: true`) are registered. Operations not listed produce no routes.
-
 Fastify hooks receive `(request: FastifyRequest, reply: FastifyReply)`. If a hook sends a reply (via `reply.send()`), subsequent hooks and the handler are skipped.
+
+### Hono
+
+```ts
+const userConfig = {
+  findMany: {
+    before: [async (c, next) => { /* auth check */ await next() }],
+  },
+  create: {
+    before: [async (c, next) => { /* auth + validation */ await next() }],
+  },
+  findUnique: {},
+}
+
+app.route('/', UserRouter(userConfig))
+```
+
+Hono hooks are native middleware functions. Call `await next()` to continue the chain. Return a `Response` (e.g. `c.json({...}, 403)`) or throw `HTTPException` to short-circuit — subsequent hooks and the handler will not run.
+
+Only operations listed in the config (or all when `enableAll: true`) are registered. Operations not listed produce no routes.
 
 ## Guard shapes (prisma-guard integration)
 
 prisma-generator-express integrates with [prisma-guard](https://github.com/multipliedtwice/prisma-guard) to enforce input validation, query shape restrictions, and tenant isolation on generated routes. When a `shape` is configured on an operation, the handler calls `prisma.model.guard(shape, caller).method(args)` instead of `prisma.model.method(args)`.
 
-Guard shapes work identically for both Express and Fastify targets. The only difference is the type of the `resolveVariant` callback parameter (`Request` vs `FastifyRequest`).
+Guard shapes work identically across all three targets. The only difference is the type of the `resolveVariant` callback parameter (`Request` for Express, `FastifyRequest` for Fastify, `Context` for Hono).
 
 ### Guard setup
 
@@ -275,7 +457,7 @@ generator express {
 }
 ```
 
-Run `npx prisma generate` to emit both the express routes and the guard artifacts.
+Run `npx prisma generate` to emit both the routes and the guard artifacts.
 
 Extend PrismaClient with the guard extension and attach it to requests:
 
@@ -292,6 +474,8 @@ const prisma = new PrismaClient().$extends(
 )
 
 const app = express()
+
+app.use(express.json())
 
 app.use((req, res, next) => {
   req.prisma = prisma
@@ -312,15 +496,19 @@ app.use('/', UserRouter({
 app.listen(3000)
 ```
 
+For Fastify and Hono, attach the extended client the same way — via `request.prisma = prisma` (Fastify) or `c.set('prisma', prisma)` (Hono).
+
 If prisma-guard is not installed or the client is not extended with the guard extension, requests to guarded routes return 500 with the message: `Guard shapes require prisma-guard extension on PrismaClient. Install: npm install prisma-guard, then extend your client with guardExtension().`
 
 ### How guard integration works
 
 Each operation config accepts an optional `shape` property. When present, the generated handler:
 
-1. Stores the shape on the request context via middleware (Express: `res.locals.guardShape`, Fastify: `request.guardShape`)
+1. Stores the shape on the request context via middleware (Express: `res.locals.guardShape = shape`, Fastify: `request.guardShape = shape`, Hono: `c.set('guardShape', shape)`)
 2. Resolves the caller from `config.guard.resolveVariant(req)`, then from the configured header (default `x-api-variant`), falling back to `undefined`
 3. Calls `prisma.model.guard(shape, caller).method(args)` instead of `prisma.model.method(args)`
+
+The downstream handler reads these values (`res.locals.guardShape`, `request.guardShape`, `c.get('guardShape')`) when constructing the Prisma call.
 
 When `shape` is absent, the handler calls Prisma directly with no guard enforcement.
 
@@ -463,7 +651,7 @@ If the caller is missing or doesn't match any key, the request is rejected with 
 
 ### Custom caller resolution
 
-Use `resolveVariant` for caller logic beyond a simple header:
+Use `resolveVariant` for caller logic beyond a simple header. The callback parameter type depends on the target.
 
 ```ts
 // Express
@@ -500,6 +688,27 @@ const userConfig = {
   },
 }
 ```
+
+```ts
+// Hono
+const userConfig = {
+  findMany: {
+    shape: {
+      admin: { /* ... */ },
+      public: { /* ... */ },
+    },
+  },
+  guard: {
+    resolveVariant: (c) => {
+      const user = c.get('user')
+      if (user?.role === 'admin') return 'admin'
+      return 'public'
+    },
+  },
+}
+```
+
+When using `c.get('user')` or other custom context values in TypeScript, add them to the `Variables` type of your Hono app so the call is typed correctly. For example: `Hono<{ Variables: { prisma: PrismaClient; user?: { role: string } } }>`.
 
 `resolveVariant` takes priority over the header. If both are configured, the header is checked only when `resolveVariant` returns `undefined`.
 
@@ -837,6 +1046,8 @@ const prisma = new PrismaClient().$extends(
   }))
 )
 
+app.use(express.json())
+
 app.use((req, res, next) => {
   const tenantId = req.headers['x-tenant-id'] as string
   store.run({ tenantId }, () => {
@@ -883,7 +1094,7 @@ For upsert: `where`, `create`, `update`, `select`, `include`
 
 ### Guard error handling
 
-Guard errors are mapped to HTTP status codes by the generated error-handling middleware:
+Guard errors are mapped to HTTP status codes by the generated error handler:
 
 | Error type    | HTTP status | When                                                              |
 | ------------- | ----------- | ----------------------------------------------------------------- |
@@ -913,6 +1124,8 @@ const prisma = new PrismaClient().$extends(
 )
 
 const app = express()
+
+app.use(express.json())
 
 app.use((req, res, next) => {
   const tenantId = req.headers['x-tenant-id'] as string
@@ -1013,6 +1226,8 @@ All write operations accept the full Prisma args object as the JSON request body
 
 Write operations that return records (create, update, delete, upsert, createManyAndReturn, updateManyAndReturn) support `select`, `include`, and `omit` in the request body to control the response shape.
 
+For Express, mount `express.json()` before the router so request bodies are parsed. For Hono, malformed JSON bodies are rejected with 400 (`{ "message": "Invalid JSON in request body" }`) before reaching the handler.
+
 ### Bulk operations
 
 `createMany`, `createManyAndReturn`, `updateMany`, and `updateManyAndReturn` accept scalar-only data inputs. Nested relation writes are not supported in bulk operations.
@@ -1047,17 +1262,19 @@ POST read endpoints are enabled by default. Disable them with `disablePostReads:
 
 Most read operations use the same path for both GET and POST. The only exception is `findMany`, which uses a `/read` suffix to avoid conflicting with `POST /` (create).
 
-| Operation         | GET path         | POST path        |
-| ----------------- | ---------------- | ---------------- |
-| findMany          | `/{modelName}/`              | `/{modelName}/read`          |
-| findFirst         | `/{modelName}/first`         | `/{modelName}/first`         |
-| findFirstOrThrow  | `/{modelName}/first/strict`  | `/{modelName}/first/strict`  |
-| findUnique        | `/{modelName}/unique`        | `/{modelName}/unique`        |
-| findUniqueOrThrow | `/{modelName}/unique/strict` | `/{modelName}/unique/strict` |
-| findManyPaginated | `/{modelName}/paginated`     | `/{modelName}/paginated`     |
-| count             | `/{modelName}/count`         | `/{modelName}/count`         |
-| aggregate         | `/{modelName}/aggregate`     | `/{modelName}/aggregate`     |
-| groupBy           | `/{modelName}/groupby`       | `/{modelName}/groupby`       |
+`{modelname}` in the paths below is the lowercased model name. See [Path casing in generated endpoints](#path-casing-in-generated-endpoints).
+
+| Operation         | GET path                     | POST path                    |
+| ----------------- | ---------------------------- | ---------------------------- |
+| findMany          | `/{modelname}/`              | `/{modelname}/read`          |
+| findFirst         | `/{modelname}/first`         | `/{modelname}/first`         |
+| findFirstOrThrow  | `/{modelname}/first/strict`  | `/{modelname}/first/strict`  |
+| findUnique        | `/{modelname}/unique`        | `/{modelname}/unique`        |
+| findUniqueOrThrow | `/{modelname}/unique/strict` | `/{modelname}/unique/strict` |
+| findManyPaginated | `/{modelname}/paginated`     | `/{modelname}/paginated`     |
+| count             | `/{modelname}/count`         | `/{modelname}/count`         |
+| aggregate         | `/{modelname}/aggregate`     | `/{modelname}/aggregate`     |
+| groupBy           | `/{modelname}/groupby`       | `/{modelname}/groupby`       |
 
 ### Usage
 
@@ -1157,7 +1374,9 @@ All errors are returned as JSON with a `message` field:
 { "message": "Unique constraint violation" }
 ```
 
-Each generated router installs an error-handling middleware (Express) or error handler (Fastify) that normalizes errors. Prisma error codes are mapped to appropriate HTTP status codes. Guard errors are mapped as follows: `ShapeError` and `CallerError` → 400, `PolicyError` → 403.
+Each generated router installs error handling (Express middleware, Fastify `setErrorHandler`, or Hono `app.onError`) that normalizes errors. Prisma error codes are mapped to appropriate HTTP status codes. Guard errors are mapped as follows: `ShapeError` and `CallerError` → 400, `PolicyError` → 403.
+
+For the Hono target, thrown `HTTPException` instances are caught by `app.onError` and converted to `{ "message": err.message }` with the exception's status code. Custom response bodies attached to `HTTPException` are not preserved — see [HTTPException normalization](#httpexception-normalization).
 
 | Status | Description                                |
 | ------ | ------------------------------------------ |
@@ -1179,12 +1398,12 @@ All incoming JSON bodies and query parameters are sanitized to reject `__proto__
 
 Each router automatically registers OpenAPI spec endpoints when not in production:
 
-| Endpoint                | Description           |
-| ----------------------- | --------------------- |
-| `/{modelName}/openapi.json` | OpenAPI 3.1 JSON spec |
-| `/{modelName}/openapi.yaml` | OpenAPI 3.1 YAML spec |
+| Endpoint                        | Description           |
+| ------------------------------- | --------------------- |
+| `/{modelname}/openapi.json`     | OpenAPI 3.1 JSON spec |
+| `/{modelname}/openapi.yaml`     | OpenAPI 3.1 YAML spec |
 
-Actual paths depend on `customUrlPrefix` and `addModelPrefix` configuration.
+Actual paths depend on `customUrlPrefix` and `addModelPrefix` configuration. `{modelname}` is the lowercased model name (see [Path casing](#path-casing-in-generated-endpoints)).
 
 The OpenAPI spec includes POST read endpoints when they are enabled (default). Each POST read operation appears with its own `operationId` and request body schema documenting the native JSON argument types.
 
@@ -1209,6 +1428,8 @@ const userConfig = {
 const postConfig = {
   enableAll: true,
 }
+
+app.use(express.json())
 
 app.use('/', UserRouter(userConfig))
 app.use('/', PostRouter(postConfig))
@@ -1270,14 +1491,70 @@ fastify.get('/docs', generateCombinedDocs({
 }))
 ```
 
-| Endpoint                      | Description             |
-| ----------------------------- | ----------------------- |
-| `/docs`                       | Combined index page     |
-| `/docs/{modelName}`               | Contract view (default) |
-| `/docs/{modelName}?ui=scalar`     | Scalar interactive UI   |
-| `/docs/{modelName}?ui=json`       | Raw JSON                |
-| `/docs/{modelName}?ui=yaml`       | Raw YAML                |
-| `/docs/{modelName}?ui=playground` | Query playground        |
+#### Hono
+
+```ts
+import { Hono } from 'hono'
+import { PrismaClient } from '@prisma/client'
+import {
+  generateCombinedDocs,
+  registerModelDocs,
+} from './generated/combinedDocs'
+import { UserRouter } from './generated/User/UserRouter'
+import { PostRouter } from './generated/Post/PostRouter'
+
+type Env = {
+  Variables: {
+    prisma: PrismaClient
+  }
+}
+
+const prisma = new PrismaClient()
+
+const userConfig = {
+  findMany: { before: [async (c, next) => { /* auth */ await next() }] },
+  create: {},
+  findUnique: {},
+}
+
+const postConfig = {
+  enableAll: true,
+}
+
+const app = new Hono<Env>()
+
+app.use('*', async (c, next) => {
+  c.set('prisma', prisma)
+  await next()
+})
+
+app.route('/', UserRouter(userConfig))
+app.route('/', PostRouter(postConfig))
+
+registerModelDocs(app, '/docs', {
+  User: userConfig,
+  Post: postConfig,
+})
+
+app.get('/docs', generateCombinedDocs({
+  title: 'My API',
+  modelConfigs: {
+    User: userConfig,
+    Post: postConfig,
+  },
+}))
+```
+
+| Endpoint                          | Description             |
+| --------------------------------- | ----------------------- |
+| `/docs`                           | Combined index page     |
+| `/docs/{modelname}`               | Contract view (default) |
+| `/docs/{modelname}?ui=scalar`     | Scalar interactive UI   |
+| `/docs/{modelname}?ui=json`       | Raw JSON                |
+| `/docs/{modelname}?ui=yaml`       | Raw YAML                |
+| `/docs/{modelname}?ui=playground` | Query playground        |
+
+The `?ui=playground` endpoint requires `prisma-query-builder-ui`. For Express and Fastify, the builder is auto-started in development. For Hono, the builder must be started manually in a separate process (see [Query Builder](#query-builder)).
 
 Disable in production via `NODE_ENV=production` or `DISABLE_OPENAPI=true`. Override with `disableOpenApi: false` in config to force-enable.
 
@@ -1298,18 +1575,20 @@ When `specBasePath` is not set, `customUrlPrefix` is used for both runtime route
 
 ## prisma-sql integration
 
-When `prisma-sql` is installed, the generated handlers automatically attempt to use its `speedExtension` for optimized SQL execution. The extension activates only when a database connector is provided on the request object.
+When `prisma-sql` is installed, the generated handlers automatically attempt to use its `speedExtension` for optimized SQL execution. The extension activates only when a database connector is provided on the request context.
 
-Set `req.postgres` or `req.sqlite` (Express) / `request.postgres` or `request.sqlite` (Fastify) in your middleware to activate the extension:
+Set the connector in your middleware to activate the extension:
 
 ```ts
 import { PrismaClient } from '@prisma/client'
 import postgres from 'postgres'
+import { Hono } from 'hono'
 
 const prisma = new PrismaClient()
 const sql = postgres(process.env.DATABASE_URL!)
 
 // Express
+app.use(express.json())
 app.use((req, res, next) => {
   req.prisma = prisma
   req.postgres = sql
@@ -1321,9 +1600,26 @@ fastify.addHook('onRequest', async (request) => {
   request.prisma = prisma
   request.postgres = sql
 })
-```
 
-Without a connector on the request, the handlers use the standard PrismaClient. Set `DEBUG=true` in the environment to enable prisma-sql debug logging.
+// Hono
+type Env = {
+  Variables: {
+    prisma: PrismaClient
+    postgres: ReturnType<typeof postgres>
+  }
+}
+
+const app = new Hono<Env>()
+
+app.use('*', async (c, next) => {
+  c.set('prisma', prisma)
+  c.set('postgres', sql)
+  await next()
+})```
+
+Without a connector on the request context, the handlers use the standard PrismaClient. Set `DEBUG=true` in the environment to enable prisma-sql debug logging.
+
+For SQLite, use `c.set('sqlite', sqliteConnector)` (Hono) or the equivalent on Express/Fastify, and add `sqlite` to the `Variables` type.
 
 ## Query parameter parsing
 
@@ -1331,37 +1627,41 @@ GET query values are parsed server-side. Strings starting with `{`, `[`, or `"` 
 
 POST read endpoints bypass this parsing entirely — the JSON body is used as-is with native types.
 
+On the Hono target, duplicate query keys collapse to the last value (`?a=1&a=2` → `a=2`). `encodeQueryParams` does not emit duplicate keys, so this only matters for hand-built query strings.
+
 ## Router schema
 
-| Operation           | Method | Path             | Notes                              |
-| ------------------- | ------ | ---------------- | ---------------------------------- |
-| findMany            | GET    | `/{modelName}/`              |                                    |
-| findMany            | POST   | `/{modelName}/read`          | POST read alternative              |
-| findFirst           | GET    | `/{modelName}/first`         |                                    |
-| findFirst           | POST   | `/{modelName}/first`         | POST read alternative              |
-| findFirstOrThrow    | GET    | `/{modelName}/first/strict`  |                                    |
-| findFirstOrThrow    | POST   | `/{modelName}/first/strict`  | POST read alternative              |
-| findUnique          | GET    | `/{modelName}/unique`        |                                    |
-| findUnique          | POST   | `/{modelName}/unique`        | POST read alternative              |
-| findUniqueOrThrow   | GET    | `/{modelName}/unique/strict` |                                    |
-| findUniqueOrThrow   | POST   | `/{modelName}/unique/strict` | POST read alternative              |
-| findManyPaginated   | GET    | `/{modelName}/paginated`     |                                    |
-| findManyPaginated   | POST   | `/{modelName}/paginated`     | POST read alternative              |
-| count               | GET    | `/{modelName}/count`         |                                    |
-| count               | POST   | `/{modelName}/count`         | POST read alternative              |
-| aggregate           | GET    | `/{modelName}/aggregate`     |                                    |
-| aggregate           | POST   | `/{modelName}/aggregate`     | POST read alternative              |
-| groupBy             | GET    | `/{modelName}/groupby`       |                                    |
-| groupBy             | POST   | `/{modelName}/groupby`       | POST read alternative              |
-| create              | POST   | `/{modelName}/`              |                                    |
-| createMany          | POST   | `/{modelName}/many`          |                                    |
-| createManyAndReturn | POST   | `/{modelName}/many/return`   |                                    |
-| update              | PUT    | `/{modelName}/`              |                                    |
-| updateMany          | PUT    | `/{modelName}/many`          |                                    |
-| updateManyAndReturn | PUT    | `/{modelName}/many/return`   |                                    |
-| upsert              | PATCH  | `/{modelName}/`              |                                    |
-| delete              | DELETE | `/{modelName}/`              |                                    |
-| deleteMany          | DELETE | `/{modelName}/many`          |                                    |
+`{modelname}` in the paths below is the lowercased model name. For a `User` model, `/{modelname}/first` becomes `/user/first`. For `BlogPost`, it becomes `/blogpost/first`. See [Path casing in generated endpoints](#path-casing-in-generated-endpoints).
+
+| Operation           | Method | Path                         | Notes                              |
+| ------------------- | ------ | ---------------------------- | ---------------------------------- |
+| findMany            | GET    | `/{modelname}/`              |                                    |
+| findMany            | POST   | `/{modelname}/read`          | POST read alternative              |
+| findFirst           | GET    | `/{modelname}/first`         |                                    |
+| findFirst           | POST   | `/{modelname}/first`         | POST read alternative              |
+| findFirstOrThrow    | GET    | `/{modelname}/first/strict`  |                                    |
+| findFirstOrThrow    | POST   | `/{modelname}/first/strict`  | POST read alternative              |
+| findUnique          | GET    | `/{modelname}/unique`        |                                    |
+| findUnique          | POST   | `/{modelname}/unique`        | POST read alternative              |
+| findUniqueOrThrow   | GET    | `/{modelname}/unique/strict` |                                    |
+| findUniqueOrThrow   | POST   | `/{modelname}/unique/strict` | POST read alternative              |
+| findManyPaginated   | GET    | `/{modelname}/paginated`     |                                    |
+| findManyPaginated   | POST   | `/{modelname}/paginated`     | POST read alternative              |
+| count               | GET    | `/{modelname}/count`         |                                    |
+| count               | POST   | `/{modelname}/count`         | POST read alternative              |
+| aggregate           | GET    | `/{modelname}/aggregate`     |                                    |
+| aggregate           | POST   | `/{modelname}/aggregate`     | POST read alternative              |
+| groupBy             | GET    | `/{modelname}/groupby`       |                                    |
+| groupBy             | POST   | `/{modelname}/groupby`       | POST read alternative              |
+| create              | POST   | `/{modelname}/`              |                                    |
+| createMany          | POST   | `/{modelname}/many`          |                                    |
+| createManyAndReturn | POST   | `/{modelname}/many/return`   |                                    |
+| update              | PUT    | `/{modelname}/`              |                                    |
+| updateMany          | PUT    | `/{modelname}/many`          |                                    |
+| updateManyAndReturn | PUT    | `/{modelname}/many/return`   |                                    |
+| upsert              | PATCH  | `/{modelname}/`              |                                    |
+| delete              | DELETE | `/{modelname}/`              |                                    |
+| deleteMany          | DELETE | `/{modelname}/many`          |                                    |
 
 Paths shown are relative suffixes. Actual paths include the model prefix (e.g., `/user/first`) unless `addModelPrefix: false`, and any `customUrlPrefix`.
 
@@ -1466,6 +1766,27 @@ type FastifyHookHandler = (
 ```
 
 The `guard.resolveVariant` callback receives `FastifyRequest` instead of `Request`.
+
+### Hono
+
+The Hono config is identical except for hook and resolver types:
+
+```ts
+interface OperationConfig {
+  before?: HonoHookHandler[]
+  after?: HonoHookHandler[]
+  shape?: Record<string, any>
+}
+
+type HonoHookHandler<Env extends { Variables: any } = any> = (
+  c: Context<Env>,
+  next: Next,
+) => Promise<Response | void> | Response | void
+```
+
+The `guard.resolveVariant` callback receives Hono's `Context`. Hooks are native Hono middleware — call `await next()` to continue the chain, return a `Response` (or throw `HTTPException`) to short-circuit.
+
+The Hono router does not auto-start the Query Builder. Set `queryBuilder: false` to make the playground route return 404, or run `prisma-query-builder-ui` manually for development.
 
 ### Shared options
 

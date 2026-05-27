@@ -1,6 +1,6 @@
 {
   "name": "prisma-generator-express",
-  "description": "Prisma generator for Express/Fastify CRUD API with OpenAPI documentation",
+  "description": "Prisma generator for Express, Fastify, and Hono CRUD APIs with OpenAPI documentation",
   "version": "1.39.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,6 +25,7 @@
     "@prisma/client": ">=6.0.0",
     "express": ">=4.0.0",
     "fastify": "^5.0.0",
+    "hono": ">=4.0.0",
     "prisma-guard": ">=1.0.0",
     "prisma-query-builder-ui": ">=1.1.0",
     "prisma-sql": ">=1.0.0"
@@ -50,6 +51,7 @@
     "express": "^5.2.1",
     "fast-xml-parser": "^5.3.3",
     "fastify": "^5.6.2",
+    "hono": "^4.12.23",
     "lru-cache": "^11.2.4",
     "pino": "^10.1.0",
     "pino-pretty": "^13.0.0",

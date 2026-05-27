@@ -126,6 +126,56 @@ function generateFastifyDocsExport(modelName: string): string {
 }`
 }
 
+function generateHonoDocsExport(modelName: string): string {
+  return `export function ${modelName}Docs(config: DocsConfig = {}) {
+  return (c: Context): Response | Promise<Response> => {
+    const disabled = isOpenApiDisabled(config.disableOpenApi)
+    if (disabled) return c.text('OpenAPI documentation is disabled in production', 404)
+
+    const rawUi = c.req.query('ui') || config.docsUi || 'docs'
+    const validUis: DocsUI[] = ['docs', 'scalar', 'json', 'yaml', 'playground']
+    const ui: DocsUI = (validUis as string[]).includes(rawUi) ? (rawUi as DocsUI) : 'docs'
+
+    if (ui === 'playground') {
+      if (!isPlaygroundAvailable(config)) {
+        return c.text('Query builder is disabled', 404)
+      }
+      return c.html(renderPlayground('${modelName}', config))
+    }
+
+    if (ui === 'yaml') {
+      const yaml = buildModelOpenApi(
+        '${modelName}',
+        MODEL_FIELDS as any,
+        MODEL_ENUMS as any,
+        config,
+        { format: 'yaml' }
+      ) as string
+      return c.body(yaml, 200, { 'Content-Type': 'application/yaml' })
+    }
+
+    const spec = buildModelOpenApi(
+      '${modelName}',
+      MODEL_FIELDS as any,
+      MODEL_ENUMS as any,
+      config,
+      { format: 'json' }
+    )
+
+    if (ui === 'json') return c.json(spec as any)
+
+    const pageTitle = config.docsTitle || \`${modelName} API\`
+
+    if (ui === 'scalar') {
+      return c.html(renderScalar('${modelName}', spec, pageTitle, config.scalarCdnUrl))
+    }
+
+    const html = renderDocs('${modelName}', config, MODEL_CONTEXT)
+    return c.html(html)
+  }
+}`
+}
+
 export function generateScalarUIHandler(options: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
@@ -192,12 +242,16 @@ export function generateScalarUIHandler(options: {
   const frameworkImport =
     target === 'fastify'
       ? `import type { FastifyRequest, FastifyReply } from 'fastify'`
-      : `import { Request, Response } from 'express'`
+      : target === 'hono'
+        ? `import type { Context } from 'hono'`
+        : `import { Request, Response } from 'express'`
 
   const docsExport =
     target === 'fastify'
       ? generateFastifyDocsExport(modelName)
-      : generateExpressDocsExport(modelName)
+      : target === 'hono'
+        ? generateHonoDocsExport(modelName)
+        : generateExpressDocsExport(modelName)
 
   return `${frameworkImport}
 import { buildModelOpenApi } from '../buildModelOpenApi'

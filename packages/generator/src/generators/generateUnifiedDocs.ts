@@ -15,24 +15,32 @@ export function generateUnifiedDocs(
   const frameworkImport =
     target === 'fastify'
       ? `import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'`
-      : `import { Request, Response } from 'express'`
+      : target === 'hono'
+        ? `import type { Hono, Context } from 'hono'`
+        : `import { Request, Response } from 'express'`
 
   const routeConfigImport = `import type { RouteConfig } from './routeConfig.target'`
 
   const handlerType =
     target === 'fastify'
       ? `(config: any) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>`
-      : `(config: any) => (req: Request, res: Response) => any`
+      : target === 'hono'
+        ? `(config: any) => (c: Context) => Response | Promise<Response>`
+        : `(config: any) => (req: Request, res: Response) => any`
 
   const combinedDocsReturn =
     target === 'fastify'
       ? generateFastifyCombinedDocs()
-      : generateExpressCombinedDocs()
+      : target === 'hono'
+        ? generateHonoCombinedDocs()
+        : generateExpressCombinedDocs()
 
   const registerDocs =
     target === 'fastify'
       ? generateFastifyRegisterDocs()
-      : generateExpressRegisterDocs()
+      : target === 'hono'
+        ? generateHonoRegisterDocs()
+        : generateExpressRegisterDocs()
 
   return `${imports}
 ${frameworkImport}
@@ -210,6 +218,21 @@ function generateFastifyCombinedDocs(): string {
 }`
 }
 
+function generateHonoCombinedDocs(): string {
+  return `export function generateCombinedDocs(config: CombinedDocsConfig) {
+  return (c: Context): Response | Promise<Response> => {
+    const registeredModels = getRegisteredModels(config)
+
+    if (registeredModels.length === 0) {
+      return c.text('OpenAPI documentation is disabled', 404)
+    }
+
+    const html = buildCombinedHtml(config, registeredModels)
+    return c.html(html)
+  }
+}`
+}
+
 function generateExpressRegisterDocs(): string {
   return `export function registerModelDocs(
   app: any,
@@ -238,6 +261,31 @@ function generateExpressRegisterDocs(): string {
 function generateFastifyRegisterDocs(): string {
   return `export function registerModelDocs(
   app: FastifyInstance,
+  basePath: string = '/docs',
+  configs: CombinedDocsConfig['modelConfigs'] = {},
+  options?: { disableOpenApi?: boolean }
+) {
+  const normalizedBase = removeTrailingSlash(basePath)
+  const registeredModels = Object.keys(configs).filter((m) => {
+    const cfg = configs[m]
+    return m in docsHandlers && !isOpenApiDisabled(cfg?.disableOpenApi ?? options?.disableOpenApi)
+  })
+
+  if (registeredModels.length === 0) return
+
+  registeredModels.forEach((model) => {
+    const handler = docsHandlers[model]
+    const cfg = configs[model] || {}
+    const docPath = normalizedBase + '/' + model.toLowerCase()
+    console.log('  Registered docs: ' + docPath)
+    app.get(docPath, handler(cfg))
+  })
+}`
+}
+
+function generateHonoRegisterDocs(): string {
+  return `export function registerModelDocs(
+  app: Hono<any>,
   basePath: string = '/docs',
   configs: CombinedDocsConfig['modelConfigs'] = {},
   options?: { disableOpenApi?: boolean }
