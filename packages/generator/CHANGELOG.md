@@ -1,3 +1,10 @@
+## [1.45.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.45.0...v1.45.1) (2026-06-07)
+
+
+### Bug Fixes
+
+* update OpenAPI spec generation to correctly pass config parameter ([1ae0287](https://github.com/multipliedtwice/prisma-generator-express/commit/1ae0287f652347a7567d2dc767a91d08047925f2))
+
 # [1.45.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.44.0...v1.45.0) (2026-06-07)
 
 
