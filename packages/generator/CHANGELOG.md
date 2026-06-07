@@ -1,3 +1,10 @@
+# [1.45.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.44.0...v1.45.0) (2026-06-07)
+
+
+### Features
+
+* extend RouteConfig to include QueryBuilderConfig for enhanced query handling ([a358d8c](https://github.com/multipliedtwice/prisma-generator-express/commit/a358d8c6dfeea1f8d15d684d42aa3fe74adf467a))
+
 # [1.44.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.43.0...v1.44.0) (2026-06-07)
 
 
