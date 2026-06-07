@@ -1,3 +1,10 @@
+# [1.43.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.42.0...v1.43.0) (2026-06-07)
+
+
+### Features
+
+* automatic progressive include decomposition ([c45a94d](https://github.com/multipliedtwice/prisma-generator-express/commit/c45a94d9eb61e2b66a5be7b3dd53acacb5e67bb5))
+
 # [1.42.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.41.0...v1.42.0) (2026-06-07)
 
 
