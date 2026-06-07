@@ -1,8 +1,11 @@
 import { DMMF } from '@prisma/generator-helper'
 import { toCamelCase } from '../utils/strings'
+import { ImportStyle } from '../utils/resolveImportStyle'
+import { importExt } from '../utils/importExt'
 
 export interface UnifiedHandlerOptions {
   model: DMMF.Model
+  importStyle: ImportStyle
 }
 
 const CORE_NAME_MAP: Record<string, string> = {
@@ -35,6 +38,7 @@ const ALL_OPS = [
 ]
 
 export function generateUnifiedHandler(options: UnifiedHandlerOptions): string {
+  const ext = importExt(options.importStyle)
   const modelName = options.model.name
   const prefix = toCamelCase(modelName)
 
@@ -57,8 +61,8 @@ export async function ${exportName}(
   }).join('\n')
 
   return `import { Request, Response, NextFunction } from 'express'
-import * as core from './${modelName}Core'
-import { OperationContext, mapError } from '../operationRuntime'
+import * as core from './${modelName}Core${ext}'
+import { OperationContext, mapError } from '../operationRuntime${ext}'
 
 type ExtendedRequest = Request & {
   prisma?: unknown

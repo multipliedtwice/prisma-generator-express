@@ -14,7 +14,7 @@ import { generateRelationMeta, generateRelationModelsIndex } from './generators/
 import { getRelativeClientPath, getGuardShapesImport } from './generators/generateImportPrismaStatement'
 import { writeFileSafely } from './utils/writeFileSafely'
 import { copyFiles } from './utils/copyFiles'
-import { resolveImportStyle } from './utils/resolveImportStyle'
+import { resolveImportStyle, ImportStyle } from './utils/resolveImportStyle'
 import { GENERATOR_NAME, Target } from './constants'
 
 function getTarget(options: GeneratorOptions): Target {
@@ -53,7 +53,7 @@ generatorHandler({
     await copyFiles(options, target, importStyle)
 
     const modelNames: string[] = []
-    const generateHandler =
+    const generateHandler: (opts: { model: DMMF.Model; importStyle: ImportStyle }) => string =
       target === 'fastify' ? generateFastifyHandler :
       target === 'hono' ? generateHonoHandler :
       generateUnifiedHandler
@@ -78,7 +78,7 @@ generatorHandler({
       })
 
       await writeFileSafely({
-        content: generateHandler({ model: model as DMMF.Model, importStyle } as any),
+        content: generateHandler({ model: model as DMMF.Model, importStyle }),
         options,
         model: model as DMMF.Model,
         operation: 'Handlers',
@@ -91,14 +91,14 @@ generatorHandler({
               enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
               guardShapesImport,
               importStyle,
-            } as any)
+            })
           : target === 'hono'
             ? generateHonoRouterFunction({
                 model: model as DMMF.Model,
                 enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
                 guardShapesImport,
                 importStyle,
-              } as any)
+              })
             : generateRouterFunction({
                 model: model as DMMF.Model,
                 enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
@@ -120,7 +120,7 @@ generatorHandler({
           enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
           target,
           importStyle,
-        } as any),
+        }),
         options,
         model: model as DMMF.Model,
         operation: 'Docs',

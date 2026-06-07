@@ -42,6 +42,12 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
+function requestTypeFor(target: Target): string {
+  if (target === 'fastify') return `import('fastify').FastifyRequest`
+  if (target === 'hono') return `import('hono').Context`
+  return `import('express').Request`
+}
+
 export function generateRouteConfigType(
   modelName: string,
   hookHandlerType: string,
@@ -52,6 +58,7 @@ export function generateRouteConfigType(
   const ext = importExt(importStyle)
   const m = modelName
   const supportsProgressive = target === 'express'
+  const requestType = requestTypeFor(target)
 
   const progressiveTypeImport = supportsProgressive
     ? `import type { ProgressiveVariantConfig, ProgressiveStage } from '../routeConfig.target${ext}'\n\n`
@@ -90,7 +97,7 @@ export function generateRouteConfigType(
     `  | ${omitKeys}\n` +
     `  | 'resolveContext'\n` +
     `> & {\n` +
-    `  resolveContext?: (request: import('express').Request) => TCtx | Promise<TCtx>\n` +
+    `  resolveContext?: (request: ${requestType}) => TCtx | Promise<TCtx>\n` +
     `${overrides}\n}\n`
   )
 }

@@ -80,6 +80,10 @@ import {
   acceptsEventStream,
   runProgressiveEndpoint,
   runSingleResultSSE,
+  emitTerminalSSEError,
+  removeReqCloseListener,
+  mapError,
+  HttpError,
 } from '../operationRuntime${ext}'
 import { relationModels } from '../relationModels${ext}'
 import { runAutoIncludeProgressive } from '../autoIncludeRuntime${ext}'
@@ -215,7 +219,7 @@ export function ${routerFunctionName}<TCtx = unknown>(config: ${modelName}RouteC
     }
   }
 
-  const maybeProgressiveSSE = (
+const maybeProgressiveSSE = (
     opConfig: OperationConfigLike,
     coreFn: (ctx: OperationContext) => Promise<unknown>,
     baseOp: string,
@@ -246,7 +250,8 @@ export function ${routerFunctionName}<TCtx = unknown>(config: ${modelName}RouteC
 
           if (!isSingleRecordRead) {
             if (progressiveConfig.fallback === 'error') {
-              return next({ status: 400, message: 'autoInclude mode supports only single-record reads' })
+              emitTerminalSSEError(res, 'auto-progressive fallback: operation not single-record')
+              return
             }
             await runSingleResultSSE({
               req,
@@ -256,23 +261,38 @@ export function ${routerFunctionName}<TCtx = unknown>(config: ${modelName}RouteC
             return
           }
 
-          await runAutoIncludeProgressive({
-            req,
-            res,
-            ctx: buildContext(req, res),
-            args: locals.parsedQuery ?? {},
-            baseOp: baseOp as 'findUnique' | 'findUniqueOrThrow' | 'findFirst' | 'findFirstOrThrow',
-            modelName: '${modelName}',
-            delegateKey: '${delegateKey}',
-            models: relationModels,
-            variantConfig: progressiveConfig,
-            coreQueryFn: () => coreFn(buildContext(req, res)),
-          })
+          const ctx = buildContext(req, res)
+          const args = (locals.parsedQuery ?? {}) as Record<string, unknown>
+          const controller = new AbortController()
+          const onClose = () => controller.abort()
+          req.on('close', onClose)
+          try {
+            await runAutoIncludeProgressive({
+              req,
+              res,
+              ctx,
+              args,
+              baseOp: baseOp as 'findUnique' | 'findUniqueOrThrow' | 'findFirst' | 'findFirstOrThrow',
+              modelName: '${modelName}',
+              delegateKey: '${delegateKey}',
+              models: relationModels,
+              variantConfig: progressiveConfig,
+              coreQueryFn: () => coreFn(ctx),
+              signal: controller.signal,
+            })
+          } finally {
+            removeReqCloseListener(req, onClose)
+          }
           return
         }
 
         if (!Array.isArray(progressiveConfig.stages)) {
-          return next({ status: 500, message: 'Progressive endpoint requires stages array' })
+          await runSingleResultSSE({
+            req,
+            res,
+            coreQueryFn: () => coreFn(buildContext(req, res)),
+          })
+          return
         }
 
         const stageRegistry = opConfig.progressiveStages ?? {}
@@ -454,10 +474,16 @@ export function ${routerFunctionName}<TCtx = unknown>(config: ${modelName}RouteC
   }
 
   router.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
-    const e = err as { status?: number; message?: string }
-    const status = typeof e.status === 'number' ? e.status : 500
-    const message = e.message || 'Internal server error'
-    if (!res.headersSent) return res.status(status).json({ message })
+    let httpError: HttpError
+    if (err instanceof HttpError) {
+      httpError = err
+    } else if (err && typeof err === 'object' && typeof (err as { status?: number }).status === 'number') {
+      const e = err as { status: number; message?: string }
+      httpError = new HttpError(e.status, e.message || 'Internal server error')
+    } else {
+      httpError = mapError(err)
+    }
+    if (!res.headersSent) return res.status(httpError.status).json({ message: httpError.message })
     next(err)
   })
 

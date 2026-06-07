@@ -45,10 +45,27 @@ export type AutoIncludePlannerInput = {
 export const DEFAULT_AUTO_INCLUDE_MAX_DEPTH = 3
 export const DEFAULT_AUTO_INCLUDE_MAX_STAGES = 20
 
+const ALLOWED_TO_ONE_ARGS = new Set(['select', 'include', 'omit'])
+const ALLOWED_TO_MANY_ARGS = new Set([
+  'select',
+  'include',
+  'omit',
+  'where',
+  'orderBy',
+  'take',
+  'skip',
+  'cursor',
+  'distinct',
+])
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object') return false
   if (Array.isArray(value)) return false
   return true
+}
+
+function isPubliclySelected(projection: Record<string, unknown>, field: string): boolean {
+  return projection[field] === true
 }
 
 function hasCountKey(value: unknown): boolean {
@@ -117,11 +134,11 @@ function walk(
   parentArgs: Record<string, unknown>,
   depth: number,
 ): WalkResult {
-  if (depth > ctx.maxDepth) {
-    return { unsupportedReason: 'depth exceeds maxDepth=' + ctx.maxDepth }
+  if (depth >= ctx.maxDepth) {
+    return { unsupportedReason: 'nested depth reached maxDepth=' + ctx.maxDepth }
   }
-  if (ctx.stages.length > ctx.maxStages) {
-    return { unsupportedReason: 'stages exceed maxStages=' + ctx.maxStages }
+  if (ctx.stages.length >= ctx.maxStages) {
+    return { unsupportedReason: 'stages reached maxStages=' + ctx.maxStages }
   }
 
   const model = ctx.models[modelName]
@@ -154,12 +171,17 @@ function walk(
   const isSelectMode = isPlainObject(select)
   const localOmit = isPlainObject(omit) ? omit : null
   const updatedProjection: Record<string, unknown> = {}
-  const userFields = new Set(Object.keys(projection))
 
   const relationBranches: Array<{ name: string; value: unknown }> = []
 
   for (const [key, value] of Object.entries(projection)) {
     if (model.relations[key]) {
+      if (value === false || value === null || value === undefined) {
+        if (isSelectMode) {
+          updatedProjection[key] = value
+        }
+        continue
+      }
       relationBranches.push({ name: key, value })
     } else {
       updatedProjection[key] = value
@@ -171,6 +193,10 @@ function walk(
   }
 
   for (const branch of relationBranches) {
+    if (ctx.stages.length >= ctx.maxStages) {
+      return { unsupportedReason: 'stages reached maxStages=' + ctx.maxStages }
+    }
+
     const relation = model.relations[branch.name]
 
     if (relation.direction === 'implicitM2M') {
@@ -182,6 +208,19 @@ function walk(
     if (relation.parentLinkFields.length !== relation.childLinkFields.length) {
       return { unsupportedReason: 'mismatched link field counts for ' + relation.name }
     }
+    if (!ctx.models[relation.type]) {
+      return {
+        unsupportedReason: 'target model ' + relation.type +
+          ' not in relation metadata for ' + (parentPath ? parentPath + '.' : '') + branch.name,
+      }
+    }
+
+    if (branch.value !== true && !isPlainObject(branch.value)) {
+      return {
+        unsupportedReason: 'invalid relation projection value for ' + branch.name +
+          ' (expected true or plain object)',
+      }
+    }
 
     for (const linkField of relation.parentLinkFields) {
       if (localOmit && localOmit[linkField] === true) {
@@ -191,16 +230,32 @@ function walk(
     }
 
     for (const linkField of relation.parentLinkFields) {
-      if (isSelectMode && !userFields.has(linkField)) {
+      if (isSelectMode && !isPubliclySelected(projection, linkField)) {
         updatedProjection[linkField] = true
         const fullPath = parentPath ? parentPath + '.' + linkField : linkField
         ctx.internalFieldPaths.push(fullPath)
       }
     }
 
-    const relationArgs: Record<string, unknown> = branch.value === true
-      ? {}
-      : (isPlainObject(branch.value) ? branch.value : {})
+    const relationArgs: Record<string, unknown> = branch.value === true ? {} : branch.value
+
+    const allowedArgs = relation.isList ? ALLOWED_TO_MANY_ARGS : ALLOWED_TO_ONE_ARGS
+    for (const key of Object.keys(relationArgs)) {
+      if (!allowedArgs.has(key)) {
+        return {
+          unsupportedReason: 'unsupported arg "' + key + '" for ' +
+            (relation.isList ? 'to-many' : 'to-one') + ' relation ' + relation.name,
+        }
+      }
+    }
+
+    const targetModel = ctx.models[relation.type]
+    if (hasWhereLikeRelationReference(relationArgs, targetModel)) {
+      return {
+        unsupportedReason: 'nested relation used in where/orderBy/cursor for ' +
+          relation.name + ' is not supported in MVP',
+      }
+    }
 
     const relationPath = parentPath ? parentPath + '.' + branch.name : branch.name
 

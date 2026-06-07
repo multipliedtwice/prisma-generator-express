@@ -1,5 +1,7 @@
 import { DMMF } from '@prisma/generator-helper'
 import { Target } from '../constants'
+import { ImportStyle } from '../utils/resolveImportStyle'
+import { importExt } from '../utils/importExt'
 
 function exampleValueForType(fieldType: string): unknown {
   switch (fieldType) {
@@ -46,8 +48,8 @@ function generateExpressDocsExport(modelName: string): string {
     if (ui === 'yaml') {
       const yaml = buildModelOpenApi(
         '${modelName}',
-        MODEL_FIELDS as any,
-        MODEL_ENUMS as any,
+        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
         { format: 'yaml' }
       )
@@ -56,8 +58,8 @@ function generateExpressDocsExport(modelName: string): string {
 
     const spec = buildModelOpenApi(
       '${modelName}',
-      MODEL_FIELDS as any,
-      MODEL_ENUMS as any,
+      MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+      MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
       config,
       { format: 'json' }
     )
@@ -82,7 +84,8 @@ function generateFastifyDocsExport(modelName: string): string {
     const disabled = isOpenApiDisabled(config.disableOpenApi)
     if (disabled) { reply.code(404).send('OpenAPI documentation is disabled in production'); return }
 
-    const rawUi = ((request.query as any)?.ui as string | undefined) || config.docsUi || 'docs'
+    const queryParams = request.query as { ui?: string } | undefined
+    const rawUi = queryParams?.ui || config.docsUi || 'docs'
     const validUis: DocsUI[] = ['docs', 'scalar', 'json', 'yaml', 'playground']
     const ui: DocsUI = validUis.includes(rawUi as DocsUI) ? (rawUi as DocsUI) : 'docs'
 
@@ -96,8 +99,8 @@ function generateFastifyDocsExport(modelName: string): string {
     if (ui === 'yaml') {
       const yaml = buildModelOpenApi(
         '${modelName}',
-        MODEL_FIELDS as any,
-        MODEL_ENUMS as any,
+        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
         { format: 'yaml' }
       )
@@ -106,8 +109,8 @@ function generateFastifyDocsExport(modelName: string): string {
 
     const spec = buildModelOpenApi(
       '${modelName}',
-      MODEL_FIELDS as any,
-      MODEL_ENUMS as any,
+      MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+      MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
       config,
       { format: 'json' }
     )
@@ -146,8 +149,8 @@ function generateHonoDocsExport(modelName: string): string {
     if (ui === 'yaml') {
       const yaml = buildModelOpenApi(
         '${modelName}',
-        MODEL_FIELDS as any,
-        MODEL_ENUMS as any,
+        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
         { format: 'yaml' }
       ) as string
@@ -156,13 +159,13 @@ function generateHonoDocsExport(modelName: string): string {
 
     const spec = buildModelOpenApi(
       '${modelName}',
-      MODEL_FIELDS as any,
-      MODEL_ENUMS as any,
+      MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+      MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
       config,
       { format: 'json' }
     )
 
-    if (ui === 'json') return c.json(spec as any)
+    if (ui === 'json') return c.json(spec as Record<string, unknown>)
 
     const pageTitle = config.docsTitle || \`${modelName} API\`
 
@@ -180,9 +183,11 @@ export function generateScalarUIHandler(options: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
   target?: Target
+  importStyle: ImportStyle
 }): string {
   const { model, enums } = options
   const target = options.target || 'express'
+  const ext = importExt(options.importStyle)
   const modelName = model.name
 
   const fieldsMeta = model.fields.map((f: any) => ({
@@ -254,7 +259,7 @@ export function generateScalarUIHandler(options: {
         : generateExpressDocsExport(modelName)
 
   return `${frameworkImport}
-import { buildModelOpenApi } from '../buildModelOpenApi'
+import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import {
   renderDocs,
   renderScalar,
@@ -266,7 +271,7 @@ import {
   type DocsUI,
   type DocsConfig,
   type DocsModelContext,
-} from '../docsRenderer'
+} from '../docsRenderer${ext}'
 
 export const MODEL_FIELDS: FieldMeta[] = ${JSON.stringify(fieldsMeta, null, 2)}
 

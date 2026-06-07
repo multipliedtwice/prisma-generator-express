@@ -36,9 +36,6 @@ export async function writeFileSafely({
     case 'queryBuilder':
       filePath = path.join(outputPath, 'queryBuilder.ts')
       break
-    case 'operationRuntime':
-      filePath = path.join(outputPath, 'operationRuntime.ts')
-      break
     case 'relationModelsIndex':
       filePath = path.join(outputPath, 'relationModels.ts')
       break

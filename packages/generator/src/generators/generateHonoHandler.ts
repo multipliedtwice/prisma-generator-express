@@ -1,5 +1,7 @@
 import { DMMF } from '@prisma/generator-helper'
 import { toCamelCase } from '../utils/strings'
+import { ImportStyle } from '../utils/resolveImportStyle'
+import { importExt } from '../utils/importExt'
 
 const CORE_NAME_MAP: Record<string, string> = {
   delete: 'deleteUnique',
@@ -41,7 +43,9 @@ const CREATED_OPS = new Set([
 
 export function generateHonoHandler(options: {
   model: DMMF.Model
+  importStyle: ImportStyle
 }): string {
+  const ext = importExt(options.importStyle)
   const modelName = options.model.name
   const prefix = toCamelCase(modelName)
 
@@ -68,8 +72,8 @@ export async function ${exportName}(c: Context<HonoEnv>): Promise<void> {
   }).join('\n')
 
   return `import type { Context } from 'hono'
-import * as core from './${modelName}Core'
-import type { OperationContext } from '../operationRuntime'
+import * as core from './${modelName}Core${ext}'
+import type { OperationContext } from '../operationRuntime${ext}'
 
 type HonoVariables = {
   prisma: unknown

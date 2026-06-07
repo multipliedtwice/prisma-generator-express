@@ -426,7 +426,7 @@ type SseWritable = {
   destroyed: boolean
 }
 
-function removeReqCloseListener(req: EventEmitterLike, listener: () => void): void {
+export function removeReqCloseListener(req: EventEmitterLike, listener: () => void): void {
   if (typeof req.off === 'function') {
     req.off('close', listener)
   } else if (typeof req.removeListener === 'function') {
@@ -506,6 +506,17 @@ export function endSSE(res: SseWritable, keepaliveHandle: IntervalHandle | null)
   }
   if (!res.writableEnded && !res.destroyed) {
     try { res.end() } catch { /* ignore */ }
+  }
+}
+
+export function emitTerminalSSEError(res: SseWritable, message: string): void {
+  let keepalive: IntervalHandle | null = null
+  try {
+    initSSE(res)
+    keepalive = startSSEKeepalive(res)
+    sendSSEError(res, message)
+  } finally {
+    endSSE(res, keepalive)
   }
 }
 

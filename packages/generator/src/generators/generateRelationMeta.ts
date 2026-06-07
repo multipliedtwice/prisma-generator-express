@@ -27,12 +27,18 @@ function findOppositeField(
   targetModelName: string,
   relationName: string | undefined,
   selfModelName: string,
+  selfFieldName: string,
 ): DMMF.Field | null {
   if (!relationName) return null
   const target = models.find((m) => m.name === targetModelName)
   if (!target) return null
+  const isSelfRelation = targetModelName === selfModelName
   return target.fields.find(
-    (f) => f.kind === 'object' && f.relationName === relationName && f.type === selfModelName,
+    (f) =>
+      f.kind === 'object' &&
+      f.relationName === relationName &&
+      f.type === selfModelName &&
+      !(isSelfRelation && f.name === selfFieldName),
   ) || null
 }
 
@@ -56,7 +62,7 @@ function computeRelation(
     }
   }
 
-  const opposite = findOppositeField(models, field.type, field.relationName, selfModelName)
+  const opposite = findOppositeField(models, field.type, field.relationName, selfModelName, field.name)
   if (opposite) {
     const oppFrom = (opposite.relationFromFields ?? []) as string[]
     const oppTo = (opposite.relationToFields ?? []) as string[]

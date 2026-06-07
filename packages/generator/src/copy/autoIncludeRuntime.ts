@@ -8,6 +8,7 @@ import {
   sendSSEError,
   sendSSEProgress,
   runSingleResultSSE,
+  emitTerminalSSEError,
   setByPath,
   getDelegate,
   getExtendedClient,
@@ -35,6 +36,7 @@ export type RunAutoIncludeOptions = {
   models: Record<string, ModelRelationMap>
   variantConfig: AutoIncludeProgressiveVariantConfig
   coreQueryFn: () => Promise<unknown>
+  signal?: AbortSignal
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -99,6 +101,29 @@ function emptyResultFor(isList: boolean): unknown {
   return isList ? [] : null
 }
 
+function buildPublicForStage(
+  result: unknown,
+  internalFieldPaths: string[],
+  scopePath: string,
+): unknown {
+  if (Array.isArray(result)) {
+    return result.map((item) => {
+      if (isObject(item)) {
+        const copy: Record<string, unknown> = { ...item }
+        stripInternalAtScope(copy, internalFieldPaths, scopePath)
+        return copy
+      }
+      return item
+    })
+  }
+  if (isObject(result)) {
+    const copy: Record<string, unknown> = { ...result }
+    stripInternalAtScope(copy, internalFieldPaths, scopePath)
+    return copy
+  }
+  return result
+}
+
 async function runOneStage(options: {
   extended: unknown
   models: Record<string, ModelRelationMap>
@@ -107,32 +132,36 @@ async function runOneStage(options: {
   publicState: Record<string, unknown>
   internalFieldPaths: string[]
   res: Response
+  isAborted: () => boolean
 }): Promise<void> {
-  const { extended, models, stage, internal, publicState, internalFieldPaths, res } = options
-  if (res.writableEnded || res.destroyed) return
+  const { extended, models, stage, internal, publicState, internalFieldPaths, res, isAborted } = options
+  if (isAborted()) return
 
   const parentRaw = readPath(internal, stage.parentPath)
   if (!isObject(parentRaw)) {
+    if (stage.parentPath !== '') {
+      return
+    }
     const empty = emptyResultFor(stage.relationField.isList)
-    setByPath(publicState, stage.relationPath, empty)
-    sendSSEField(res, stage.relationPath, empty)
+    const applied = setByPath(publicState, stage.relationPath, empty)
+    if (applied) sendSSEField(res, stage.relationPath, empty)
     return
   }
 
   const linkFilter = buildLinkFilter(stage, parentRaw)
   if (!linkFilter) {
     const empty = emptyResultFor(stage.relationField.isList)
-    setByPath(publicState, stage.relationPath, empty)
-    sendSSEField(res, stage.relationPath, empty)
+    const appliedInternal = setByPath(internal, stage.relationPath, empty)
+    const appliedPublic = setByPath(publicState, stage.relationPath, empty)
+    if (appliedInternal && appliedPublic) {
+      sendSSEField(res, stage.relationPath, empty)
+    }
     return
   }
 
   const targetModel = models[stage.relationField.type]
   if (!targetModel) {
-    const empty = emptyResultFor(stage.relationField.isList)
-    setByPath(publicState, stage.relationPath, empty)
-    sendSSEField(res, stage.relationPath, empty)
-    return
+    throw new Error('Target model not in relation metadata: ' + stage.relationField.type)
   }
 
   const finalArgs: Record<string, unknown> = { ...stage.stageArgs }
@@ -142,20 +171,20 @@ async function runOneStage(options: {
   const method: 'findMany' | 'findFirst' = stage.relationField.isList ? 'findMany' : 'findFirst'
   const result = await delegate[method](finalArgs)
 
-  setByPath(internal, stage.relationPath, result)
+  if (isAborted()) return
 
-  let publicResult: unknown
-  if (Array.isArray(result)) {
-    publicResult = result
-  } else if (isObject(result)) {
-    const copy: Record<string, unknown> = { ...result }
-    stripInternalAtScope(copy, internalFieldPaths, stage.relationPath)
-    publicResult = copy
-  } else {
-    publicResult = result
+  const appliedInternal = setByPath(internal, stage.relationPath, result)
+  if (!appliedInternal) {
+    throw new Error('Failed to apply internal patch for ' + stage.relationPath)
   }
 
-  setByPath(publicState, stage.relationPath, publicResult)
+  const publicResult = buildPublicForStage(result, internalFieldPaths, stage.relationPath)
+
+  const appliedPublic = setByPath(publicState, stage.relationPath, publicResult)
+  if (!appliedPublic) {
+    throw new Error('Failed to apply public patch for ' + stage.relationPath)
+  }
+
   sendSSEField(res, stage.relationPath, publicResult)
 }
 
@@ -194,9 +223,16 @@ async function runConcurrent<T>(
 export async function runAutoIncludeProgressive(
   options: RunAutoIncludeOptions,
 ): Promise<void> {
-  const { req, res, ctx, args, baseOp, modelName, delegateKey, models, variantConfig, coreQueryFn } = options
+  const { req, res, ctx, args, baseOp, modelName, delegateKey, models, variantConfig, coreQueryFn, signal } = options
+
+  const isClientGone = () =>
+    signal?.aborted === true || res.writableEnded || res.destroyed
 
   if (ctx.guardShape) {
+    if (variantConfig.fallback === 'error') {
+      emitTerminalSSEError(res, 'auto-progressive fallback: guard shape disables auto-include')
+      return
+    }
     return runSingleResultSSE({ req, res, coreQueryFn })
   }
 
@@ -208,14 +244,7 @@ export async function runAutoIncludeProgressive(
 
   if (plan.unsupportedReason) {
     if (variantConfig.fallback === 'error') {
-      let keepalive: IntervalHandle | null = null
-      try {
-        initSSE(res)
-        keepalive = startSSEKeepalive(res)
-        sendSSEError(res, plan.unsupportedReason)
-      } finally {
-        endSSE(res, keepalive)
-      }
+      emitTerminalSSEError(res, plan.unsupportedReason)
       return
     }
     return runSingleResultSSE({ req, res, coreQueryFn })
@@ -229,15 +258,18 @@ export async function runAutoIncludeProgressive(
   try {
     initSSE(res)
     keepalive = startSSEKeepalive(res)
-    if (req.destroyed) return
+    if (isClientGone()) return
 
     const extended = await getExtendedClient(ctx)
+    if (isClientGone()) return
+
     const rootDelegate = getDelegate(extended, delegateKey)
 
     let rootResult: unknown
     try {
       rootResult = await rootDelegate[baseOp](plan.rootArgs)
     } catch (err) {
+      if (isClientGone()) return
       const code = (err as { code?: string } | null)?.code
       const isOrThrow = baseOp === 'findUniqueOrThrow' || baseOp === 'findFirstOrThrow'
       if (isOrThrow && code === 'P2025') {
@@ -249,7 +281,7 @@ export async function runAutoIncludeProgressive(
       return
     }
 
-    if (res.writableEnded || res.destroyed) return
+    if (isClientGone()) return
 
     if (rootResult === null || !isObject(rootResult)) {
       sendSSEResult(res, null)
@@ -262,17 +294,28 @@ export async function runAutoIncludeProgressive(
 
     const publicState: Record<string, unknown> = { ...publicRoot }
     for (const [k, v] of Object.entries(publicRoot)) {
+      if (isClientGone()) return
       sendSSEField(res, k, v)
     }
 
+    if (isClientGone()) return
     sendSSEProgress(res, 'root', 0, plan.stages.length)
 
     const groups = groupStagesByDepth(plan.stages)
     let completed = 0
+    let stageErrorMessage: string | null = null
+    const isAborted = () =>
+      stageErrorMessage !== null ||
+      signal?.aborted === true ||
+      res.writableEnded ||
+      res.destroyed
 
     for (const group of groups) {
-      if (res.writableEnded || res.destroyed) return
+      if (isClientGone()) return
+      if (stageErrorMessage) break
+
       await runConcurrent(group, STAGE_CONCURRENCY, async (stage) => {
+        if (isAborted()) return
         try {
           await runOneStage({
             extended,
@@ -282,21 +325,33 @@ export async function runAutoIncludeProgressive(
             publicState,
             internalFieldPaths: plan.internalFieldPaths,
             res,
+            isAborted,
           })
         } catch (err) {
+          if (isAborted()) return
           console.error('[auto-progressive] stage failed:', stage.relationPath, err)
-          const empty = emptyResultFor(stage.relationField.isList)
-          setByPath(publicState, stage.relationPath, empty)
-          sendSSEField(res, stage.relationPath, empty)
+          stageErrorMessage = 'Could not load progressive response'
+          return
         }
+        if (isAborted()) return
         completed++
         sendSSEProgress(res, stage.relationPath, completed, plan.stages.length)
       })
     }
 
+    if (isClientGone()) return
+
+    if (stageErrorMessage) {
+      if (!res.writableEnded && !res.destroyed) {
+        sendSSEError(res, stageErrorMessage)
+      }
+      return
+    }
+
     if (res.writableEnded || res.destroyed) return
     sendSSEResult(res, publicState)
   } catch (err) {
+    if (isClientGone()) return
     console.error('[auto-progressive] dispatch error:', err)
     if (!res.writableEnded && !res.destroyed) {
       sendSSEError(res, 'Internal server error')
