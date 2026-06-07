@@ -70,7 +70,7 @@ import {
   ${prefix}GroupBy,
 } from './${modelName}Handlers${ext}'
 import * as core from './${modelName}Core${ext}'
-import type { RouteConfig } from '../routeConfig.target${ext}'
+import type { RouteConfig, QueryBuilderConfig } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
@@ -130,14 +130,14 @@ function normalizePrefix(p: string): string {
   return result
 }
 
-function isQueryBuilderEnabled(config: RouteConfig): boolean {
+function isQueryBuilderEnabled(config: { queryBuilder?: QueryBuilderConfig | false }): boolean {
   if (config.queryBuilder === false) return false
   if (typeof config.queryBuilder === 'object' && config.queryBuilder.enabled === false) return false
   if (_env.NODE_ENV === 'production') return false
   return true
 }
 
-function getQueryBuilderConfig(config: RouteConfig) {
+function getQueryBuilderConfig(config: { queryBuilder?: QueryBuilderConfig | false }) {
   if (config.queryBuilder === false) return null
   if (typeof config.queryBuilder === 'object') return config.queryBuilder
   return {}
