@@ -1,16 +1,21 @@
 import { DMMF } from '@prisma/generator-helper'
 import { toCamelCase } from '../utils/strings'
 import { generateRouteConfigType } from './generateRouteConfigType'
+import { ImportStyle } from '../utils/resolveImportStyle'
+import { importExt } from '../utils/importExt'
 
 export function generateHonoRouterFunction({
   model,
   enums,
   guardShapesImport,
+  importStyle,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
   guardShapesImport: string | null
+  importStyle: ImportStyle
 }): string {
+  const ext = importExt(importStyle)
   const modelName = model.name
   const prefix = toCamelCase(modelName)
   const modelNameLower = modelName.toLowerCase()
@@ -61,14 +66,15 @@ import {
   ${prefix}Aggregate,
   ${prefix}Count,
   ${prefix}GroupBy,
-} from './${modelName}Handlers'
-import type { RouteConfig, HonoHookHandler } from '../routeConfig.target'
-import { parseQueryParams } from '../parseQueryParams'
-import { sanitizeKeys } from '../misc'
-import { buildModelOpenApi } from '../buildModelOpenApi'
-import { mapError, transformResult, HttpError } from '../operationRuntime'
+} from './${modelName}Handlers${ext}'
+import type { RouteConfig, HonoHookHandler } from '../routeConfig.target${ext}'
+import { parseQueryParams } from '../parseQueryParams${ext}'
+import { sanitizeKeys } from '../misc${ext}'
+import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
+import { mapError, transformResult, HttpError } from '../operationRuntime${ext}'
 
- ${generateRouteConfigType(modelName, 'HonoHookHandler', guardShapesImport)}
+${generateRouteConfigType(modelName, 'HonoHookHandler', guardShapesImport, importStyle, 'hono')}
+
 type HonoVariables = {
   prisma: any
   postgres?: any

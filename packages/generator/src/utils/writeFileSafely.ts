@@ -26,40 +26,26 @@ export async function writeFileSafely({
   operation,
 }: WriteFileOptions): Promise<void> {
   const outputPath = options.generator.output?.value
-  if (!outputPath) {
-    throw new Error('Output path not defined')
-  }
+  if (!outputPath) throw new Error('Output path not defined')
 
   let filePath: string
-
   switch (operation) {
     case 'combinedDocs':
       filePath = path.join(outputPath, 'combinedDocs.ts')
       break
-
     case 'queryBuilder':
       filePath = path.join(outputPath, 'queryBuilder.ts')
       break
-
     case 'operationRuntime':
       filePath = path.join(outputPath, 'operationRuntime.ts')
       break
-
     default:
-      if (!model) {
-        throw new Error(`Model required for operation: ${operation}`)
-      }
-      filePath = path.join(
-        outputPath,
-        model.name,
-        `${model.name}${operation}.ts`,
-      )
+      if (!model) throw new Error('Model required for operation: ' + operation)
+      filePath = path.join(outputPath, model.name, `${model.name}${operation}.ts`)
   }
 
   const dirPath = path.dirname(filePath)
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true })
-  }
+  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true })
 
   let formattedContent: string
   try {
@@ -68,10 +54,8 @@ export async function writeFileSafely({
       ...resolvedOptions,
       parser: 'typescript',
     })
-  } catch (error) {
-    console.warn(
-      `⚠️  Prettier formatting failed for ${path.basename(filePath)}, writing unformatted`,
-    )
+  } catch {
+    console.warn('⚠️  Prettier formatting failed for ' + path.basename(filePath) + ', writing unformatted')
     formattedContent = content
   }
 

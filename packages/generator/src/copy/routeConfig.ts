@@ -20,13 +20,53 @@ export interface OpenApiSecuritySchemeConfig {
   description?: string
 }
 
+export type ProgressivePatch = {
+  key: string
+  value: unknown
+}
+
+export type ProgressiveStopResult<T = unknown> = {
+  stop: true
+  data: T
+}
+
+export type ProgressiveStageResult<T = unknown> =
+  | void
+  | ProgressivePatch
+  | ProgressivePatch[]
+  | ProgressiveStopResult<T>
+
+export type ProgressiveStageContext<TContext = unknown, TPrisma = any> = {
+  ctx: TContext
+  req: any
+  res: any
+  prisma: TPrisma
+  variant: string
+  accumulated: Record<string, unknown>
+  signal: AbortSignal
+}
+
+export type ProgressiveStage<TContext = unknown, TPrisma = any, T = unknown> = (
+  context: ProgressiveStageContext<TContext, TPrisma>,
+) => Promise<ProgressiveStageResult<T>>
+
+export type ProgressiveVariantConfig = {
+  enabled?: boolean
+  stages: string[]
+}
+
 export interface BaseOperationConfig<HookHandler, TShape = Record<string, any>> {
   before?: HookHandler[]
   after?: HookHandler[]
   shape?: TShape
 }
 
-export interface BaseRouteConfig<HookHandler, RequestType, TShape = Record<string, any>> {
+export interface BaseRouteConfig<
+  HookHandler,
+  RequestType,
+  TShape = Record<string, any>,
+  TCtx = unknown,
+> {
   enableAll?: boolean
   addModelPrefix?: boolean
   customUrlPrefix?: string
@@ -44,6 +84,7 @@ export interface BaseRouteConfig<HookHandler, RequestType, TShape = Record<strin
     resolveVariant?: (request: RequestType) => string | undefined
     variantHeader?: string
   }
+  resolveContext?: (request: RequestType) => TCtx | Promise<TCtx>
   queryBuilder?: QueryBuilderConfig | false
   pagination?: {
     defaultLimit?: number
@@ -71,5 +112,4 @@ export interface BaseRouteConfig<HookHandler, RequestType, TShape = Record<strin
 }
 
 export type OperationConfig = BaseOperationConfig<any>
-
 export type RouteConfig = BaseRouteConfig<any, any>

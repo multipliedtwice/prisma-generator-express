@@ -1,16 +1,21 @@
 import { DMMF } from '@prisma/generator-helper'
 import { toCamelCase } from '../utils/strings'
 import { generateRouteConfigType } from './generateRouteConfigType'
+import { ImportStyle } from '../utils/resolveImportStyle'
+import { importExt } from '../utils/importExt'
 
 export function generateFastifyRouterFunction({
   model,
   enums,
   guardShapesImport,
+  importStyle,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
   guardShapesImport: string | null
+  importStyle: ImportStyle
 }): string {
+  const ext = importExt(importStyle)
   const modelName = model.name
   const prefix = toCamelCase(modelName)
   const modelNameLower = modelName.toLowerCase()
@@ -59,14 +64,14 @@ import {
   ${prefix}Aggregate,
   ${prefix}Count,
   ${prefix}GroupBy,
-} from './${modelName}Handlers'
-import type { RouteConfig, FastifyHookHandler } from '../routeConfig.target'
-import { parseQueryParams } from '../parseQueryParams'
-import { sanitizeKeys } from '../misc'
-import { buildModelOpenApi } from '../buildModelOpenApi'
-import { mapError, transformResult, HttpError } from '../operationRuntime'
+} from './${modelName}Handlers${ext}'
+import type { RouteConfig, FastifyHookHandler } from '../routeConfig.target${ext}'
+import { parseQueryParams } from '../parseQueryParams${ext}'
+import { sanitizeKeys } from '../misc${ext}'
+import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
+import { mapError, transformResult, HttpError } from '../operationRuntime${ext}'
 
-${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport)}
+${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, importStyle, 'fastify')}
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
@@ -181,7 +186,7 @@ export async function ${routerFunctionName}<TCtx = unknown>(
   if (qbEnabled) {
     const qbConfig = getQueryBuilderConfig(config)
     if (qbConfig) {
-      try { require('../queryBuilder').startQueryBuilder(qbConfig) } catch (err) { if (_env.NODE_ENV !== 'production') console.warn('[query-builder]', err) }
+      try { require('../queryBuilder${ext}').startQueryBuilder(qbConfig) } catch (err) { if (_env.NODE_ENV !== 'production') console.warn('[query-builder]', err) }
     }
   }
 

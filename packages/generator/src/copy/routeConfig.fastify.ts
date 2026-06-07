@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
-import {
+import type {
   BaseOperationConfig,
   BaseRouteConfig,
   QueryBuilderConfig,
@@ -7,7 +7,11 @@ import {
   OpenApiSecuritySchemeConfig,
 } from './routeConfig'
 
-export type { QueryBuilderConfig, OpenApiServerConfig, OpenApiSecuritySchemeConfig }
+export type {
+  QueryBuilderConfig,
+  OpenApiServerConfig,
+  OpenApiSecuritySchemeConfig,
+}
 
 export type FastifyHookHandler = (
   request: FastifyRequest,
@@ -17,5 +21,5 @@ export type FastifyHookHandler = (
 export type OperationConfig<TShape = Record<string, any>> =
   BaseOperationConfig<FastifyHookHandler, TShape>
 
-export type RouteConfig<TShape = Record<string, any>> =
-  BaseRouteConfig<FastifyHookHandler, FastifyRequest, TShape>
+export type RouteConfig<TShape = Record<string, any>, TCtx = unknown> =
+  BaseRouteConfig<FastifyHookHandler, FastifyRequest, TShape, TCtx>

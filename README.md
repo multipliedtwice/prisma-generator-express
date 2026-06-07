@@ -12,6 +12,7 @@ Running `npx prisma generate` produces:
 - Handler functions for all Prisma operations (findMany, create, update, delete, etc.)
 - Router generator with middleware support (before/after hooks per operation)
 - POST read endpoints for all read operations (for complex queries exceeding URL length limits)
+- Express-only progressive read streaming over Server-Sent Events (SSE) for staged page-level responses
 - OpenAPI 3.1 spec (JSON and YAML endpoints registered automatically per router)
 - Documentation helpers for contract view and Scalar UI (require manual mounting)
 - Client-side query parameter encoder
@@ -33,6 +34,7 @@ Supports **Express**, **Fastify**, and **Hono** targets via the `target` configu
 - [Request body format](#request-body-format)
 - [Query encoding (client side)](#query-encoding-client-side)
 - [POST read endpoints](#post-read-endpoints)
+- [Progressive Endpoint Composition (Express SSE)](#progressive-endpoint-composition-express-sse)
 - [Response shaping: select, include, omit](#response-shaping-select-include-omit)
 - [BigInt and Decimal handling](#bigint-and-decimal-handling)
 - [Pagination](#pagination)
@@ -69,6 +71,8 @@ Some operations require newer versions:
 | Hono      | `"hono"`     | `Hono` instance factory function per model |
 
 The Hono target v1 is tested on Node.js runtimes only. See [Cloudflare Workers and edge runtimes](#cloudflare-workers-and-edge-runtimes).
+
+Progressive Endpoint Composition over Server-Sent Events is currently supported by the Express target only. Fastify and Hono continue to support normal JSON read and write routes.
 
 ### Database provider support
 
@@ -1323,6 +1327,385 @@ app.use('/', UserRouter({
 }))
 ```
 
+## Progressive Endpoint Composition (Express SSE)
+
+Progressive Endpoint Composition lets an Express read endpoint stream partial response fields over Server-Sent Events while still ending with a final result event.
+
+This is useful for page-level endpoints where different UI sections need different slices of data. For example, a dashboard can render profile basics first, then saved jobs, applications, invitations, and activity as each stage finishes.
+
+This feature is **Express-only** in v1.
+
+### Mental model
+
+Progressive Endpoint Composition is explicit staged data loading for a specific operation variant.
+
+It is **not** automatic Prisma include streaming. The generator does not split arbitrary `select` or `include` trees. You define stages yourself and each stage decides what query to run and which field path to patch.
+
+### Request format
+
+Use the same generated GET read endpoint and request SSE with the `Accept` header:
+
+```http
+GET /user/first
+Accept: text/event-stream
+x-api-variant: /talent/dashboard
+```
+
+No new endpoint is generated. The variant is resolved the same way as guard variants: `guard.resolveVariant(req)` first, then the configured header, defaulting to `x-api-variant`.
+
+If a GET read request accepts `text/event-stream` but the matched variant has no progressive config, the router runs the normal read query and returns a single SSE `result` event.
+
+POST read endpoints remain JSON-only.
+
+### Supported operations
+
+Progressive SSE can be configured on Express GET read operations only:
+
+- `findMany`
+- `findUnique`
+- `findUniqueOrThrow`
+- `findFirst`
+- `findFirstOrThrow`
+- `findManyPaginated`
+- `count`
+- `aggregate`
+- `groupBy`
+
+Write operations do not support progressive SSE.
+
+### Event protocol
+
+Each event is sent as a normal SSE `data:` line containing JSON.
+
+Progress event:
+
+```json
+{ "type": "progress", "stage": "profileBasics", "completed": 1, "total": 4 }
+```
+
+Field event:
+
+```json
+{ "type": "field", "key": "profile", "value": { "id": "profile-id" } }
+```
+
+Nested field event:
+
+```json
+{ "type": "field", "key": "profile.appliedTo", "value": [] }
+```
+
+Final result event:
+
+```json
+{ "type": "result", "data": { "id": "user-id", "profile": {}, "savedJobAds": [] } }
+```
+
+Error event:
+
+```json
+{ "type": "error", "message": "Could not load progressive response" }
+```
+
+The final `result.data` is the accumulated object built from all applied patches, unless a stage returns a stop result.
+
+### Route config example
+
+Progressive config lives on an Express read operation. It is keyed by the resolved variant.
+
+```ts
+import type { ProgressiveStage } from './generated/routeConfig.target'
+
+const dashboardIdentity: ProgressiveStage<{ userId: string }> = async ({
+  ctx,
+  prisma,
+}) => {
+  const user = await prisma.user.findFirst({
+    select: { id: true },
+    where: { id: ctx.userId },
+  })
+
+  if (!user) {
+    return {
+      stop: true,
+      data: null,
+    }
+  }
+
+  return {
+    key: 'id',
+    value: user.id,
+  }
+}
+
+const dashboardProfileBasics: ProgressiveStage<{ userId: string }> = async ({
+  ctx,
+  prisma,
+}) => {
+  const user = await prisma.user.findFirst({
+    select: {
+      profile: {
+        select: {
+          id: true,
+          profileName: true,
+          profilePicture: true,
+          jobTitle: true,
+          location: true,
+          skills: true,
+          isAvailableForHire: true,
+          _count: {
+            select: {
+              profileViews: true,
+              savedAt: true,
+            },
+          },
+          boost: {
+            select: {
+              boostedUntil: true,
+            },
+          },
+        },
+      },
+    },
+    where: { id: ctx.userId },
+  })
+
+  return {
+    key: 'profile',
+    value: user?.profile
+      ? {
+          ...user.profile,
+          appliedTo: [],
+          invitationsFor: [],
+          jobAdViews: [],
+          campaign_clicks: [],
+          jobAssignments: [],
+          resourceOfCompanyTalentRoster: [],
+        }
+      : null,
+  }
+}
+
+const dashboardApplications: ProgressiveStage<{ userId: string }> = async ({
+  ctx,
+  prisma,
+  accumulated,
+}) => {
+  if (accumulated.profile == null) return
+
+  const profile = await prisma.talentProfile.findFirst({
+    select: {
+      appliedTo: {
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          createdAt: true,
+          viewedAt: true,
+          details: true,
+          jobAd: true,
+        },
+      },
+    },
+    where: { userId: ctx.userId },
+  })
+
+  return {
+    key: 'profile.appliedTo',
+    value: profile?.appliedTo ?? [],
+  }
+}
+
+const userConfig = {
+  resolveContext: (req) => ({
+    userId: req.user.id,
+  }),
+
+  guard: {
+    variantHeader: 'x-api-variant',
+  },
+
+  findFirst: {
+    shape: {
+      '/talent/dashboard': dashboardShape,
+      me: meShape,
+    },
+    progressive: {
+      '/talent/dashboard': {
+        enabled: true,
+        stages: [
+          'dashboardIdentity',
+          'dashboardProfileBasics',
+          'dashboardApplications',
+        ],
+      },
+    },
+    progressiveStages: {
+      dashboardIdentity,
+      dashboardProfileBasics,
+      dashboardApplications,
+    },
+  },
+}
+
+app.use('/', UserRouter(userConfig))
+```
+
+`resolveContext` is required for a variant with `progressive.enabled !== false`. It is not required for ordinary JSON requests or for single-result SSE fallback.
+
+### Stage function API
+
+```ts
+type ProgressiveStageContext<TContext = unknown, TPrisma = any> = {
+  ctx: TContext
+  req: Request
+  res: Response
+  prisma: TPrisma
+  variant: string
+  accumulated: Record<string, unknown>
+  signal: AbortSignal
+}
+
+type ProgressivePatch = {
+  key: string
+  value: unknown
+}
+
+type ProgressiveStopResult<T = unknown> = {
+  stop: true
+  data: T
+}
+
+type ProgressiveStageResult<T = unknown> =
+  | void
+  | ProgressivePatch
+  | ProgressivePatch[]
+  | ProgressiveStopResult<T>
+
+type ProgressiveStage<TContext = unknown, TPrisma = any, T = unknown> = (
+  context: ProgressiveStageContext<TContext, TPrisma>,
+) => Promise<ProgressiveStageResult<T>>
+```
+
+A stage may return:
+
+- `void` — no patch for this stage
+- one `{ key, value }` patch
+- an array of patches
+- `{ stop: true, data }` to immediately send a final `result` event and stop executing later stages
+
+### Patch path behavior
+
+Patch keys use dot paths, for example `profile.appliedTo`.
+
+Nested patches require the parent object to already exist in `accumulated`. If a stage tries to patch through `null`, `undefined`, an array, a primitive, or a non-plain object, the patch is dropped and no `field` event is sent.
+
+This means parent objects should be initialized by earlier stages:
+
+```ts
+return {
+  key: 'profile',
+  value: {
+    ...profileBasics,
+    appliedTo: [],
+    invitationsFor: [],
+  },
+}
+```
+
+Patch path segments `__proto__`, `constructor`, `prototype`, and empty path segments are rejected.
+
+### Hooks and guard behavior
+
+For SSE requests:
+
+- `before` hooks run before streaming starts
+- `after` hooks do not run, because the SSE middleware handles the response and does not continue to the normal handler
+- progressive stages receive `req.prisma` directly
+- guard shapes are not automatically applied to stage queries
+
+Stage authors are responsible for using the resolved context and enforcing ownership or tenant constraints in their stage queries.
+
+For variants without progressive config, the single-result SSE fallback uses the normal generated core read handler, so guard shape behavior matches the JSON endpoint.
+
+### Client-side usage
+
+Use `fetch` with streaming. Native browser `EventSource` cannot send custom headers like `x-api-variant`.
+
+Minimal example:
+
+```ts
+const response = await fetch('/user/first', {
+  headers: {
+    Accept: 'text/event-stream',
+    'x-api-variant': '/talent/dashboard',
+  },
+})
+
+if (!response.body) {
+  throw new Error('ReadableStream is not available')
+}
+
+const reader = response.body.getReader()
+const decoder = new TextDecoder()
+let buffer = ''
+
+while (true) {
+  const { value, done } = await reader.read()
+  if (done) break
+
+  buffer += decoder.decode(value, { stream: true })
+  const parts = buffer.split('\n\n')
+  buffer = parts.pop() ?? ''
+
+  for (const part of parts) {
+    const line = part
+      .split('\n')
+      .find((entry) => entry.startsWith('data: '))
+
+    if (!line) continue
+
+    const event = JSON.parse(line.slice('data: '.length))
+
+    if (event.type === 'field') {
+      // patch local field state
+    }
+
+    if (event.type === 'result') {
+      // replace with final result
+    }
+  }
+}
+```
+
+For React Query, include the variant and mode in the query key:
+
+```ts
+['user', 'first', { variant: '/talent/dashboard', mode: 'sse' }]
+```
+
+Do not reuse the same query key as the JSON endpoint because the same URL can return different shapes depending on `x-api-variant`.
+
+### Runtime notes
+
+The SSE response sets:
+
+```http
+Content-Type: text/event-stream
+Cache-Control: no-cache, no-transform
+Connection: keep-alive
+X-Accel-Buffering: no
+```
+
+The server sends keepalive comments periodically:
+
+```txt
+: keepalive
+```
+
+If compression middleware is used, configure it to skip `text/event-stream`, or ensure `res.flush()` is available so events are flushed promptly.
+
 ## Response shaping: select, include, omit
 
 Read and single-record write operations support three response shaping parameters:
@@ -1615,7 +1998,8 @@ app.use('*', async (c, next) => {
   c.set('prisma', prisma)
   c.set('postgres', sql)
   await next()
-})```
+})
+```
 
 Without a connector on the request context, the handlers use the standard PrismaClient. Set `DEBUG=true` in the environment to enable prisma-sql debug logging.
 
@@ -1667,6 +2051,8 @@ Paths shown are relative suffixes. Actual paths include the model prefix (e.g., 
 
 POST read endpoints are enabled by default. Set `disablePostReads: true` to remove them.
 
+For the Express target, GET read endpoints can also stream SSE events when the request sends `Accept: text/event-stream`. SSE uses the same GET paths shown above; no additional routes are generated. See [Progressive Endpoint Composition](#progressive-endpoint-composition-express-sse).
+
 ## Skipping models
 
 Add `/// generator off` to a model's documentation to skip generation:
@@ -1683,7 +2069,7 @@ model InternalLog {
 ### Express
 
 ```ts
-interface RouteConfig {
+interface RouteConfig<TCtx = unknown> {
   enableAll?: boolean
   addModelPrefix?: boolean           // default: true
   customUrlPrefix?: string
@@ -1704,6 +2090,8 @@ interface RouteConfig {
     variantHeader?: string           // default: 'x-api-variant'
   }
 
+  resolveContext?: (req: Request) => TCtx | Promise<TCtx>
+
   queryBuilder?: QueryBuilderConfig | false
 
   pagination?: {
@@ -1712,13 +2100,18 @@ interface RouteConfig {
     distinctCountLimit?: number      // default: 100000
   }
 
-  // per-operation config
-  findMany?: OperationConfig
-  findUnique?: OperationConfig
-  findUniqueOrThrow?: OperationConfig
-  findFirst?: OperationConfig
-  findFirstOrThrow?: OperationConfig
-  findManyPaginated?: OperationConfig
+  // read operation config
+  findMany?: ReadOperationConfig<TCtx>
+  findUnique?: ReadOperationConfig<TCtx>
+  findUniqueOrThrow?: ReadOperationConfig<TCtx>
+  findFirst?: ReadOperationConfig<TCtx>
+  findFirstOrThrow?: ReadOperationConfig<TCtx>
+  findManyPaginated?: ReadOperationConfig<TCtx>
+  aggregate?: ReadOperationConfig<TCtx>
+  count?: ReadOperationConfig<TCtx>
+  groupBy?: ReadOperationConfig<TCtx>
+
+  // write operation config
   create?: OperationConfig
   createMany?: OperationConfig
   createManyAndReturn?: OperationConfig
@@ -1728,9 +2121,6 @@ interface RouteConfig {
   upsert?: OperationConfig
   delete?: OperationConfig
   deleteMany?: OperationConfig
-  aggregate?: OperationConfig
-  count?: OperationConfig
-  groupBy?: OperationConfig
 }
 
 interface OperationConfig {
@@ -1738,6 +2128,46 @@ interface OperationConfig {
   after?: RequestHandler[]
   shape?: Record<string, any>
 }
+
+interface ReadOperationConfig<TCtx = unknown> extends OperationConfig {
+  progressive?: Record<string, ProgressiveVariantConfig>
+  progressiveStages?: Record<string, ProgressiveStage<TCtx>>
+}
+
+type ProgressiveVariantConfig = {
+  enabled?: boolean
+  stages: string[]
+}
+
+type ProgressiveStageContext<TContext = unknown, TPrisma = any> = {
+  ctx: TContext
+  req: Request
+  res: Response
+  prisma: TPrisma
+  variant: string
+  accumulated: Record<string, unknown>
+  signal: AbortSignal
+}
+
+type ProgressivePatch = {
+  key: string
+  value: unknown
+}
+
+type ProgressiveStopResult<T = unknown> = {
+  stop: true
+  data: T
+}
+
+type ProgressiveStageResult<T = unknown> =
+  | void
+  | ProgressivePatch
+  | ProgressivePatch[]
+  | ProgressiveStopResult<T>
+
+type ProgressiveStage<TContext = unknown, TPrisma = any, T = unknown> = (
+  context: ProgressiveStageContext<TContext, TPrisma>,
+) => Promise<ProgressiveStageResult<T>>
 
 interface QueryBuilderConfig {
   enabled?: boolean
@@ -1795,6 +2225,8 @@ The Hono router does not auto-start the Query Builder. Set `queryBuilder: false`
 `specBasePath` controls the base path used in OpenAPI spec paths and docs examples, independent of `customUrlPrefix`.
 
 `disablePostReads` removes all POST read endpoints when set to `true`. POST read endpoints are enabled by default. This is a global setting — there is no per-operation toggle.
+
+`resolveContext` is Express-only and is required for enabled progressive SSE variants. It is called before progressive stages run and its return value is passed to each stage as `ctx`.
 
 `openApiServers` sets the `servers` array in the OpenAPI spec:
 

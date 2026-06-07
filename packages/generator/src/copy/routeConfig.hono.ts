@@ -7,7 +7,11 @@ import type {
   OpenApiSecuritySchemeConfig,
 } from './routeConfig'
 
-export type { QueryBuilderConfig, OpenApiServerConfig, OpenApiSecuritySchemeConfig }
+export type {
+  QueryBuilderConfig,
+  OpenApiServerConfig,
+  OpenApiSecuritySchemeConfig,
+}
 
 export type HonoHookHandler<Env extends { Variables: any } = any> = (
   c: Context<Env>,
@@ -17,5 +21,5 @@ export type HonoHookHandler<Env extends { Variables: any } = any> = (
 export type OperationConfig<TShape = Record<string, any>> =
   BaseOperationConfig<HonoHookHandler, TShape>
 
-export type RouteConfig<TShape = Record<string, any>> =
-  BaseRouteConfig<HonoHookHandler, Context, TShape>
+export type RouteConfig<TShape = Record<string, any>, TCtx = unknown> =
+  BaseRouteConfig<HonoHookHandler, Context, TShape, TCtx>
