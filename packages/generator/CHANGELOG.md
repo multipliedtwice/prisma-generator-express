@@ -1,3 +1,10 @@
+# [1.42.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.41.0...v1.42.0) (2026-06-07)
+
+
+### Features
+
+* improve type handling and enhance router functionality with extended request and operation configurations ([2d9edca](https://github.com/multipliedtwice/prisma-generator-express/commit/2d9edcab61de8b7a650795281de3367923e4a2e9))
+
 # [1.41.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.40.0...v1.41.0) (2026-06-07)
 
 
