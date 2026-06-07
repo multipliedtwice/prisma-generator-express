@@ -342,11 +342,11 @@ const maybeProgressiveSSE = (
     const openapiJsonPath = basePath ? \`\${basePath}/openapi.json\` : '/openapi.json'
     const openapiYamlPath = basePath ? \`\${basePath}/openapi.yaml\` : '/openapi.yaml'
     router.get(openapiJsonPath, (_req, res) => {
-      const spec = buildModelOpenApi('${modelName}', MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1], MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2], config, { format: 'json' })
+      const spec = buildModelOpenApi('${modelName}', MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1], MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2], config as unknown as Parameters<typeof buildModelOpenApi>[3], { format: 'json' })
       res.json(spec)
     })
     router.get(openapiYamlPath, (_req, res) => {
-      const spec = buildModelOpenApi('${modelName}', MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1], MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2], config, { format: 'yaml' })
+      const spec = buildModelOpenApi('${modelName}', MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1], MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2], config as unknown as Parameters<typeof buildModelOpenApi>[3], { format: 'yaml' })
       res.type('application/yaml').send(spec as string)
     })
   }

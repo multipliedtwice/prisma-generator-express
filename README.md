@@ -12,7 +12,7 @@ Running `npx prisma generate` produces:
 - Handler functions for all Prisma operations (findMany, create, update, delete, etc.)
 - Router generator with middleware support (before/after hooks per operation)
 - POST read endpoints for all read operations (for complex queries exceeding URL length limits)
-- Express-only progressive read streaming over Server-Sent Events (SSE) for staged page-level responses
+- Express-only progressive read streaming over Server-Sent Events (SSE), using manual stages or auto-include splitting for single-record relation reads
 - OpenAPI 3.1 spec (JSON and YAML endpoints registered automatically per router)
 - Documentation helpers for contract view and Scalar UI (require manual mounting)
 - Client-side query parameter encoder
@@ -72,7 +72,7 @@ Some operations require newer versions:
 
 The Hono target v1 is tested on Node.js runtimes only. See [Cloudflare Workers and edge runtimes](#cloudflare-workers-and-edge-runtimes).
 
-Progressive Endpoint Composition over Server-Sent Events is currently supported by the Express target only. Fastify and Hono continue to support normal JSON read and write routes.
+Progressive Endpoint Composition over Server-Sent Events is currently supported by the Express target only. Express supports both manual staged streaming and auto-include streaming for single-record relation reads. Fastify and Hono continue to support normal JSON read and write routes.
 
 ### Database provider support
 
@@ -1331,15 +1331,22 @@ app.use('/', UserRouter({
 
 Progressive Endpoint Composition lets an Express read endpoint stream partial response fields over Server-Sent Events while still ending with a final result event.
 
-This is useful for page-level endpoints where different UI sections need different slices of data. For example, a dashboard can render profile basics first, then saved jobs, applications, invitations, and activity as each stage finishes.
+This is useful for page-level endpoints where different UI sections need different slices of data. For example, a dashboard can render profile basics first, then saved jobs, applications, invitations, and activity as each part finishes.
 
 This feature is **Express-only** in v1.
 
 ### Mental model
 
-Progressive Endpoint Composition is explicit staged data loading for a specific operation variant.
+Progressive SSE has two modes:
 
-It is **not** automatic Prisma include streaming. The generator does not split arbitrary `select` or `include` trees. You define stages yourself and each stage decides what query to run and which field path to patch.
+| Mode | Config | Best for |
+| ---- | ------ | -------- |
+| Manual stages | `{ stages: [...] }` or `{ mode: 'manual', stages: [...] }` | Custom page-level composition where each stage runs its own query and returns patches |
+| Auto include | `{ mode: 'autoInclude' }` | Single-record reads where the client already sends a Prisma `include` or relation `select` tree and you want relation fields streamed progressively |
+
+Manual mode is explicit staged data loading. You define stages yourself and each stage decides what query to run and which field path to patch.
+
+Auto-include mode is generated relation loading. The router keeps the normal GET endpoint, runs the root single-record query first, streams root fields, then loads supported included relations as separate follow-up queries and streams each relation path as it resolves.
 
 ### Request format
 
@@ -1359,7 +1366,7 @@ POST read endpoints remain JSON-only.
 
 ### Supported operations
 
-Progressive SSE can be configured on Express GET read operations only:
+Manual progressive SSE can be configured on Express GET read operations only:
 
 - `findMany`
 - `findUnique`
@@ -1370,6 +1377,15 @@ Progressive SSE can be configured on Express GET read operations only:
 - `count`
 - `aggregate`
 - `groupBy`
+
+Auto-include progressive SSE only supports single-record read operations:
+
+- `findUnique`
+- `findUniqueOrThrow`
+- `findFirst`
+- `findFirstOrThrow`
+
+If auto-include is configured on another operation, the router either falls back to single-result SSE or sends an SSE error depending on `fallback`.
 
 Write operations do not support progressive SSE.
 
@@ -1407,9 +1423,11 @@ Error event:
 { "type": "error", "message": "Could not load progressive response" }
 ```
 
-The final `result.data` is the accumulated object built from all applied patches, unless a stage returns a stop result.
+The final `result.data` is the accumulated object built from all applied patches, unless a manual stage returns a stop result.
 
-### Route config example
+### Manual staged mode
+
+Manual mode is selected when a progressive variant has a `stages` array. `mode: 'manual'` is optional.
 
 Progressive config lives on an Express read operation. It is keyed by the resolved variant.
 
@@ -1453,17 +1471,6 @@ const dashboardProfileBasics: ProgressiveStage<{ userId: string }> = async ({
           location: true,
           skills: true,
           isAvailableForHire: true,
-          _count: {
-            select: {
-              profileViews: true,
-              savedAt: true,
-            },
-          },
-          boost: {
-            select: {
-              boostedUntil: true,
-            },
-          },
         },
       },
     },
@@ -1477,10 +1484,6 @@ const dashboardProfileBasics: ProgressiveStage<{ userId: string }> = async ({
           ...user.profile,
           appliedTo: [],
           invitationsFor: [],
-          jobAdViews: [],
-          campaign_clicks: [],
-          jobAssignments: [],
-          resourceOfCompanyTalentRoster: [],
         }
       : null,
   }
@@ -1503,8 +1506,6 @@ const dashboardApplications: ProgressiveStage<{ userId: string }> = async ({
           id: true,
           createdAt: true,
           viewedAt: true,
-          details: true,
-          jobAd: true,
         },
       },
     },
@@ -1552,7 +1553,7 @@ const userConfig = {
 app.use('/', UserRouter(userConfig))
 ```
 
-`resolveContext` is required for a variant with `progressive.enabled !== false`. It is not required for ordinary JSON requests or for single-result SSE fallback.
+`resolveContext` is required for a manual progressive variant with `progressive.enabled !== false`. It is not required for ordinary JSON requests, auto-include mode, or single-result SSE fallback.
 
 ### Stage function API
 
@@ -1616,16 +1617,129 @@ return {
 
 Patch path segments `__proto__`, `constructor`, `prototype`, and empty path segments are rejected.
 
+### Auto-include mode
+
+Auto-include mode is selected with `mode: 'autoInclude'`.
+
+```ts
+const userConfig = {
+  guard: {
+    variantHeader: 'x-api-variant',
+  },
+
+  findUnique: {
+    progressive: {
+      detail: {
+        enabled: true,
+        mode: 'autoInclude',
+        fallback: 'singleResult',
+      },
+    },
+  },
+}
+
+app.use('/', UserRouter(userConfig))
+```
+
+Client request:
+
+```ts
+import { encodeQueryParams } from './generated/client/encodeQueryParams'
+
+const params = encodeQueryParams({
+  where: { id: 'user-id' },
+  include: {
+    profile: {
+      select: {
+        id: true,
+        displayName: true,
+      },
+    },
+    posts: {
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: {
+        id: true,
+        title: true,
+      },
+    },
+  },
+})
+
+const response = await fetch(`/user/unique?${params}`, {
+  headers: {
+    Accept: 'text/event-stream',
+    'x-api-variant': 'detail',
+  },
+})
+```
+
+Auto-include sends root scalar fields first, then sends relation field events as separate relation queries finish:
+
+```json
+{ "type": "field", "key": "id", "value": "user-id" }
+```
+
+```json
+{ "type": "field", "key": "profile", "value": { "id": "profile-id", "displayName": "Alice" } }
+```
+
+```json
+{ "type": "field", "key": "posts", "value": [{ "id": "post-id", "title": "Hello" }] }
+```
+
+The final `result` event contains the assembled object.
+
+### Auto-include behavior and limits
+
+Auto-include is designed for supported Prisma `include` and relation `select` trees on single-record reads.
+
+Supported root operations:
+
+- `findUnique`
+- `findUniqueOrThrow`
+- `findFirst`
+- `findFirstOrThrow`
+
+Supported relation shapes:
+
+- direct to-one relation includes/selects
+- direct to-many relation includes/selects
+- to-many relation args such as `where`, `orderBy`, `take`, `skip`, `cursor`, and `distinct`
+- nested to-one relation loading through to-one parents
+
+Current MVP fallback cases include:
+
+- `_count` in `select` or `include`
+- implicit many-to-many relations
+- `select` and `include` at the same level
+- `select` and `omit` at the same level
+- relation filters/order/cursor in the root query
+- relation filters/order/cursor inside staged relation queries when unsupported
+- nested relation loading through a to-many parent
+- omitted required link fields needed to stitch parent and child records
+- planner limits for maximum depth or stage count
+
+When fallback happens:
+
+- `fallback: 'singleResult'` runs the normal Prisma read and returns one SSE `result` event
+- `fallback: 'error'` sends an SSE `error` event instead
+
+If `fallback` is omitted, the default behavior is equivalent to `'singleResult'`.
+
+Auto-include does not require `resolveContext` or `progressiveStages`.
+
 ### Hooks and guard behavior
 
 For SSE requests:
 
 - `before` hooks run before streaming starts
 - `after` hooks do not run, because the SSE middleware handles the response and does not continue to the normal handler
-- progressive stages receive `req.prisma` directly
-- guard shapes are not automatically applied to stage queries
+- manual progressive stages receive `req.prisma` directly
+- manual progressive stages do not automatically use guard shapes
+- auto-include mode does not run when an operation has a guard `shape`; it falls back to single-result SSE or emits an SSE error depending on `fallback`
 
-Stage authors are responsible for using the resolved context and enforcing ownership or tenant constraints in their stage queries.
+Manual stage authors are responsible for using the resolved context and enforcing ownership or tenant constraints in their stage queries.
 
 For variants without progressive config, the single-result SSE fallback uses the normal generated core read handler, so guard shape behavior matches the JSON endpoint.
 
@@ -2134,10 +2248,21 @@ interface ReadOperationConfig<TCtx = unknown> extends OperationConfig {
   progressiveStages?: Record<string, ProgressiveStage<TCtx>>
 }
 
-type ProgressiveVariantConfig = {
+type ManualProgressiveVariantConfig = {
   enabled?: boolean
+  mode?: 'manual'
   stages: string[]
 }
+
+type AutoIncludeProgressiveVariantConfig = {
+  enabled?: boolean
+  mode: 'autoInclude'
+  fallback?: 'singleResult' | 'error'
+}
+
+type ProgressiveVariantConfig =
+  | ManualProgressiveVariantConfig
+  | AutoIncludeProgressiveVariantConfig
 
 type ProgressiveStageContext<TContext = unknown, TPrisma = any> = {
   ctx: TContext
