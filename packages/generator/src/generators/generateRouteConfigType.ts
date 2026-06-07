@@ -54,7 +54,7 @@ export function generateRouteConfigType(
   const supportsProgressive = target === 'express'
 
   if (!guardShapesImport) {
-    return `export type ${m}RouteConfig<TCtx = unknown> = RouteConfig<Record<string, any>, TCtx>\n`
+    return `export type ${m}RouteConfig<TCtx = unknown> = RouteConfig<Record<string, unknown>, TCtx>\n`
   }
 
   const shapeOps = Object.values(ROUTER_OP_TO_SHAPE_OP).filter((v, i, a) => a.indexOf(v) === i)
@@ -84,9 +84,9 @@ export function generateRouteConfigType(
 
   return (
     progressiveTypeImport +
-    `import type {\n  ${opShapeImports}\n} from '${guardShapesImport}'\n\n` +
+    `import type {\n  ${opShapeImports}\n} from '${guardShapesImport}${ext}'\n\n` +
     `export type ${m}RouteConfig<TCtx = unknown> = Omit<\n` +
-    `  RouteConfig<Record<string, any>, TCtx>,\n` +
+    `  RouteConfig<Record<string, unknown>, TCtx>,\n` +
     `  | ${omitKeys}\n` +
     `  | 'resolveContext'\n` +
     `> & {\n` +
