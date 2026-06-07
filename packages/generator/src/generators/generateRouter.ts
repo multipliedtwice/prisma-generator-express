@@ -20,6 +20,7 @@ export function generateRouterFunction({
   const modelName = model.name
   const prefix = toCamelCase(modelName)
   const modelNameLower = modelName.toLowerCase()
+  const delegateKey = modelName.charAt(0).toLowerCase() + modelName.slice(1)
   const routerFunctionName = `${prefix}Router`
 
   const fieldsMeta = model.fields.map((f) => ({
@@ -69,7 +70,7 @@ import {
   ${prefix}GroupBy,
 } from './${modelName}Handlers${ext}'
 import * as core from './${modelName}Core${ext}'
-import type { RouteConfig, ProgressiveVariantConfig, ProgressiveStage } from '../routeConfig.target${ext}'
+import type { RouteConfig } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
@@ -80,6 +81,8 @@ import {
   runProgressiveEndpoint,
   runSingleResultSSE,
 } from '../operationRuntime${ext}'
+import { relationModels } from '../relationModels${ext}'
+import { runAutoIncludeProgressive } from '../autoIncludeRuntime${ext}'
 
 ${generateRouteConfigType(modelName, 'RequestHandler', guardShapesImport, importStyle, 'express')}
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
@@ -103,7 +106,7 @@ type ExtendedRequest = Request & {
 
 type LocalsBag = {
   parsedQuery?: Record<string, unknown>
-  routeConfig?: ${modelName}RouteConfig
+  routeConfig?: { pagination?: OperationContext['paginationConfig'] }
   guardShape?: Record<string, unknown>
   guardCaller?: string
   data?: unknown
@@ -200,7 +203,9 @@ export function ${routerFunctionName}<TCtx = unknown>(config: ${modelName}RouteC
   const setShape = (opConfig: OperationConfigLike): RequestHandler => {
     return (req, res, next) => {
       const locals = readLocals(res)
-      locals.routeConfig = config
+      if (config.pagination) {
+        locals.routeConfig = { pagination: config.pagination }
+      }
       const headerName = config.guard?.variantHeader || 'x-api-variant'
       const headerValue = req.get(headerName)
       const caller = config.guard?.resolveVariant?.(req) ?? headerValue ?? undefined
@@ -213,6 +218,7 @@ export function ${routerFunctionName}<TCtx = unknown>(config: ${modelName}RouteC
   const maybeProgressiveSSE = (
     opConfig: OperationConfigLike,
     coreFn: (ctx: OperationContext) => Promise<unknown>,
+    baseOp: string,
   ): RequestHandler => {
     return async (req, res, next) => {
       if (res.headersSent || res.writableEnded) return next()
@@ -233,13 +239,45 @@ export function ${routerFunctionName}<TCtx = unknown>(config: ${modelName}RouteC
           return
         }
 
+        if (progressiveConfig.mode === 'autoInclude') {
+          const isSingleRecordRead =
+            baseOp === 'findUnique' || baseOp === 'findUniqueOrThrow' ||
+            baseOp === 'findFirst' || baseOp === 'findFirstOrThrow'
+
+          if (!isSingleRecordRead) {
+            if (progressiveConfig.fallback === 'error') {
+              return next({ status: 400, message: 'autoInclude mode supports only single-record reads' })
+            }
+            await runSingleResultSSE({
+              req,
+              res,
+              coreQueryFn: () => coreFn(buildContext(req, res)),
+            })
+            return
+          }
+
+          await runAutoIncludeProgressive({
+            req,
+            res,
+            ctx: buildContext(req, res),
+            args: locals.parsedQuery ?? {},
+            baseOp: baseOp as 'findUnique' | 'findUniqueOrThrow' | 'findFirst' | 'findFirstOrThrow',
+            modelName: '${modelName}',
+            delegateKey: '${delegateKey}',
+            models: relationModels,
+            variantConfig: progressiveConfig,
+            coreQueryFn: () => coreFn(buildContext(req, res)),
+          })
+          return
+        }
+
         if (!Array.isArray(progressiveConfig.stages)) {
           return next({ status: 500, message: 'Progressive endpoint requires stages array' })
         }
 
         const stageRegistry = opConfig.progressiveStages ?? {}
         const missingStage = progressiveConfig.stages.find(
-          (name) => typeof stageRegistry[name] !== 'function',
+          (name: string) => typeof stageRegistry[name] !== 'function',
         )
         if (missingStage) {
           return next({ status: 500, message: 'Missing progressive stage: ' + missingStage })
@@ -297,63 +335,63 @@ export function ${routerFunctionName}<TCtx = unknown>(config: ${modelName}RouteC
     const opConfig: OperationConfigLike = (config.findFirst as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/first\` : '/first'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findFirst), ${prefix}FindFirst as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findFirst, 'findFirst'), ${prefix}FindFirst as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindFirst as RequestHandler, ...after, respond)
   }
   if (config.enableAll || config.findFirstOrThrow) {
     const opConfig: OperationConfigLike = (config.findFirstOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/first/strict\` : '/first/strict'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findFirstOrThrow), ${prefix}FindFirstOrThrow as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findFirstOrThrow, 'findFirstOrThrow'), ${prefix}FindFirstOrThrow as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindFirstOrThrow as RequestHandler, ...after, respond)
   }
   if (config.enableAll || config.findManyPaginated) {
     const opConfig: OperationConfigLike = (config.findManyPaginated as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/paginated\` : '/paginated'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findManyPaginated), ${prefix}FindManyPaginated as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findManyPaginated, 'findManyPaginated'), ${prefix}FindManyPaginated as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindManyPaginated as RequestHandler, ...after, respond)
   }
   if (config.enableAll || config.aggregate) {
     const opConfig: OperationConfigLike = (config.aggregate as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/aggregate\` : '/aggregate'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.aggregate), ${prefix}Aggregate as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.aggregate, 'aggregate'), ${prefix}Aggregate as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}Aggregate as RequestHandler, ...after, respond)
   }
   if (config.enableAll || config.count) {
     const opConfig: OperationConfigLike = (config.count as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/count\` : '/count'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.count), ${prefix}Count as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.count, 'count'), ${prefix}Count as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}Count as RequestHandler, ...after, respond)
   }
   if (config.enableAll || config.groupBy) {
     const opConfig: OperationConfigLike = (config.groupBy as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/groupby\` : '/groupby'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.groupBy), ${prefix}GroupBy as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.groupBy, 'groupBy'), ${prefix}GroupBy as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}GroupBy as RequestHandler, ...after, respond)
   }
   if (config.enableAll || config.findUniqueOrThrow) {
     const opConfig: OperationConfigLike = (config.findUniqueOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/unique/strict\` : '/unique/strict'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findUniqueOrThrow), ${prefix}FindUniqueOrThrow as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findUniqueOrThrow, 'findUniqueOrThrow'), ${prefix}FindUniqueOrThrow as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindUniqueOrThrow as RequestHandler, ...after, respond)
   }
   if (config.enableAll || config.findUnique) {
     const opConfig: OperationConfigLike = (config.findUnique as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/unique\` : '/unique'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findUnique), ${prefix}FindUnique as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findUnique, 'findUnique'), ${prefix}FindUnique as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindUnique as RequestHandler, ...after, respond)
   }
   if (config.enableAll || config.findMany) {
     const opConfig: OperationConfigLike = (config.findMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findMany), ${prefix}FindMany as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findMany, 'findMany'), ${prefix}FindMany as RequestHandler, ...after, respond)
     if (postReadsEnabled) {
       const postPath = basePath ? \`\${basePath}/read\` : '/read'
       router.post(postPath, parseBodyAsQuery, setShape(opConfig), ...before, ${prefix}FindMany as RequestHandler, ...after, respond)

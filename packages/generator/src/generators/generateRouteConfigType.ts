@@ -53,8 +53,12 @@ export function generateRouteConfigType(
   const m = modelName
   const supportsProgressive = target === 'express'
 
+  const progressiveTypeImport = supportsProgressive
+    ? `import type { ProgressiveVariantConfig, ProgressiveStage } from '../routeConfig.target${ext}'\n\n`
+    : ''
+
   if (!guardShapesImport) {
-    return `export type ${m}RouteConfig<TCtx = unknown> = RouteConfig<Record<string, unknown>, TCtx>\n`
+    return progressiveTypeImport + `export type ${m}RouteConfig<TCtx = unknown> = RouteConfig<Record<string, unknown>, TCtx>\n`
   }
 
   const shapeOps = Object.values(ROUTER_OP_TO_SHAPE_OP).filter((v, i, a) => a.indexOf(v) === i)
@@ -77,10 +81,6 @@ export function generateRouteConfigType(
   }).join('\n')
 
   const omitKeys = ROUTER_OPERATIONS.map((k) => `'${k}'`).join('\n  | ')
-
-  const progressiveTypeImport = supportsProgressive
-    ? `import type { ProgressiveVariantConfig, ProgressiveStage } from '../routeConfig.target${ext}'\n\n`
-    : ''
 
   return (
     progressiveTypeImport +

@@ -22,12 +22,14 @@ export type {
   ProgressiveStageContext,
   ProgressiveStage,
   ProgressiveVariantConfig,
+  ManualProgressiveVariantConfig,
+  AutoIncludeProgressiveVariantConfig,
 } from './routeConfig'
 
-export type OperationConfig<TShape = Record<string, any>> =
+export type OperationConfig<TShape = Record<string, unknown>> =
   BaseOperationConfig<RequestHandler, TShape>
 
-export type ReadOperationConfig<TShape = Record<string, any>, TCtx = unknown> =
+export type ReadOperationConfig<TShape = Record<string, unknown>, TCtx = unknown> =
   BaseOperationConfig<RequestHandler, TShape> & {
     progressive?: Record<string, ProgressiveVariantConfig>
     progressiveStages?: Record<string, ProgressiveStage<TCtx>>
@@ -45,6 +47,6 @@ type ReadOperationOverrides<TShape, TCtx> = {
   groupBy?: ReadOperationConfig<TShape, TCtx>
 }
 
-export type RouteConfig<TShape = Record<string, any>, TCtx = unknown> =
+export type RouteConfig<TShape = Record<string, unknown>, TCtx = unknown> =
   BaseRouteConfig<RequestHandler, Request, TShape, TCtx> &
     ReadOperationOverrides<TShape, TCtx>

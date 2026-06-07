@@ -18,8 +18,8 @@ export type FastifyHookHandler = (
   reply: FastifyReply,
 ) => Promise<void> | void
 
-export type OperationConfig<TShape = Record<string, any>> =
+export type OperationConfig<TShape = Record<string, unknown>> =
   BaseOperationConfig<FastifyHookHandler, TShape>
 
-export type RouteConfig<TShape = Record<string, any>, TCtx = unknown> =
+export type RouteConfig<TShape = Record<string, unknown>, TCtx = unknown> =
   BaseRouteConfig<FastifyHookHandler, FastifyRequest, TShape, TCtx>

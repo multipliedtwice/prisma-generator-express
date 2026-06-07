@@ -9,7 +9,8 @@ import { generateHonoRouterFunction } from './generators/generateRouterHono'
 import { generateScalarUIHandler } from './generators/generateUnifiedScalarUI'
 import { generateUnifiedDocs } from './generators/generateUnifiedDocs'
 import { generateQueryBuilderHelper } from './generators/generateQueryBuilderHelper'
-import { generateOperationRuntime, generateModelCore } from './generators/generateOperationCore'
+import { generateModelCore } from './generators/generateOperationCore'
+import { generateRelationMeta, generateRelationModelsIndex } from './generators/generateRelationMeta'
 import { getRelativeClientPath, getGuardShapesImport } from './generators/generateImportPrismaStatement'
 import { writeFileSafely } from './utils/writeFileSafely'
 import { copyFiles } from './utils/copyFiles'
@@ -51,17 +52,13 @@ generatorHandler({
 
     await copyFiles(options, target, importStyle)
 
-    await writeFileSafely({
-      content: generateOperationRuntime(importStyle),
-      options,
-      operation: 'operationRuntime',
-    })
-
     const modelNames: string[] = []
     const generateHandler =
       target === 'fastify' ? generateFastifyHandler :
       target === 'hono' ? generateHonoHandler :
       generateUnifiedHandler
+
+    const allModels = options.dmmf.datamodel.models as DMMF.Model[]
 
     for (const model of options.dmmf.datamodel.models) {
       if (model.documentation && model.documentation.includes('generator off')) {
@@ -127,6 +124,27 @@ generatorHandler({
         options,
         model: model as DMMF.Model,
         operation: 'Docs',
+      })
+
+      if (target === 'express') {
+        await writeFileSafely({
+          content: generateRelationMeta({
+            model: model as DMMF.Model,
+            allModels,
+            importStyle,
+          }),
+          options,
+          model: model as DMMF.Model,
+          operation: 'Relations',
+        })
+      }
+    }
+
+    if (target === 'express') {
+      await writeFileSafely({
+        content: generateRelationModelsIndex({ modelNames, importStyle }),
+        options,
+        operation: 'relationModelsIndex',
       })
     }
 

@@ -72,12 +72,12 @@ import * as core from './${modelName}Core'
 import type { OperationContext } from '../operationRuntime'
 
 type HonoVariables = {
-  prisma: any
-  postgres?: any
-  sqlite?: any
+  prisma: unknown
+  postgres?: unknown
+  sqlite?: unknown
   parsedQuery?: Record<string, unknown>
   body?: unknown
-  routeConfig?: any
+  routeConfig?: { pagination?: OperationContext['paginationConfig'] }
   guardShape?: Record<string, unknown>
   guardCaller?: string
   resultData?: unknown

@@ -13,13 +13,13 @@ export type {
   OpenApiSecuritySchemeConfig,
 }
 
-export type HonoHookHandler<Env extends { Variables: any } = any> = (
+export type HonoHookHandler<Env extends { Variables: Record<string, unknown> } = { Variables: Record<string, unknown> }> = (
   c: Context<Env>,
   next: Next,
 ) => Promise<Response | void> | Response | void
 
-export type OperationConfig<TShape = Record<string, any>> =
+export type OperationConfig<TShape = Record<string, unknown>> =
   BaseOperationConfig<HonoHookHandler, TShape>
 
-export type RouteConfig<TShape = Record<string, any>, TCtx = unknown> =
+export type RouteConfig<TShape = Record<string, unknown>, TCtx = unknown> =
   BaseRouteConfig<HonoHookHandler, Context, TShape, TCtx>

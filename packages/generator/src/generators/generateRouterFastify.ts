@@ -45,6 +45,7 @@ export function generateFastifyRouterFunction({
     }))
 
   return `import type { FastifyInstance, FastifyRequest, FastifyReply, FastifyError } from 'fastify'
+import { startQueryBuilder } from '../queryBuilder${ext}'
 import {
   ${prefix}FindUnique,
   ${prefix}FindUniqueOrThrow,
@@ -69,7 +70,7 @@ import type { RouteConfig, FastifyHookHandler } from '../routeConfig.target${ext
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
-import { mapError, transformResult, HttpError } from '../operationRuntime${ext}'
+import { mapError, transformResult, HttpError, type OperationContext } from '../operationRuntime${ext}'
 
 ${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, importStyle, 'fastify')}
 const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
@@ -78,9 +79,27 @@ const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
 
 const MODEL_ENUMS = ${JSON.stringify(enumsMeta, null, 2)} as const
 
-const defaultOpConfig = {
-  before: [] as FastifyHookHandler[],
-  after: [] as FastifyHookHandler[],
+type OperationConfigLike = {
+  before?: FastifyHookHandler[]
+  after?: FastifyHookHandler[]
+  shape?: Record<string, unknown>
+}
+
+type FastifyExtended = FastifyRequest & {
+  prisma?: unknown
+  postgres?: unknown
+  sqlite?: unknown
+  parsedQuery?: Record<string, unknown>
+  routeConfig?: { pagination?: OperationContext['paginationConfig'] }
+  guardShape?: Record<string, unknown>
+  guardCaller?: string
+  resultData?: unknown
+  resultStatus?: number
+}
+
+const defaultOpConfig: OperationConfigLike = {
+  before: [],
+  after: [],
 }
 
 function normalizePrefix(p: string): string {
@@ -108,7 +127,7 @@ function getQueryBuilderConfig(config: RouteConfig) {
 function parseQueryHook(request: FastifyRequest): void {
   const raw = request.query as Record<string, unknown>
   if (raw && Object.keys(raw).length > 0) {
-    ;(request as any).parsedQuery = parseQueryParams(raw)
+    (request as FastifyExtended).parsedQuery = parseQueryParams(raw) as Record<string, unknown>
   }
 }
 
@@ -117,21 +136,28 @@ function parseBodyAsQueryHook(request: FastifyRequest): void {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new HttpError(400, 'Request body must be a JSON object')
   }
-  ;(request as any).parsedQuery = sanitizeKeys(body as Record<string, unknown>)
+  (request as FastifyExtended).parsedQuery = sanitizeKeys(body as Record<string, unknown>)
 }
 
-function makeShapeHook(config: RouteConfig, opConfig: any): (request: FastifyRequest) => void {
+function makeShapeHook(
+  config: ${modelName}RouteConfig,
+  opConfig: OperationConfigLike,
+): (request: FastifyRequest) => void {
   return (request: FastifyRequest) => {
-    ;(request as any).routeConfig = config
+    const fx = request as FastifyExtended
+    const paginationConfig = (config as { pagination?: OperationContext['paginationConfig'] }).pagination
+    if (paginationConfig) {
+      fx.routeConfig = { pagination: paginationConfig }
+    }
     if (opConfig.shape) {
-      ;(request as any).guardShape = opConfig.shape
+      fx.guardShape = opConfig.shape
       const headerName = config.guard?.variantHeader || 'x-api-variant'
       const headerValue = request.headers[headerName]
       const caller = config.guard?.resolveVariant?.(request)
         ?? (Array.isArray(headerValue) ? headerValue[0] : headerValue)
         ?? undefined
       if (caller) {
-        ;(request as any).guardCaller = caller
+        fx.guardCaller = caller
       }
     }
   }
@@ -150,7 +176,7 @@ async function runHooks(
 }
 
 function sendResult(request: FastifyRequest, reply: FastifyReply): void {
-  const req = request as any
+  const req = request as FastifyExtended
   const data = req.resultData
   const status = req.resultStatus ?? 200
   if (data === undefined) {
@@ -186,12 +212,17 @@ export async function ${routerFunctionName}<TCtx = unknown>(
   if (qbEnabled) {
     const qbConfig = getQueryBuilderConfig(config)
     if (qbConfig) {
-      try { require('../queryBuilder${ext}').startQueryBuilder(qbConfig) } catch (err) { if (_env.NODE_ENV !== 'production') console.warn('[query-builder]', err) }
+      try {
+        startQueryBuilder(qbConfig)
+      } catch (err) {
+        if (_env.NODE_ENV !== 'production') console.warn('[query-builder]', err)
+      }
     }
   }
 
   fastify.setErrorHandler((error: FastifyError, _request: FastifyRequest, reply: FastifyReply) => {
-    const status = (error as any).status ?? error.statusCode ?? 500
+    const e = error as { status?: number; statusCode?: number; message?: string }
+    const status = e.status ?? e.statusCode ?? 500
     const message = error.message || 'Internal server error'
     if (!reply.sent) {
       reply.code(status).send({ message })
@@ -205,8 +236,8 @@ export async function ${routerFunctionName}<TCtx = unknown>(
     fastify.get(openapiJsonPath, async (_request, reply) => {
       const spec = buildModelOpenApi(
         '${modelName}',
-        MODEL_FIELDS as any,
-        MODEL_ENUMS as any,
+        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
         { format: 'json' },
       )
@@ -216,8 +247,8 @@ export async function ${routerFunctionName}<TCtx = unknown>(
     fastify.get(openapiYamlPath, async (_request, reply) => {
       const spec = buildModelOpenApi(
         '${modelName}',
-        MODEL_FIELDS as any,
-        MODEL_ENUMS as any,
+        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
         { format: 'yaml' },
       )
@@ -225,446 +256,158 @@ export async function ${routerFunctionName}<TCtx = unknown>(
     })
   }
 
-  if (config.enableAll || config.findFirst) {
-    const opConfig = config.findFirst || defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/first\` : '/first'
-    fastify.get(path, async (request, reply) => {
-      try {
-        parseQueryHook(request)
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}FindFirst(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
-    if (postReadsEnabled) {
-      fastify.post(path, async (request, reply) => {
-        try {
-          parseBodyAsQueryHook(request)
-          makeShapeHook(config, opConfig)(request)
-          if (await runHooks(before, request, reply)) return
-          await ${prefix}FindFirst(request, reply)
-          if (await runHooks(after, request, reply)) return
-          sendResult(request, reply)
-        } catch (error: unknown) {
-          sendError(reply, error)
-        }
-      })
+  const handleGet = (
+    opConfig: OperationConfigLike,
+    handlerFn: (req: FastifyRequest, reply: FastifyReply) => Promise<void>,
+    parseFn: (req: FastifyRequest) => void,
+  ) => async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      parseFn(request)
+      makeShapeHook(config, opConfig)(request)
+      const { before = [], after = [] } = opConfig
+      if (await runHooks(before, request, reply)) return
+      await handlerFn(request, reply)
+      if (await runHooks(after, request, reply)) return
+      sendResult(request, reply)
+    } catch (error: unknown) {
+      sendError(reply, error)
     }
+  }
+
+  const handleWrite = (
+    opConfig: OperationConfigLike,
+    handlerFn: (req: FastifyRequest, reply: FastifyReply) => Promise<void>,
+  ) => async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      makeShapeHook(config, opConfig)(request)
+      const { before = [], after = [] } = opConfig
+      if (await runHooks(before, request, reply)) return
+      await handlerFn(request, reply)
+      if (await runHooks(after, request, reply)) return
+      sendResult(request, reply)
+    } catch (error: unknown) {
+      sendError(reply, error)
+    }
+  }
+
+  if (config.enableAll || config.findFirst) {
+    const opConfig: OperationConfigLike = (config.findFirst as OperationConfigLike | undefined) ?? defaultOpConfig
+    const path = basePath ? \`\${basePath}/first\` : '/first'
+    fastify.get(path, handleGet(opConfig, ${prefix}FindFirst, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}FindFirst, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.findFirstOrThrow) {
-    const opConfig = config.findFirstOrThrow || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.findFirstOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/first/strict\` : '/first/strict'
-    fastify.get(path, async (request, reply) => {
-      try {
-        parseQueryHook(request)
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}FindFirstOrThrow(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
-    if (postReadsEnabled) {
-      fastify.post(path, async (request, reply) => {
-        try {
-          parseBodyAsQueryHook(request)
-          makeShapeHook(config, opConfig)(request)
-          if (await runHooks(before, request, reply)) return
-          await ${prefix}FindFirstOrThrow(request, reply)
-          if (await runHooks(after, request, reply)) return
-          sendResult(request, reply)
-        } catch (error: unknown) {
-          sendError(reply, error)
-        }
-      })
-    }
+    fastify.get(path, handleGet(opConfig, ${prefix}FindFirstOrThrow, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}FindFirstOrThrow, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.findManyPaginated) {
-    const opConfig = config.findManyPaginated || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.findManyPaginated as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/paginated\` : '/paginated'
-    fastify.get(path, async (request, reply) => {
-      try {
-        parseQueryHook(request)
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}FindManyPaginated(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
-    if (postReadsEnabled) {
-      fastify.post(path, async (request, reply) => {
-        try {
-          parseBodyAsQueryHook(request)
-          makeShapeHook(config, opConfig)(request)
-          if (await runHooks(before, request, reply)) return
-          await ${prefix}FindManyPaginated(request, reply)
-          if (await runHooks(after, request, reply)) return
-          sendResult(request, reply)
-        } catch (error: unknown) {
-          sendError(reply, error)
-        }
-      })
-    }
+    fastify.get(path, handleGet(opConfig, ${prefix}FindManyPaginated, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}FindManyPaginated, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.aggregate) {
-    const opConfig = config.aggregate || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.aggregate as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/aggregate\` : '/aggregate'
-    fastify.get(path, async (request, reply) => {
-      try {
-        parseQueryHook(request)
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}Aggregate(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
-    if (postReadsEnabled) {
-      fastify.post(path, async (request, reply) => {
-        try {
-          parseBodyAsQueryHook(request)
-          makeShapeHook(config, opConfig)(request)
-          if (await runHooks(before, request, reply)) return
-          await ${prefix}Aggregate(request, reply)
-          if (await runHooks(after, request, reply)) return
-          sendResult(request, reply)
-        } catch (error: unknown) {
-          sendError(reply, error)
-        }
-      })
-    }
+    fastify.get(path, handleGet(opConfig, ${prefix}Aggregate, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}Aggregate, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.count) {
-    const opConfig = config.count || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.count as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/count\` : '/count'
-    fastify.get(path, async (request, reply) => {
-      try {
-        parseQueryHook(request)
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}Count(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
-    if (postReadsEnabled) {
-      fastify.post(path, async (request, reply) => {
-        try {
-          parseBodyAsQueryHook(request)
-          makeShapeHook(config, opConfig)(request)
-          if (await runHooks(before, request, reply)) return
-          await ${prefix}Count(request, reply)
-          if (await runHooks(after, request, reply)) return
-          sendResult(request, reply)
-        } catch (error: unknown) {
-          sendError(reply, error)
-        }
-      })
-    }
+    fastify.get(path, handleGet(opConfig, ${prefix}Count, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}Count, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.groupBy) {
-    const opConfig = config.groupBy || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.groupBy as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/groupby\` : '/groupby'
-    fastify.get(path, async (request, reply) => {
-      try {
-        parseQueryHook(request)
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}GroupBy(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
-    if (postReadsEnabled) {
-      fastify.post(path, async (request, reply) => {
-        try {
-          parseBodyAsQueryHook(request)
-          makeShapeHook(config, opConfig)(request)
-          if (await runHooks(before, request, reply)) return
-          await ${prefix}GroupBy(request, reply)
-          if (await runHooks(after, request, reply)) return
-          sendResult(request, reply)
-        } catch (error: unknown) {
-          sendError(reply, error)
-        }
-      })
-    }
+    fastify.get(path, handleGet(opConfig, ${prefix}GroupBy, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}GroupBy, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.findUniqueOrThrow) {
-    const opConfig = config.findUniqueOrThrow || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.findUniqueOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/unique/strict\` : '/unique/strict'
-    fastify.get(path, async (request, reply) => {
-      try {
-        parseQueryHook(request)
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}FindUniqueOrThrow(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
-    if (postReadsEnabled) {
-      fastify.post(path, async (request, reply) => {
-        try {
-          parseBodyAsQueryHook(request)
-          makeShapeHook(config, opConfig)(request)
-          if (await runHooks(before, request, reply)) return
-          await ${prefix}FindUniqueOrThrow(request, reply)
-          if (await runHooks(after, request, reply)) return
-          sendResult(request, reply)
-        } catch (error: unknown) {
-          sendError(reply, error)
-        }
-      })
-    }
+    fastify.get(path, handleGet(opConfig, ${prefix}FindUniqueOrThrow, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}FindUniqueOrThrow, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.findUnique) {
-    const opConfig = config.findUnique || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.findUnique as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/unique\` : '/unique'
-    fastify.get(path, async (request, reply) => {
-      try {
-        parseQueryHook(request)
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}FindUnique(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
-    if (postReadsEnabled) {
-      fastify.post(path, async (request, reply) => {
-        try {
-          parseBodyAsQueryHook(request)
-          makeShapeHook(config, opConfig)(request)
-          if (await runHooks(before, request, reply)) return
-          await ${prefix}FindUnique(request, reply)
-          if (await runHooks(after, request, reply)) return
-          sendResult(request, reply)
-        } catch (error: unknown) {
-          sendError(reply, error)
-        }
-      })
-    }
+    fastify.get(path, handleGet(opConfig, ${prefix}FindUnique, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}FindUnique, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.findMany) {
-    const opConfig = config.findMany || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.findMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath || '/'
-    fastify.get(path, async (request, reply) => {
-      try {
-        parseQueryHook(request)
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}FindMany(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
+    fastify.get(path, handleGet(opConfig, ${prefix}FindMany, parseQueryHook))
     if (postReadsEnabled) {
       const postPath = basePath ? \`\${basePath}/read\` : '/read'
-      fastify.post(postPath, async (request, reply) => {
-        try {
-          parseBodyAsQueryHook(request)
-          makeShapeHook(config, opConfig)(request)
-          if (await runHooks(before, request, reply)) return
-          await ${prefix}FindMany(request, reply)
-          if (await runHooks(after, request, reply)) return
-          sendResult(request, reply)
-        } catch (error: unknown) {
-          sendError(reply, error)
-        }
-      })
+      fastify.post(postPath, handleGet(opConfig, ${prefix}FindMany, parseBodyAsQueryHook))
     }
   }
 
   if (config.enableAll || config.createManyAndReturn) {
-    const opConfig = config.createManyAndReturn || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.createManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    fastify.post(path, async (request, reply) => {
-      try {
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}CreateManyAndReturn(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
+    fastify.post(path, handleWrite(opConfig, ${prefix}CreateManyAndReturn))
   }
 
   if (config.enableAll || config.createMany) {
-    const opConfig = config.createMany || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.createMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    fastify.post(path, async (request, reply) => {
-      try {
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}CreateMany(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
+    fastify.post(path, handleWrite(opConfig, ${prefix}CreateMany))
   }
 
   if (config.enableAll || config.create) {
-    const opConfig = config.create || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.create as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath || '/'
-    fastify.post(path, async (request, reply) => {
-      try {
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}Create(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
+    fastify.post(path, handleWrite(opConfig, ${prefix}Create))
   }
 
   if (config.enableAll || config.updateManyAndReturn) {
-    const opConfig = config.updateManyAndReturn || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.updateManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    fastify.put(path, async (request, reply) => {
-      try {
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}UpdateManyAndReturn(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
+    fastify.put(path, handleWrite(opConfig, ${prefix}UpdateManyAndReturn))
   }
 
   if (config.enableAll || config.updateMany) {
-    const opConfig = config.updateMany || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.updateMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    fastify.put(path, async (request, reply) => {
-      try {
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}UpdateMany(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
+    fastify.put(path, handleWrite(opConfig, ${prefix}UpdateMany))
   }
 
   if (config.enableAll || config.update) {
-    const opConfig = config.update || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.update as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath || '/'
-    fastify.put(path, async (request, reply) => {
-      try {
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}Update(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
+    fastify.put(path, handleWrite(opConfig, ${prefix}Update))
   }
 
   if (config.enableAll || config.upsert) {
-    const opConfig = config.upsert || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.upsert as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath || '/'
-    fastify.patch(path, async (request, reply) => {
-      try {
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}Upsert(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
+    fastify.patch(path, handleWrite(opConfig, ${prefix}Upsert))
   }
 
   if (config.enableAll || config.deleteMany) {
-    const opConfig = config.deleteMany || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.deleteMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    fastify.delete(path, async (request, reply) => {
-      try {
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}DeleteMany(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
+    fastify.delete(path, handleWrite(opConfig, ${prefix}DeleteMany))
   }
 
   if (config.enableAll || config.delete) {
-    const opConfig = config.delete || defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig: OperationConfigLike = (config.delete as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath || '/'
-    fastify.delete(path, async (request, reply) => {
-      try {
-        makeShapeHook(config, opConfig)(request)
-        if (await runHooks(before, request, reply)) return
-        await ${prefix}Delete(request, reply)
-        if (await runHooks(after, request, reply)) return
-        sendResult(request, reply)
-      } catch (error: unknown) {
-        sendError(reply, error)
-      }
-    })
+    fastify.delete(path, handleWrite(opConfig, ${prefix}Delete))
   }
 }
 `

@@ -71,17 +71,17 @@ import type { RouteConfig, HonoHookHandler } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
-import { mapError, transformResult, HttpError } from '../operationRuntime${ext}'
+import { mapError, transformResult, HttpError, type OperationContext } from '../operationRuntime${ext}'
 
 ${generateRouteConfigType(modelName, 'HonoHookHandler', guardShapesImport, importStyle, 'hono')}
 
 type HonoVariables = {
-  prisma: any
-  postgres?: any
-  sqlite?: any
+  prisma: unknown
+  postgres?: unknown
+  sqlite?: unknown
   parsedQuery?: Record<string, unknown>
   body?: unknown
-  routeConfig?: ${modelName}RouteConfig
+  routeConfig?: { pagination?: OperationContext['paginationConfig'] }
   guardShape?: Record<string, unknown>
   guardCaller?: string
   resultData?: unknown
@@ -96,9 +96,15 @@ const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
 
 const MODEL_ENUMS = ${JSON.stringify(enumsMeta, null, 2)} as const
 
-const defaultOpConfig = {
-  before: [] as HonoHookHandler[],
-  after: [] as HonoHookHandler[],
+type OperationConfigLike = {
+  before?: HonoHookHandler[]
+  after?: HonoHookHandler[]
+  shape?: Record<string, unknown>
+}
+
+const defaultOpConfig: OperationConfigLike = {
+  before: [],
+  after: [],
 }
 
 function normalizePrefix(p: string): string {
@@ -140,7 +146,7 @@ export function ${routerFunctionName}<TCtx = unknown>(
       return c.json({ message: err.message }, err.status)
     }
     const httpError = mapError(err)
-    return c.json({ message: httpError.message }, httpError.status as any)
+    return c.json({ message: httpError.message }, httpError.status as Parameters<typeof c.json>[1])
   })
 
   const parseQueryMw = async (c: Context<HonoEnv>, next: Next): Promise<void> => {
@@ -169,12 +175,15 @@ export function ${routerFunctionName}<TCtx = unknown>(
     await next()
   }
 
-  const setContextMw = (opConfig: any) => async (c: Context<HonoEnv>, next: Next): Promise<void> => {
-    c.set('routeConfig', config as ${modelName}RouteConfig)
+  const setContextMw = (opConfig: OperationConfigLike) => async (c: Context<HonoEnv>, next: Next): Promise<void> => {
+    const paginationConfig = (config as { pagination?: OperationContext['paginationConfig'] }).pagination
+    if (paginationConfig) {
+      c.set('routeConfig', { pagination: paginationConfig })
+    }
     if (opConfig.shape) {
       c.set('guardShape', opConfig.shape)
       const headerName = config.guard?.variantHeader || 'x-api-variant'
-      const caller = config.guard?.resolveVariant?.(c as any)
+      const caller = config.guard?.resolveVariant?.(c as Context)
         ?? c.req.header(headerName)
         ?? undefined
       if (caller) {
@@ -190,7 +199,10 @@ export function ${routerFunctionName}<TCtx = unknown>(
     if (data === undefined) {
       return c.json({ message: 'No data set by handler' }, 500)
     }
-    return c.json(transformResult(data) as any, status as any)
+    return c.json(
+      transformResult(data) as Parameters<typeof c.json>[0],
+      status as Parameters<typeof c.json>[1],
+    )
   }
 
   const wrap = (fn: (c: Context<HonoEnv>) => Promise<void>) =>
@@ -206,19 +218,19 @@ export function ${routerFunctionName}<TCtx = unknown>(
     app.get(openapiJsonPath, (c) => {
       const spec = buildModelOpenApi(
         '${modelName}',
-        MODEL_FIELDS as any,
-        MODEL_ENUMS as any,
+        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
         { format: 'json' },
       )
-      return c.json(spec as any)
+      return c.json(spec as Parameters<typeof c.json>[0])
     })
 
     app.get(openapiYamlPath, (c) => {
       const yaml = buildModelOpenApi(
         '${modelName}',
-        MODEL_FIELDS as any,
-        MODEL_ENUMS as any,
+        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
         { format: 'yaml' },
       ) as string
@@ -227,7 +239,7 @@ export function ${routerFunctionName}<TCtx = unknown>(
   }
 
   if (config.enableAll || config.findFirst) {
-    const opConfig = config.findFirst || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.findFirst as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/first\` : '/first'
     app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindFirst), ...after, sendResultMw)
@@ -237,7 +249,7 @@ export function ${routerFunctionName}<TCtx = unknown>(
   }
 
   if (config.enableAll || config.findFirstOrThrow) {
-    const opConfig = config.findFirstOrThrow || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.findFirstOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/first/strict\` : '/first/strict'
     app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindFirstOrThrow), ...after, sendResultMw)
@@ -247,7 +259,7 @@ export function ${routerFunctionName}<TCtx = unknown>(
   }
 
   if (config.enableAll || config.findManyPaginated) {
-    const opConfig = config.findManyPaginated || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.findManyPaginated as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/paginated\` : '/paginated'
     app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindManyPaginated), ...after, sendResultMw)
@@ -257,7 +269,7 @@ export function ${routerFunctionName}<TCtx = unknown>(
   }
 
   if (config.enableAll || config.aggregate) {
-    const opConfig = config.aggregate || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.aggregate as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/aggregate\` : '/aggregate'
     app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}Aggregate), ...after, sendResultMw)
@@ -267,7 +279,7 @@ export function ${routerFunctionName}<TCtx = unknown>(
   }
 
   if (config.enableAll || config.count) {
-    const opConfig = config.count || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.count as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/count\` : '/count'
     app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}Count), ...after, sendResultMw)
@@ -277,7 +289,7 @@ export function ${routerFunctionName}<TCtx = unknown>(
   }
 
   if (config.enableAll || config.groupBy) {
-    const opConfig = config.groupBy || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.groupBy as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/groupby\` : '/groupby'
     app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}GroupBy), ...after, sendResultMw)
@@ -287,7 +299,7 @@ export function ${routerFunctionName}<TCtx = unknown>(
   }
 
   if (config.enableAll || config.findUniqueOrThrow) {
-    const opConfig = config.findUniqueOrThrow || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.findUniqueOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/unique/strict\` : '/unique/strict'
     app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindUniqueOrThrow), ...after, sendResultMw)
@@ -297,7 +309,7 @@ export function ${routerFunctionName}<TCtx = unknown>(
   }
 
   if (config.enableAll || config.findUnique) {
-    const opConfig = config.findUnique || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.findUnique as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/unique\` : '/unique'
     app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindUnique), ...after, sendResultMw)
@@ -307,7 +319,7 @@ export function ${routerFunctionName}<TCtx = unknown>(
   }
 
   if (config.enableAll || config.findMany) {
-    const opConfig = config.findMany || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.findMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
     app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindMany), ...after, sendResultMw)
@@ -318,63 +330,63 @@ export function ${routerFunctionName}<TCtx = unknown>(
   }
 
   if (config.enableAll || config.createManyAndReturn) {
-    const opConfig = config.createManyAndReturn || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.createManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
     app.post(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}CreateManyAndReturn), ...after, sendResultMw)
   }
 
   if (config.enableAll || config.createMany) {
-    const opConfig = config.createMany || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.createMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
     app.post(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}CreateMany), ...after, sendResultMw)
   }
 
   if (config.enableAll || config.create) {
-    const opConfig = config.create || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.create as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
     app.post(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}Create), ...after, sendResultMw)
   }
 
   if (config.enableAll || config.updateManyAndReturn) {
-    const opConfig = config.updateManyAndReturn || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.updateManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
     app.put(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}UpdateManyAndReturn), ...after, sendResultMw)
   }
 
   if (config.enableAll || config.updateMany) {
-    const opConfig = config.updateMany || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.updateMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
     app.put(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}UpdateMany), ...after, sendResultMw)
   }
 
   if (config.enableAll || config.update) {
-    const opConfig = config.update || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.update as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
     app.put(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}Update), ...after, sendResultMw)
   }
 
   if (config.enableAll || config.upsert) {
-    const opConfig = config.upsert || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.upsert as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
     app.patch(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}Upsert), ...after, sendResultMw)
   }
 
   if (config.enableAll || config.deleteMany) {
-    const opConfig = config.deleteMany || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.deleteMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
     app.delete(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}DeleteMany), ...after, sendResultMw)
   }
 
   if (config.enableAll || config.delete) {
-    const opConfig = config.delete || defaultOpConfig
+    const opConfig: OperationConfigLike = (config.delete as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
     app.delete(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}Delete), ...after, sendResultMw)

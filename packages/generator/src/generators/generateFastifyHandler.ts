@@ -54,7 +54,7 @@ export async function ${exportName}(
   _reply: FastifyReply,
 ): Promise<void> {
   const data = await core.${coreFnName(op)}(buildContext(request))
-  ;(request as any).resultData = data
+  ;(request as FastifyExtended).resultData = data
 }`
   }).join('\n')
 
@@ -68,8 +68,9 @@ export async function ${exportName}(
   _reply: FastifyReply,
 ): Promise<void> {
   const data = await core.${coreFnName(op)}(buildContext(request))
-  ;(request as any).resultData = data
-  ;(request as any).resultStatus = ${statusCode}
+  const ext = request as FastifyExtended
+  ext.resultData = data
+  ext.resultStatus = ${statusCode}
 }`
   }).join('\n')
 
@@ -77,8 +78,20 @@ export async function ${exportName}(
 import * as core from './${modelName}Core'
 import type { OperationContext } from '../operationRuntime'
 
+type FastifyExtended = FastifyRequest & {
+  prisma?: unknown
+  postgres?: unknown
+  sqlite?: unknown
+  parsedQuery?: Record<string, unknown>
+  routeConfig?: { pagination?: OperationContext['paginationConfig'] }
+  guardShape?: Record<string, unknown>
+  guardCaller?: string
+  resultData?: unknown
+  resultStatus?: number
+}
+
 function buildContext(request: FastifyRequest): OperationContext {
-  const req = request as any
+  const req = request as FastifyExtended
   return {
     prisma: req.prisma,
     postgres: req.postgres,

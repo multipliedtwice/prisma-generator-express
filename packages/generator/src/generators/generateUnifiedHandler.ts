@@ -48,7 +48,7 @@ export async function ${exportName}(
   next: NextFunction,
 ) {
   try {
-    res.locals.data = await core.${coreFnName(op)}(buildContext(req, res))
+    ;(res.locals as LocalsBag).data = await core.${coreFnName(op)}(buildContext(req, res))
     next()
   } catch (error: unknown) {
     next(mapError(error))
@@ -60,16 +60,32 @@ export async function ${exportName}(
 import * as core from './${modelName}Core'
 import { OperationContext, mapError } from '../operationRuntime'
 
+type ExtendedRequest = Request & {
+  prisma?: unknown
+  postgres?: unknown
+  sqlite?: unknown
+}
+
+type LocalsBag = {
+  parsedQuery?: Record<string, unknown>
+  routeConfig?: { pagination?: unknown }
+  guardShape?: Record<string, unknown>
+  guardCaller?: string
+  data?: unknown
+}
+
 function buildContext(req: Request, res: Response): OperationContext {
+  const extReq = req as ExtendedRequest
+  const locals = res.locals as LocalsBag
   return {
-    prisma: (req as any).prisma,
-    postgres: (req as any).postgres,
-    sqlite: (req as any).sqlite,
-    parsedQuery: res.locals.parsedQuery,
+    prisma: extReq.prisma,
+    postgres: extReq.postgres,
+    sqlite: extReq.sqlite,
+    parsedQuery: locals.parsedQuery,
     body: req.body,
-    guardShape: res.locals.guardShape,
-    guardCaller: res.locals.guardCaller,
-    paginationConfig: res.locals.routeConfig?.pagination,
+    guardShape: locals.guardShape,
+    guardCaller: locals.guardCaller,
+    paginationConfig: (locals.routeConfig?.pagination) as OperationContext['paginationConfig'],
   }
 }
 ${handlers}

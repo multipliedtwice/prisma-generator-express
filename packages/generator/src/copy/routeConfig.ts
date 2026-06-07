@@ -36,26 +36,37 @@ export type ProgressiveStageResult<T = unknown> =
   | ProgressivePatch[]
   | ProgressiveStopResult<T>
 
-export type ProgressiveStageContext<TContext = unknown, TPrisma = any> = {
+export type ProgressiveStageContext<TContext = unknown, TPrisma = unknown> = {
   ctx: TContext
-  req: any
-  res: any
+  req: unknown
+  res: unknown
   prisma: TPrisma
   variant: string
   accumulated: Record<string, unknown>
   signal: AbortSignal
 }
 
-export type ProgressiveStage<TContext = unknown, TPrisma = any, T = unknown> = (
+export type ProgressiveStage<TContext = unknown, TPrisma = unknown, T = unknown> = (
   context: ProgressiveStageContext<TContext, TPrisma>,
 ) => Promise<ProgressiveStageResult<T>>
 
-export type ProgressiveVariantConfig = {
+export type ManualProgressiveVariantConfig = {
   enabled?: boolean
+  mode?: 'manual'
   stages: string[]
 }
 
-export interface BaseOperationConfig<HookHandler, TShape = Record<string, any>> {
+export type AutoIncludeProgressiveVariantConfig = {
+  enabled?: boolean
+  mode: 'autoInclude'
+  fallback?: 'singleResult' | 'error'
+}
+
+export type ProgressiveVariantConfig =
+  | ManualProgressiveVariantConfig
+  | AutoIncludeProgressiveVariantConfig
+
+export interface BaseOperationConfig<HookHandler, TShape = Record<string, unknown>> {
   before?: HookHandler[]
   after?: HookHandler[]
   shape?: TShape
@@ -64,7 +75,7 @@ export interface BaseOperationConfig<HookHandler, TShape = Record<string, any>> 
 export interface BaseRouteConfig<
   HookHandler,
   RequestType,
-  TShape = Record<string, any>,
+  TShape = Record<string, unknown>,
   TCtx = unknown,
 > {
   enableAll?: boolean
@@ -111,5 +122,5 @@ export interface BaseRouteConfig<
   groupBy?: BaseOperationConfig<HookHandler, TShape>
 }
 
-export type OperationConfig = BaseOperationConfig<any>
-export type RouteConfig = BaseRouteConfig<any, any>
+export type OperationConfig = BaseOperationConfig<unknown>
+export type RouteConfig = BaseRouteConfig<unknown, unknown>

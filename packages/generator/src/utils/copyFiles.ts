@@ -12,6 +12,12 @@ const SHARED_FILES = [
   'misc.ts',
   'routeConfig.ts',
   'docsRenderer.ts',
+  'operationRuntime.ts',
+]
+
+const EXPRESS_ONLY_FILES = [
+  'autoIncludePlanner.ts',
+  'autoIncludeRuntime.ts',
 ]
 
 interface CopyFileOptions {
@@ -110,6 +116,13 @@ export async function copyFiles(
   for (const file of SHARED_FILES) {
     const err = copyFileSync(copyBase, outputPath, file, importStyle, { required: true })
     if (err) errors.push(err)
+  }
+
+  if (target === 'express') {
+    for (const file of EXPRESS_ONLY_FILES) {
+      const err = copyFileSync(copyBase, outputPath, file, importStyle, { required: true })
+      if (err) errors.push(err)
+    }
   }
 
   const targetConfigFile = 'routeConfig.' + target + '.ts'
