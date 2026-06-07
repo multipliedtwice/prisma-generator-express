@@ -1,3 +1,10 @@
+# [1.41.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.40.0...v1.41.0) (2026-06-07)
+
+
+### Features
+
+* enhance import handling and extend functionality for Fastify and Hono routers ([062b4d2](https://github.com/multipliedtwice/prisma-generator-express/commit/062b4d209b0289b124dca0caadf940b90fe063f5))
+
 # [1.40.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.39.0...v1.40.0) (2026-05-27)
 
 
