@@ -1,3 +1,10 @@
+# [1.44.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.43.0...v1.44.0) (2026-06-07)
+
+
+### Features
+
+* enhance auto-include functionality with improved error handling and support for multiple import styles ([32a41d7](https://github.com/multipliedtwice/prisma-generator-express/commit/32a41d7126534965cbdb0d3700c7ab7c167ceb8d))
+
 # [1.43.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.42.0...v1.43.0) (2026-06-07)
 
 
