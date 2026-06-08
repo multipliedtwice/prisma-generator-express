@@ -123,7 +123,7 @@ export async function findManyPaginated(
       total = txResult.t
     } catch (txError: unknown) {
       const txe = txError as { message?: string; code?: string }
-      if ((typeof txe?.message === 'string' && txe.message.includes('interactive transactions')) || txe?.code === 'P2028') {
+      if (txe?.code === 'P2028') {
         console.warn('[prisma-generator-express] Interactive transactions not available, pagination queries are non-atomic')
         items = (await delegate.findMany(query)) as unknown[]
         total = await countForPagination(delegate, query, undefined, undefined, distinctCountLimit)

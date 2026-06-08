@@ -42,7 +42,7 @@ function escapeRegex(str: string): string {
 }
 
 const RELATIVE_IMPORT_RE =
-  /(\b(?:import|export)\b[^'"\n;]*?\bfrom\s+|\bimport\s+|\bimport\s*\(\s*)(['"])(\.{1,2}\/[^'"\n]+)\2/g
+  /(\b(?:import|export)\b[^'";]*?\bfrom\s+|\bimport\s+|\bimport\s*\(\s*)(['"])(\.{1,2}\/[^'"\n]+)\2/g
 
 const SKIP_EXTENSION_RE = /\.(m?[jt]sx?|json|css|svg|png|jpe?g|gif|webp|wasm)$/i
 
@@ -79,6 +79,7 @@ function copyFileSync(
 
   if (options?.importRewrites) {
     for (const rewrite of options.importRewrites) {
+      if (rewrite.from === rewrite.to) continue
       content = content.replace(
         new RegExp('from [\'"]' + escapeRegex(rewrite.from) + '[\'"]', 'g'),
         "from '" + rewrite.to + "'",
@@ -129,7 +130,6 @@ export async function copyFiles(
   const err = copyFileSync(copyBase, outputPath, targetConfigFile, importStyle, {
     required: true,
     destFilename: 'routeConfig.target.ts',
-    importRewrites: [{ from: './routeConfig', to: './routeConfig' }],
   })
   if (err) errors.push(err)
 

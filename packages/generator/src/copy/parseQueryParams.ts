@@ -8,16 +8,14 @@ type QueryParams =
   | undefined
 
 const NUMERIC_KEYS = new Set(['take', 'skip'])
-
 const INTEGER_RE = /^-?\d+$/
 
 const parseQueryValue = (value: string, key?: string): unknown => {
   if (value.startsWith('{') || value.startsWith('[') || value.startsWith('"')) {
     try {
       const parsed = JSON.parse(value)
-      return parseQueryParams(sanitizeKeys(parsed) as QueryParams)
+      return sanitizeKeys(parsed)
     } catch {
-      // fall through
     }
   }
   if (value === 'true') return true
@@ -30,14 +28,10 @@ const parseQueryValue = (value: string, key?: string): unknown => {
 }
 
 export const parseQueryParams = (params: QueryParams): unknown => {
-  if (typeof params === 'string') {
-    return parseQueryValue(params)
-  }
+  if (typeof params === 'string') return parseQueryValue(params)
   if (Array.isArray(params)) {
     return params.map((item) =>
-      typeof item === 'string'
-        ? parseQueryValue(item)
-        : parseQueryParams(item as QueryParams),
+      typeof item === 'string' ? parseQueryValue(item) : sanitizeKeys(item),
     )
   }
   if (isObject(params)) {
@@ -45,11 +39,8 @@ export const parseQueryParams = (params: QueryParams): unknown => {
     for (const key of Object.keys(params)) {
       if (!isSafeKey(key)) continue
       const raw = params[key]
-      if (typeof raw === 'string') {
-        parsedParams[key] = parseQueryValue(raw, key)
-      } else {
-        parsedParams[key] = parseQueryParams(raw as QueryParams)
-      }
+      parsedParams[key] =
+        typeof raw === 'string' ? parseQueryValue(raw, key) : sanitizeKeys(raw)
     }
     return parsedParams
   }

@@ -86,6 +86,15 @@ function doStart(options: QueryBuilderOptions): Promise<void> {
       return
     }
 
+    const schemaByteLength = Buffer.byteLength(schemaContent, 'utf8')
+    if (schemaByteLength > 28000) {
+      console.warn(
+        '[query-builder] Schema size is ' + schemaByteLength + ' bytes. ' +
+        'Environment variable size limits may cause spawn failure on Windows (~32KB). ' +
+        'If the query builder fails to start, this is the likely cause.',
+      )
+    }
+
     const schemaCwd = dirname(resolve(schemaPath))
 
     _process = spawn(process.execPath, [cliPath], {

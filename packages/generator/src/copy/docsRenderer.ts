@@ -1,7 +1,8 @@
 import type { RouteConfig } from './routeConfig'
 import { OPERATION_DEFS, isOperationEnabled, READ_OPERATION_NAMES } from './operationDefinitions'
+import { getEnv, normalizePrefix } from './misc'
 
-const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
+const _env = getEnv()
 
 export interface FieldMeta {
   name: string
@@ -527,16 +528,9 @@ function anchors(): { id: string; label: string }[] {
   ]
 }
 
-function normalizeExamplePrefix(p: string): string {
-  if (!p) return ''
-  let result = p.replace(/\/$/, '')
-  if (result && !result.startsWith('/')) result = '/' + result
-  return result
-}
-
 function buildExampleBasePath(modelName: string, config: DocsConfig): string {
   const prefixSource = config.specBasePath ?? config.customUrlPrefix ?? ''
-  const prefix = normalizeExamplePrefix(prefixSource)
+  const prefix = normalizePrefix(prefixSource)
   const modelPrefix = config.addModelPrefix !== false ? '/' + modelName.toLowerCase() : ''
   return prefix + modelPrefix
 }
@@ -550,7 +544,7 @@ export function renderDocs(modelName: string, config: DocsConfig, ctx: DocsModel
   const title = config.docsTitle || modelName + ' API'
   const generatedAt = new Date().toISOString()
 
-  const modelLower = modelName.charAt(0).toLowerCase() + modelName.slice(1)
+  const modelLower = modelName.toLowerCase()
   const exampleBasePath = buildExampleBasePath(modelName, config)
 
   const postReadsEnabled = !config.disablePostReads
@@ -1008,15 +1002,15 @@ export function renderDocs(modelName: string, config: DocsConfig, ctx: DocsModel
     '<strong>POST read endpoints:</strong> All read operations accept POST as an alternative transport. The request body is a plain JSON object with the same argument structure as the GET query params — no JSON-string encoding needed. POST reads use native JSON types (numbers, booleans, objects) directly. findMany POST read is at <span class="font-mono">/read</span>; all other read operations use the same path as their GET counterpart. Disable with <span class="font-mono">disablePostReads: true</span> in route config.',
     '<strong>Request body validation:</strong> All write endpoints require a JSON object body. Sending <span class="font-mono">null</span>, arrays, or non-object JSON values returns 400.',
     '<strong>Documentation in production:</strong> Docs endpoints are disabled by default when <span class="font-mono">NODE_ENV=production</span> or <span class="font-mono">DISABLE_OPENAPI=true</span>. To enable in production, set <span class="font-mono">disableOpenApi: false</span> in the route config.',
-    '<strong>Paginated query atomicity:</strong> findManyPaginated wraps data + count in a database transaction when available. If interactive transactions are not supported (e.g. some edge adapters), the queries run separately and data/total may be slightly inconsistent under concurrent writes.',
-    '<strong>Distinct count approximation:</strong> When findManyPaginated is used with distinct and the number of unique values exceeds 100,000, the total falls back to a non-distinct count which may overcount. The hasMore value is affected accordingly.',
+    '<strong>Paginated query atomicity:</strong> findManyPaginated wraps data + count in a database transaction when available. If interactive transactions are not supported (e.g. some edge adapters), the queries run separately and data/total may be slightly inconsistent under concurrent writes. When a guard shape is configured, the data and count queries run in parallel without a transaction to keep the guard wrapper in scope, so atomicity is not guaranteed in that mode.',
+    '<strong>Distinct count approximation:</strong> When findManyPaginated is used with distinct and the number of unique values exceeds 100,000, the total falls back to a non-distinct count which may overcount. When a guard shape is configured alongside distinct, the total also falls back to a non-distinct count to avoid imposing the public read shape on the internal counting query. The hasMore value is affected accordingly.',
     '<strong>Serialization:</strong> BigInt values are serialized as strings. Bytes/Buffer values are serialized as base64 strings. Decimal values are serialized as strings. DateTime values are serialized as ISO 8601 strings.',
     '<strong>Playground:</strong> The query playground embeds an iframe to a local prisma-query-builder-ui instance. It connects to your real database using the configured DATABASE_URL. It is disabled in production and when queryBuilder is set to false or queryBuilder.enabled is set to false.',
-    '<strong>Prototype pollution protection:</strong> All incoming JSON bodies and query parameters are sanitized to reject __proto__, constructor, and prototype keys.',
+    '<strong>Prototype pollution protection:</strong> All incoming JSON bodies and query parameters are sanitized to strip __proto__, constructor, and prototype keys before reaching handlers.',
     '<strong>Batch operation safety:</strong> deleteMany, updateMany, and updateManyAndReturn require a where field in the request body. Requests without where are rejected with 400 to prevent accidental mass operations.',
     '<strong>Bulk write constraints:</strong> createMany, createManyAndReturn, updateMany, and updateManyAndReturn accept scalar-only data inputs. Nested relation writes are not supported in these operations.',
     '<strong>Provider compatibility:</strong> createManyAndReturn requires Prisma 5.14.0+ and is limited to PostgreSQL, CockroachDB, and SQLite. updateManyAndReturn requires Prisma 6.2.0+ with the same provider restrictions. skipDuplicates is not supported on all database providers.',
-    '<strong>omit compatibility:</strong> The omit parameter requires Prisma 5.13.0+ (preview) or 6.2.0+ (GA). On older Prisma versions, requests using omit will return 400.',
+    '<strong>omit compatibility:</strong> The omit parameter requires Prisma 6.2.0+. On versions 6.0.x–6.1.x, requests using omit return 400.',
   ]
 
   const noUniqueFieldNote = '<div class="bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs text-gray-500">This model has no unique or id fields suitable for a generated example. Use the unique constraint from your schema.</div>'

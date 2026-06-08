@@ -1,4 +1,8 @@
-import { generatorHandler, GeneratorOptions, DMMF } from '@prisma/generator-helper'
+import {
+  generatorHandler,
+  GeneratorOptions,
+  DMMF,
+} from '@prisma/generator-helper'
 import path from 'path'
 import { generateUnifiedHandler } from './generators/generateUnifiedHandler'
 import { generateFastifyHandler } from './generators/generateFastifyHandler'
@@ -10,17 +14,33 @@ import { generateScalarUIHandler } from './generators/generateUnifiedScalarUI'
 import { generateUnifiedDocs } from './generators/generateUnifiedDocs'
 import { generateQueryBuilderHelper } from './generators/generateQueryBuilderHelper'
 import { generateModelCore } from './generators/generateOperationCore'
-import { generateRelationMeta, generateRelationModelsIndex } from './generators/generateRelationMeta'
-import { getRelativeClientPath, getGuardShapesImport } from './generators/generateImportPrismaStatement'
+import {
+  generateRelationMeta,
+  generateRelationModelsIndex,
+} from './generators/generateRelationMeta'
+import {
+  getRelativeClientPath,
+  getGuardShapesImport,
+} from './generators/generateImportPrismaStatement'
 import { writeFileSafely } from './utils/writeFileSafely'
 import { copyFiles } from './utils/copyFiles'
 import { resolveImportStyle, ImportStyle } from './utils/resolveImportStyle'
 import { GENERATOR_NAME, Target } from './constants'
 
+const GENERATOR_OFF_RE = /\bgenerator off\b/
+
 function getTarget(options: GeneratorOptions): Target {
-  const raw = String((options.generator.config as Record<string, unknown>).target ?? 'express').toLowerCase()
+  const raw = String(
+    (options.generator.config as Record<string, unknown>).target ?? 'express',
+  ).toLowerCase()
   if (raw === 'express' || raw === 'fastify' || raw === 'hono') return raw
-  throw new Error(`Invalid target "${raw}". Expected "express", "fastify", or "hono".`)
+  throw new Error(
+    `Invalid target "${raw}". Expected "express", "fastify", or "hono".`,
+  )
+}
+
+function validateClientGeneratorPresent(options: GeneratorOptions): void {
+  getRelativeClientPath(options, options.dmmf.datamodel.models[0]?.name ?? 'Model')
 }
 
 generatorHandler({
@@ -34,8 +54,9 @@ generatorHandler({
 
   async onGenerate(options: GeneratorOptions) {
     const target = getTarget(options)
-    const hasExplicitOutput = !!options.generator.output?.fromEnvVar
-      || (options.generator.config as Record<string, unknown>).output !== undefined
+    const hasExplicitOutput =
+      !!options.generator.output?.fromEnvVar ||
+      (options.generator.config as Record<string, unknown>).output !== undefined
 
     if (!hasExplicitOutput) {
       const schemaDir = path.dirname(options.schemaPath)
@@ -50,24 +71,35 @@ generatorHandler({
     console.log(`  Output: ${options.generator.output?.value}`)
     console.log(`  Import style: ${importStyle}`)
 
+    if (options.dmmf.datamodel.models.length > 0) {
+      validateClientGeneratorPresent(options)
+    }
+
     await copyFiles(options, target, importStyle)
 
     const modelNames: string[] = []
-    const generateHandler: (opts: { model: DMMF.Model; importStyle: ImportStyle }) => string =
-      target === 'fastify' ? generateFastifyHandler :
-      target === 'hono' ? generateHonoHandler :
-      generateUnifiedHandler
+    const generateHandler: (opts: {
+      model: DMMF.Model
+      importStyle: ImportStyle
+    }) => string =
+      target === 'fastify'
+        ? generateFastifyHandler
+        : target === 'hono'
+          ? generateHonoHandler
+          : generateUnifiedHandler
 
     const allModels = options.dmmf.datamodel.models as DMMF.Model[]
 
     for (const model of options.dmmf.datamodel.models) {
-      if (model.documentation && model.documentation.includes('generator off')) {
+      if (
+        model.documentation &&
+        GENERATOR_OFF_RE.test(model.documentation)
+      ) {
         console.log(`  Skipping: ${model.name} (generator off)`)
         continue
       }
       modelNames.push(model.name)
 
-      const relativeClientPath = getRelativeClientPath(options, model.name)
       const guardShapesImport = getGuardShapesImport(options, model.name)
 
       await writeFileSafely({
@@ -102,7 +134,6 @@ generatorHandler({
             : generateRouterFunction({
                 model: model as DMMF.Model,
                 enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
-                relativeClientPath,
                 guardShapesImport,
                 importStyle,
               })

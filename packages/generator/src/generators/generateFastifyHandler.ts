@@ -1,5 +1,4 @@
 import { DMMF } from '@prisma/generator-helper'
-import { toCamelCase } from '../utils/strings'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 
@@ -47,11 +46,9 @@ export function generateFastifyHandler(options: {
 }): string {
   const ext = importExt(options.importStyle)
   const modelName = options.model.name
-  const prefix = toCamelCase(modelName)
 
   const readHandlers = READ_OPS.map((op) => {
-    const exportName = `${prefix}${op.charAt(0).toUpperCase() + op.slice(1)}`
-
+    const exportName = `${modelName}${op.charAt(0).toUpperCase() + op.slice(1)}`
     return `
 export async function ${exportName}(
   request: FastifyRequest,
@@ -63,7 +60,7 @@ export async function ${exportName}(
   }).join('\n')
 
   const writeHandlers = WRITE_OPS.map((op) => {
-    const exportName = `${prefix}${op.charAt(0).toUpperCase() + op.slice(1)}`
+    const exportName = `${modelName}${op.charAt(0).toUpperCase() + op.slice(1)}`
     const statusCode = CREATED_OPS.has(op) ? 201 : 200
 
     return `

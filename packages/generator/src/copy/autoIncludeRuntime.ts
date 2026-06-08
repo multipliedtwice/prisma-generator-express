@@ -12,9 +12,11 @@ import {
   setByPath,
   getDelegate,
   getExtendedClient,
+  mapError,
   type OperationContext,
   type PrismaDelegate,
 } from './operationRuntime'
+import { isPlainObject } from './misc'
 import {
   planAutoInclude,
   type ModelRelationMap,
@@ -39,16 +41,12 @@ export type RunAutoIncludeOptions = {
   signal?: AbortSignal
 }
 
-function isObject(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === 'object' && !Array.isArray(v)
-}
-
 function readPath(source: Record<string, unknown>, path: string): unknown {
   if (path === '') return source
   const parts = path.split('.')
   let cursor: unknown = source
   for (const part of parts) {
-    if (!isObject(cursor)) return undefined
+    if (!isPlainObject(cursor)) return undefined
     cursor = cursor[part]
   }
   return cursor
@@ -77,7 +75,7 @@ function mergeWhere(
   userWhere: unknown,
   linkFilter: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (!isObject(userWhere) || Object.keys(userWhere).length === 0) return linkFilter
+  if (!isPlainObject(userWhere) || Object.keys(userWhere).length === 0) return linkFilter
   return { AND: [userWhere, linkFilter] }
 }
 
@@ -108,7 +106,7 @@ function buildPublicForStage(
 ): unknown {
   if (Array.isArray(result)) {
     return result.map((item) => {
-      if (isObject(item)) {
+      if (isPlainObject(item)) {
         const copy: Record<string, unknown> = { ...item }
         stripInternalAtScope(copy, internalFieldPaths, scopePath)
         return copy
@@ -116,7 +114,7 @@ function buildPublicForStage(
       return item
     })
   }
-  if (isObject(result)) {
+  if (isPlainObject(result)) {
     const copy: Record<string, unknown> = { ...result }
     stripInternalAtScope(copy, internalFieldPaths, scopePath)
     return copy
@@ -138,7 +136,7 @@ async function runOneStage(options: {
   if (isAborted()) return
 
   const parentRaw = readPath(internal, stage.parentPath)
-  if (!isObject(parentRaw)) {
+  if (!isPlainObject(parentRaw)) {
     if (stage.parentPath !== '') {
       return
     }
@@ -270,20 +268,14 @@ export async function runAutoIncludeProgressive(
       rootResult = await rootDelegate[baseOp](plan.rootArgs)
     } catch (err) {
       if (isClientGone()) return
-      const code = (err as { code?: string } | null)?.code
-      const isOrThrow = baseOp === 'findUniqueOrThrow' || baseOp === 'findFirstOrThrow'
-      if (isOrThrow && code === 'P2025') {
-        sendSSEError(res, 'Record not found')
-        return
-      }
       console.error('[auto-progressive] root query failed:', err)
-      sendSSEError(res, 'Root query failed')
+      sendSSEError(res, mapError(err).message)
       return
     }
 
     if (isClientGone()) return
 
-    if (rootResult === null || !isObject(rootResult)) {
+    if (rootResult === null || !isPlainObject(rootResult)) {
       sendSSEResult(res, null)
       return
     }
@@ -330,7 +322,7 @@ export async function runAutoIncludeProgressive(
         } catch (err) {
           if (isAborted()) return
           console.error('[auto-progressive] stage failed:', stage.relationPath, err)
-          stageErrorMessage = 'Could not load progressive response'
+          stageErrorMessage = mapError(err).message
           return
         }
         if (isAborted()) return
@@ -354,7 +346,7 @@ export async function runAutoIncludeProgressive(
     if (isClientGone()) return
     console.error('[auto-progressive] dispatch error:', err)
     if (!res.writableEnded && !res.destroyed) {
-      sendSSEError(res, 'Internal server error')
+      sendSSEError(res, mapError(err).message)
     }
   } finally {
     endSSE(res, keepalive)

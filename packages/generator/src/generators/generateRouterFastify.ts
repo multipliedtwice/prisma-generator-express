@@ -1,5 +1,4 @@
 import { DMMF } from '@prisma/generator-helper'
-import { toCamelCase } from '../utils/strings'
 import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
@@ -17,9 +16,8 @@ export function generateFastifyRouterFunction({
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
-  const prefix = toCamelCase(modelName)
   const modelNameLower = modelName.toLowerCase()
-  const routerFunctionName = `${prefix}Router`
+  const routerFunctionName = `${modelName}Router`
 
   const fieldsMeta = model.fields.map((f) => ({
     name: f.name,
@@ -47,33 +45,33 @@ export function generateFastifyRouterFunction({
   return `import type { FastifyInstance, FastifyRequest, FastifyReply, FastifyError } from 'fastify'
 import { startQueryBuilder } from '../queryBuilder${ext}'
 import {
-  ${prefix}FindUnique,
-  ${prefix}FindUniqueOrThrow,
-  ${prefix}FindFirst,
-  ${prefix}FindFirstOrThrow,
-  ${prefix}FindMany,
-  ${prefix}FindManyPaginated,
-  ${prefix}Create,
-  ${prefix}CreateMany,
-  ${prefix}CreateManyAndReturn,
-  ${prefix}Update,
-  ${prefix}UpdateMany,
-  ${prefix}UpdateManyAndReturn,
-  ${prefix}Upsert,
-  ${prefix}Delete,
-  ${prefix}DeleteMany,
-  ${prefix}Aggregate,
-  ${prefix}Count,
-  ${prefix}GroupBy,
+  ${modelName}FindUnique,
+  ${modelName}FindUniqueOrThrow,
+  ${modelName}FindFirst,
+  ${modelName}FindFirstOrThrow,
+  ${modelName}FindMany,
+  ${modelName}FindManyPaginated,
+  ${modelName}Create,
+  ${modelName}CreateMany,
+  ${modelName}CreateManyAndReturn,
+  ${modelName}Update,
+  ${modelName}UpdateMany,
+  ${modelName}UpdateManyAndReturn,
+  ${modelName}Upsert,
+  ${modelName}Delete,
+  ${modelName}DeleteMany,
+  ${modelName}Aggregate,
+  ${modelName}Count,
+  ${modelName}GroupBy,
 } from './${modelName}Handlers${ext}'
 import type { RouteConfig, FastifyHookHandler } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
-import { sanitizeKeys } from '../misc${ext}'
+import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import { mapError, transformResult, HttpError, type OperationContext } from '../operationRuntime${ext}'
 
 ${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, importStyle, 'fastify')}
-const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
+const _env = getEnv()
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
 
@@ -97,19 +95,10 @@ type FastifyExtended = FastifyRequest & {
   resultStatus?: number
 }
 
-const defaultOpConfig: OperationConfigLike = {
-  before: [],
-  after: [],
-}
-
-function normalizePrefix(p: string): string {
-  if (!p) return ''
-  let result = p
-  if (!result.startsWith('/')) result = '/' + result
-  while (result.length > 1 && result.endsWith('/')) result = result.slice(0, -1)
-  if (result === '/') return ''
-  return result
-}
+const defaultOpConfig: OperationConfigLike = Object.freeze({
+  before: Object.freeze([]) as unknown as FastifyHookHandler[],
+  after: Object.freeze([]) as unknown as FastifyHookHandler[],
+})
 
 function isQueryBuilderEnabled(config: RouteConfig): boolean {
   if (config.queryBuilder === false) return false
@@ -149,16 +138,16 @@ function makeShapeHook(
     if (paginationConfig) {
       fx.routeConfig = { pagination: paginationConfig }
     }
+    const headerName = (config.guard?.variantHeader || 'x-api-variant').toLowerCase()
+    const headerValue = request.headers[headerName]
+    const caller = config.guard?.resolveVariant?.(request)
+      ?? (Array.isArray(headerValue) ? headerValue[0] : headerValue)
+      ?? undefined
+    if (caller) {
+      fx.guardCaller = caller
+    }
     if (opConfig.shape) {
       fx.guardShape = opConfig.shape
-      const headerName = config.guard?.variantHeader || 'x-api-variant'
-      const headerValue = request.headers[headerName]
-      const caller = config.guard?.resolveVariant?.(request)
-        ?? (Array.isArray(headerValue) ? headerValue[0] : headerValue)
-        ?? undefined
-      if (caller) {
-        fx.guardCaller = caller
-      }
     }
   }
 }
@@ -191,9 +180,9 @@ function sendError(reply: FastifyReply, error: unknown): void {
   reply.code(httpError.status).send({ message: httpError.message })
 }
 
-export async function ${routerFunctionName}<TCtx = unknown>(
+export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
   fastify: FastifyInstance,
-  config: ${modelName}RouteConfig<TCtx> = {},
+  config: ${modelName}RouteConfig<TCtx, TPrisma> = {},
 ) {
   const customPrefix = normalizePrefix(config.customUrlPrefix || '')
   const modelPrefix = config.addModelPrefix !== false ? '/${modelNameLower}' : ''
@@ -206,6 +195,25 @@ export async function ${routerFunctionName}<TCtx = unknown>(
     ))
 
   const postReadsEnabled = !config.disablePostReads
+
+  const openApiJsonSpec = openApiDisabled
+    ? null
+    : buildModelOpenApi(
+        '${modelName}',
+        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
+        config,
+        { format: 'json' },
+      )
+  const openApiYamlSpec = openApiDisabled
+    ? null
+    : buildModelOpenApi(
+        '${modelName}',
+        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
+        config,
+        { format: 'yaml' },
+      )
 
   const qbEnabled = isQueryBuilderEnabled(config)
 
@@ -234,25 +242,11 @@ export async function ${routerFunctionName}<TCtx = unknown>(
     const openapiYamlPath = basePath ? \`\${basePath}/openapi.yaml\` : '/openapi.yaml'
 
     fastify.get(openapiJsonPath, async (_request, reply) => {
-      const spec = buildModelOpenApi(
-        '${modelName}',
-        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
-        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
-        config,
-        { format: 'json' },
-      )
-      return reply.send(spec)
+      return reply.send(openApiJsonSpec)
     })
 
     fastify.get(openapiYamlPath, async (_request, reply) => {
-      const spec = buildModelOpenApi(
-        '${modelName}',
-        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
-        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
-        config,
-        { format: 'yaml' },
-      )
-      return reply.type('application/yaml').send(spec as string)
+      return reply.type('application/yaml').send(openApiYamlSpec as string)
     })
   }
 
@@ -293,121 +287,121 @@ export async function ${routerFunctionName}<TCtx = unknown>(
   if (config.enableAll || config.findFirst) {
     const opConfig: OperationConfigLike = (config.findFirst as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/first\` : '/first'
-    fastify.get(path, handleGet(opConfig, ${prefix}FindFirst, parseQueryHook))
-    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}FindFirst, parseBodyAsQueryHook))
+    fastify.get(path, handleGet(opConfig, ${modelName}FindFirst, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${modelName}FindFirst, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.findFirstOrThrow) {
     const opConfig: OperationConfigLike = (config.findFirstOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/first/strict\` : '/first/strict'
-    fastify.get(path, handleGet(opConfig, ${prefix}FindFirstOrThrow, parseQueryHook))
-    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}FindFirstOrThrow, parseBodyAsQueryHook))
+    fastify.get(path, handleGet(opConfig, ${modelName}FindFirstOrThrow, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${modelName}FindFirstOrThrow, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.findManyPaginated) {
     const opConfig: OperationConfigLike = (config.findManyPaginated as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/paginated\` : '/paginated'
-    fastify.get(path, handleGet(opConfig, ${prefix}FindManyPaginated, parseQueryHook))
-    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}FindManyPaginated, parseBodyAsQueryHook))
+    fastify.get(path, handleGet(opConfig, ${modelName}FindManyPaginated, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${modelName}FindManyPaginated, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.aggregate) {
     const opConfig: OperationConfigLike = (config.aggregate as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/aggregate\` : '/aggregate'
-    fastify.get(path, handleGet(opConfig, ${prefix}Aggregate, parseQueryHook))
-    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}Aggregate, parseBodyAsQueryHook))
+    fastify.get(path, handleGet(opConfig, ${modelName}Aggregate, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${modelName}Aggregate, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.count) {
     const opConfig: OperationConfigLike = (config.count as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/count\` : '/count'
-    fastify.get(path, handleGet(opConfig, ${prefix}Count, parseQueryHook))
-    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}Count, parseBodyAsQueryHook))
+    fastify.get(path, handleGet(opConfig, ${modelName}Count, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${modelName}Count, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.groupBy) {
     const opConfig: OperationConfigLike = (config.groupBy as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/groupby\` : '/groupby'
-    fastify.get(path, handleGet(opConfig, ${prefix}GroupBy, parseQueryHook))
-    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}GroupBy, parseBodyAsQueryHook))
+    fastify.get(path, handleGet(opConfig, ${modelName}GroupBy, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${modelName}GroupBy, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.findUniqueOrThrow) {
     const opConfig: OperationConfigLike = (config.findUniqueOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/unique/strict\` : '/unique/strict'
-    fastify.get(path, handleGet(opConfig, ${prefix}FindUniqueOrThrow, parseQueryHook))
-    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}FindUniqueOrThrow, parseBodyAsQueryHook))
+    fastify.get(path, handleGet(opConfig, ${modelName}FindUniqueOrThrow, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${modelName}FindUniqueOrThrow, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.findUnique) {
     const opConfig: OperationConfigLike = (config.findUnique as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/unique\` : '/unique'
-    fastify.get(path, handleGet(opConfig, ${prefix}FindUnique, parseQueryHook))
-    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${prefix}FindUnique, parseBodyAsQueryHook))
+    fastify.get(path, handleGet(opConfig, ${modelName}FindUnique, parseQueryHook))
+    if (postReadsEnabled) fastify.post(path, handleGet(opConfig, ${modelName}FindUnique, parseBodyAsQueryHook))
   }
 
   if (config.enableAll || config.findMany) {
     const opConfig: OperationConfigLike = (config.findMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath || '/'
-    fastify.get(path, handleGet(opConfig, ${prefix}FindMany, parseQueryHook))
+    fastify.get(path, handleGet(opConfig, ${modelName}FindMany, parseQueryHook))
     if (postReadsEnabled) {
       const postPath = basePath ? \`\${basePath}/read\` : '/read'
-      fastify.post(postPath, handleGet(opConfig, ${prefix}FindMany, parseBodyAsQueryHook))
+      fastify.post(postPath, handleGet(opConfig, ${modelName}FindMany, parseBodyAsQueryHook))
     }
   }
 
   if (config.enableAll || config.createManyAndReturn) {
     const opConfig: OperationConfigLike = (config.createManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    fastify.post(path, handleWrite(opConfig, ${prefix}CreateManyAndReturn))
+    fastify.post(path, handleWrite(opConfig, ${modelName}CreateManyAndReturn))
   }
 
   if (config.enableAll || config.createMany) {
     const opConfig: OperationConfigLike = (config.createMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    fastify.post(path, handleWrite(opConfig, ${prefix}CreateMany))
+    fastify.post(path, handleWrite(opConfig, ${modelName}CreateMany))
   }
 
   if (config.enableAll || config.create) {
     const opConfig: OperationConfigLike = (config.create as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath || '/'
-    fastify.post(path, handleWrite(opConfig, ${prefix}Create))
+    fastify.post(path, handleWrite(opConfig, ${modelName}Create))
   }
 
   if (config.enableAll || config.updateManyAndReturn) {
     const opConfig: OperationConfigLike = (config.updateManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    fastify.put(path, handleWrite(opConfig, ${prefix}UpdateManyAndReturn))
+    fastify.put(path, handleWrite(opConfig, ${modelName}UpdateManyAndReturn))
   }
 
   if (config.enableAll || config.updateMany) {
     const opConfig: OperationConfigLike = (config.updateMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    fastify.put(path, handleWrite(opConfig, ${prefix}UpdateMany))
+    fastify.put(path, handleWrite(opConfig, ${modelName}UpdateMany))
   }
 
   if (config.enableAll || config.update) {
     const opConfig: OperationConfigLike = (config.update as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath || '/'
-    fastify.put(path, handleWrite(opConfig, ${prefix}Update))
+    fastify.put(path, handleWrite(opConfig, ${modelName}Update))
   }
 
   if (config.enableAll || config.upsert) {
     const opConfig: OperationConfigLike = (config.upsert as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath || '/'
-    fastify.patch(path, handleWrite(opConfig, ${prefix}Upsert))
+    fastify.patch(path, handleWrite(opConfig, ${modelName}Upsert))
   }
 
   if (config.enableAll || config.deleteMany) {
     const opConfig: OperationConfigLike = (config.deleteMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    fastify.delete(path, handleWrite(opConfig, ${prefix}DeleteMany))
+    fastify.delete(path, handleWrite(opConfig, ${modelName}DeleteMany))
   }
 
   if (config.enableAll || config.delete) {
     const opConfig: OperationConfigLike = (config.delete as OperationConfigLike | undefined) ?? defaultOpConfig
     const path = basePath || '/'
-    fastify.delete(path, handleWrite(opConfig, ${prefix}Delete))
+    fastify.delete(path, handleWrite(opConfig, ${modelName}Delete))
   }
 }
 `

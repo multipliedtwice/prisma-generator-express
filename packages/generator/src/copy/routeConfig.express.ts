@@ -29,24 +29,30 @@ export type {
 export type OperationConfig<TShape = Record<string, unknown>> =
   BaseOperationConfig<RequestHandler, TShape>
 
-export type ReadOperationConfig<TShape = Record<string, unknown>, TCtx = unknown> =
-  BaseOperationConfig<RequestHandler, TShape> & {
-    progressive?: Record<string, ProgressiveVariantConfig>
-    progressiveStages?: Record<string, ProgressiveStage<TCtx>>
-  }
-
-type ReadOperationOverrides<TShape, TCtx> = {
-  findFirst?: ReadOperationConfig<TShape, TCtx>
-  findFirstOrThrow?: ReadOperationConfig<TShape, TCtx>
-  findUnique?: ReadOperationConfig<TShape, TCtx>
-  findUniqueOrThrow?: ReadOperationConfig<TShape, TCtx>
-  findMany?: ReadOperationConfig<TShape, TCtx>
-  findManyPaginated?: ReadOperationConfig<TShape, TCtx>
-  count?: ReadOperationConfig<TShape, TCtx>
-  aggregate?: ReadOperationConfig<TShape, TCtx>
-  groupBy?: ReadOperationConfig<TShape, TCtx>
+export type ReadOperationConfig<
+  TShape = Record<string, unknown>,
+  TCtx = unknown,
+  TPrisma = any,
+> = BaseOperationConfig<RequestHandler, TShape> & {
+  progressive?: Record<string, ProgressiveVariantConfig>
+  progressiveStages?: Record<string, ProgressiveStage<TCtx, TPrisma>>
 }
 
-export type RouteConfig<TShape = Record<string, unknown>, TCtx = unknown> =
-  BaseRouteConfig<RequestHandler, Request, TShape, TCtx> &
-    ReadOperationOverrides<TShape, TCtx>
+type ReadOperationOverrides<TShape, TCtx, TPrisma> = {
+  findFirst?: ReadOperationConfig<TShape, TCtx, TPrisma>
+  findFirstOrThrow?: ReadOperationConfig<TShape, TCtx, TPrisma>
+  findUnique?: ReadOperationConfig<TShape, TCtx, TPrisma>
+  findUniqueOrThrow?: ReadOperationConfig<TShape, TCtx, TPrisma>
+  findMany?: ReadOperationConfig<TShape, TCtx, TPrisma>
+  findManyPaginated?: ReadOperationConfig<TShape, TCtx, TPrisma>
+  count?: ReadOperationConfig<TShape, TCtx, TPrisma>
+  aggregate?: ReadOperationConfig<TShape, TCtx, TPrisma>
+  groupBy?: ReadOperationConfig<TShape, TCtx, TPrisma>
+}
+
+export type RouteConfig<
+  TShape = Record<string, unknown>,
+  TCtx = unknown,
+  TPrisma = any,
+> = BaseRouteConfig<RequestHandler, Request, TShape, TCtx> &
+  ReadOperationOverrides<TShape, TCtx, TPrisma>

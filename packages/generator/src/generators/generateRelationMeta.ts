@@ -18,7 +18,6 @@ type ModelMeta = {
   name: string
   delegateKey: string
   scalarFields: string[]
-  idFields: string[]
   relations: Record<string, RelationFieldMeta>
 }
 
@@ -95,7 +94,6 @@ function buildModelMeta(
   models: ReadonlyArray<DMMF.Model>,
 ): ModelMeta {
   const scalarFields: string[] = []
-  const idFields: string[] = []
   const relations: Record<string, RelationFieldMeta> = {}
 
   for (const field of model.fields) {
@@ -103,13 +101,6 @@ function buildModelMeta(
       relations[field.name] = computeRelation(field, model.name, models)
     } else if (field.kind === 'scalar' || field.kind === 'enum') {
       scalarFields.push(field.name)
-      if (field.isId) idFields.push(field.name)
-    }
-  }
-
-  if (model.primaryKey && Array.isArray(model.primaryKey.fields)) {
-    for (const f of model.primaryKey.fields) {
-      if (!idFields.includes(f)) idFields.push(f)
     }
   }
 
@@ -117,7 +108,6 @@ function buildModelMeta(
     name: model.name,
     delegateKey: model.name.charAt(0).toLowerCase() + model.name.slice(1),
     scalarFields,
-    idFields,
     relations,
   }
 }

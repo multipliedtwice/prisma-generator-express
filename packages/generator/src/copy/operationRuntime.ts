@@ -1,4 +1,4 @@
-import { sanitizeKeys } from './misc'
+import { sanitizeKeys, isPlainObject } from './misc'
 import type {
   ProgressivePatch,
   ProgressiveStopResult,
@@ -264,7 +264,10 @@ export function assertGuard(
   delegate: PrismaDelegate,
 ): asserts delegate is PrismaDelegate & { guard: NonNullable<PrismaDelegate['guard']> } {
   if (typeof delegate.guard !== 'function') {
-    throw new HttpError(500, 'Guard shapes require prisma-guard extension on PrismaClient.')
+    throw new HttpError(
+      500,
+      'Guard shapes require prisma-guard extension on PrismaClient. Install: npm install prisma-guard, then extend your client with guardExtension().',
+    )
   }
 }
 
@@ -318,6 +321,22 @@ export async function countForPagination(
   const effectiveLimit = distinctCountLimit ?? DISTINCT_COUNT_LIMIT
   const countShape = shape ? buildCountShape(shape) : undefined
 
+  const runCount = async (): Promise<number> => {
+    const countArgs: Record<string, unknown> = {}
+    if (query.where) countArgs.where = query.where
+    if (countShape) {
+      return (await (delegate.guard as NonNullable<PrismaDelegate['guard']>)(
+        countShape as Record<string, unknown>,
+        caller,
+      ).count(countArgs)) as number
+    }
+    return (await delegate.count(countArgs)) as number
+  }
+
+  if (hasDistinct && shape) {
+    return runCount()
+  }
+
   if (hasDistinct) {
     const selectField = distinctFields[0]
     const distinctArgs: Record<string, unknown> = {
@@ -326,62 +345,61 @@ export async function countForPagination(
       select: { [selectField]: true },
       take: effectiveLimit + 1,
     }
-    const results = shape
-      ? await (delegate.guard as NonNullable<PrismaDelegate['guard']>)(shape, caller).findMany(distinctArgs)
-      : await delegate.findMany(distinctArgs)
-    const resultArray = results as unknown[]
-    if (resultArray.length > effectiveLimit) {
-      console.warn('[prisma-generator-express] Distinct count exceeds ' + effectiveLimit + ', falling back to approximate total')
-      const countArgs: Record<string, unknown> = {}
-      if (query.where) countArgs.where = query.where
-      const total = countShape
-        ? await (delegate.guard as NonNullable<PrismaDelegate['guard']>)(countShape as Record<string, unknown>, caller).count(countArgs)
-        : await delegate.count(countArgs)
-      return total as number
+    const results = (await delegate.findMany(distinctArgs)) as unknown[]
+    if (results.length > effectiveLimit) {
+      console.warn(
+        '[prisma-generator-express] Distinct count exceeds ' +
+          effectiveLimit +
+          ', falling back to approximate total',
+      )
+      return runCount()
     }
-    return resultArray.length
+    return results.length
   }
 
-  const countArgs: Record<string, unknown> = {}
-  if (query.where) countArgs.where = query.where
-  const total = countShape
-    ? await (delegate.guard as NonNullable<PrismaDelegate['guard']>)(countShape as Record<string, unknown>, caller).count(countArgs)
-    : await delegate.count(countArgs)
-  return total as number
+  return runCount()
 }
 
 export function transformResult(value: unknown): unknown {
   if (value === null || value === undefined) return value
   if (typeof value === 'bigint') return value.toString()
   if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) return value.toString('base64')
-  if (value instanceof Uint8Array) return Buffer.from(value).toString('base64')
+  if (typeof Buffer !== 'undefined' && value instanceof Uint8Array) {
+    return Buffer.from(value).toString('base64')
+  }
   if (value instanceof Date) return value
-  if (Array.isArray(value)) return value.map(transformResult)
-  if (typeof value === 'object') {
-    const proto = Object.getPrototypeOf(value)
-    if (proto !== Object.prototype && proto !== null) return value
-    const out: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = transformResult(v)
+  if (Array.isArray(value)) {
+    let changed = false
+    const out: unknown[] = new Array(value.length)
+    for (let i = 0; i < value.length; i++) {
+      const t = transformResult(value[i])
+      if (t !== value[i]) changed = true
+      out[i] = t
     }
-    return out
+    return changed ? out : value
+  }
+  if (isPlainObject(value)) {
+    let changed = false
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) {
+      const t = transformResult(v)
+      if (t !== v) changed = true
+      out[k] = t
+    }
+    return changed ? out : value
   }
   return value
 }
 
 export function acceptsEventStream(accept: string | undefined): boolean {
   if (!accept) return false
-  return accept.toLowerCase().includes('text/event-stream')
+  return accept
+    .toLowerCase()
+    .split(',')
+    .some((entry) => entry.split(';')[0].trim() === 'text/event-stream')
 }
 
 const UNSAFE_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype'])
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object') return false
-  if (Array.isArray(value)) return false
-  const proto = Object.getPrototypeOf(value)
-  return proto === Object.prototype || proto === null
-}
 
 export function setByPath(target: Record<string, unknown>, path: string, value: unknown): boolean {
   const parts = path.split('.')
@@ -445,7 +463,7 @@ export function initSSE(res: SseWritable): void {
 
 export function flushSSE(res: SseWritable): void {
   if (typeof res.flush === 'function') {
-    try { res.flush() } catch { /* ignore */ }
+    try { res.flush() } catch {}
   }
 }
 
@@ -493,7 +511,7 @@ export function startSSEKeepalive(res: SseWritable, intervalMs: number = 15000):
     try {
       res.write(': keepalive\n\n')
       flushSSE(res)
-    } catch { /* ignore */ }
+    } catch {}
   }, intervalMs)
   const maybeUnref = (handle as unknown as { unref?: () => void }).unref
   if (typeof maybeUnref === 'function') maybeUnref.call(handle)
@@ -502,10 +520,10 @@ export function startSSEKeepalive(res: SseWritable, intervalMs: number = 15000):
 
 export function endSSE(res: SseWritable, keepaliveHandle: IntervalHandle | null): void {
   if (keepaliveHandle) {
-    try { clearInterval(keepaliveHandle) } catch { /* ignore */ }
+    try { clearInterval(keepaliveHandle) } catch {}
   }
   if (!res.writableEnded && !res.destroyed) {
-    try { res.end() } catch { /* ignore */ }
+    try { res.end() } catch {}
   }
 }
 
@@ -539,7 +557,7 @@ export async function runSingleResultSSE(options: RunSingleResultSSEOptions): Pr
   } catch (err) {
     console.error('[progressive] single-result error:', err)
     if (!res.writableEnded && !res.destroyed) {
-      sendSSEError(res, 'Internal server error')
+      sendSSEError(res, mapError(err).message)
     }
   } finally {
     endSSE(res, keepalive)
@@ -605,7 +623,7 @@ export async function runProgressiveEndpoint(options: RunProgressiveOptions): Pr
   } catch (err) {
     console.error('[progressive] stage error:', err)
     if (!res.writableEnded && !res.destroyed) {
-      sendSSEError(res, 'Could not load progressive response')
+      sendSSEError(res, mapError(err).message)
     }
   } finally {
     removeReqCloseListener(req, onClose)

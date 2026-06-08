@@ -16,7 +16,7 @@ export type {
 export type FastifyHookHandler = (
   request: FastifyRequest,
   reply: FastifyReply,
-) => Promise<void> | void
+) => Promise<unknown> | unknown
 
 export type OperationConfig<TShape = Record<string, unknown>> =
   BaseOperationConfig<FastifyHookHandler, TShape>

@@ -1,5 +1,6 @@
 import type { RouteConfig } from './routeConfig'
 import { OPERATION_DEFS, isOperationEnabled } from './operationDefinitions'
+import { normalizePrefix, removeTrailingSlash } from './misc'
 
 type SchemaObject = {
   type?: string | string[]
@@ -101,20 +102,6 @@ function addErrorResponses(operation: any, codes: number[]): void {
       COMMON_ERRORS[code] || 'Error',
     )
   }
-}
-
-function normalizePrefix(p: string): string {
-  if (!p) return ''
-  let result = p
-  if (!result.startsWith('/')) result = '/' + result
-  while (result.length > 1 && result.endsWith('/')) result = result.slice(0, -1)
-  if (result === '/') return ''
-  return result
-}
-
-function removeTrailingSlash(path: string): string {
-  if (path === '/') return ''
-  return path.endsWith('/') ? path.slice(0, -1) : path
 }
 
 function queryParam(
@@ -1783,6 +1770,11 @@ function yamlEscapeValue(value: unknown, indent: number = 0): string {
     str === '.inf' ||
     str === '-.inf' ||
     str === '.nan' ||
+    str === '-' ||
+    str === '?' ||
+    str.startsWith('- ') ||
+    str.startsWith('? ') ||
+    /^[!&*|>@`]/.test(str) ||
     str.includes(':') ||
     str.includes('#') ||
     str.includes('{') ||
@@ -1837,6 +1829,11 @@ function yamlEscapeKey(key: string): string {
     key === '.inf' ||
     key === '-.inf' ||
     key === '.nan' ||
+    key === '-' ||
+    key === '?' ||
+    key.startsWith('- ') ||
+    key.startsWith('? ') ||
+    /^[!&*|>@`]/.test(key) ||
     key.includes(':') ||
     key.includes('#') ||
     key.includes('{') ||

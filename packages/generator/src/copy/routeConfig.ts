@@ -36,7 +36,7 @@ export type ProgressiveStageResult<T = unknown> =
   | ProgressivePatch[]
   | ProgressiveStopResult<T>
 
-export type ProgressiveStageContext<TContext = unknown, TPrisma = unknown> = {
+export type ProgressiveStageContext<TContext = unknown, TPrisma = any> = {
   ctx: TContext
   req: unknown
   res: unknown
@@ -46,7 +46,7 @@ export type ProgressiveStageContext<TContext = unknown, TPrisma = unknown> = {
   signal: AbortSignal
 }
 
-export type ProgressiveStage<TContext = unknown, TPrisma = unknown, T = unknown> = (
+export type ProgressiveStage<TContext = unknown, TPrisma = any, T = unknown> = (
   context: ProgressiveStageContext<TContext, TPrisma>,
 ) => Promise<ProgressiveStageResult<T>>
 

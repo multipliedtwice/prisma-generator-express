@@ -1,5 +1,4 @@
 import { DMMF } from '@prisma/generator-helper'
-import { toCamelCase } from '../utils/strings'
 import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
@@ -17,9 +16,8 @@ export function generateHonoRouterFunction({
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
-  const prefix = toCamelCase(modelName)
   const modelNameLower = modelName.toLowerCase()
-  const routerFunctionName = `${prefix}Router`
+  const routerFunctionName = `${modelName}Router`
 
   const fieldsMeta = model.fields.map((f) => ({
     name: f.name,
@@ -46,88 +44,166 @@ export function generateHonoRouterFunction({
 
   return `import { Hono } from 'hono'
 import type { Context, Next } from 'hono'
+import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { HTTPException } from 'hono/http-exception'
+import { startQueryBuilder } from '../queryBuilder${ext}'
 import {
-  ${prefix}FindUnique,
-  ${prefix}FindUniqueOrThrow,
-  ${prefix}FindFirst,
-  ${prefix}FindFirstOrThrow,
-  ${prefix}FindMany,
-  ${prefix}FindManyPaginated,
-  ${prefix}Create,
-  ${prefix}CreateMany,
-  ${prefix}CreateManyAndReturn,
-  ${prefix}Update,
-  ${prefix}UpdateMany,
-  ${prefix}UpdateManyAndReturn,
-  ${prefix}Upsert,
-  ${prefix}Delete,
-  ${prefix}DeleteMany,
-  ${prefix}Aggregate,
-  ${prefix}Count,
-  ${prefix}GroupBy,
+  ${modelName}FindUnique,
+  ${modelName}FindUniqueOrThrow,
+  ${modelName}FindFirst,
+  ${modelName}FindFirstOrThrow,
+  ${modelName}FindMany,
+  ${modelName}FindManyPaginated,
+  ${modelName}Create,
+  ${modelName}CreateMany,
+  ${modelName}CreateManyAndReturn,
+  ${modelName}Update,
+  ${modelName}UpdateMany,
+  ${modelName}UpdateManyAndReturn,
+  ${modelName}Upsert,
+  ${modelName}Delete,
+  ${modelName}DeleteMany,
+  ${modelName}Aggregate,
+  ${modelName}Count,
+  ${modelName}GroupBy,
 } from './${modelName}Handlers${ext}'
-import type { RouteConfig, HonoHookHandler } from '../routeConfig.target${ext}'
+import type {
+  RouteConfig,
+  HonoHookHandler,
+  HonoEnvBase,
+  HonoInternalVariables,
+  GeneratedHonoEnv,
+} from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
-import { sanitizeKeys } from '../misc${ext}'
+import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
-import { mapError, transformResult, HttpError, type OperationContext } from '../operationRuntime${ext}'
+import { mapError, transformResult, type OperationContext } from '../operationRuntime${ext}'
 
 ${generateRouteConfigType(modelName, 'HonoHookHandler', guardShapesImport, importStyle, 'hono')}
-
-type HonoVariables = {
-  prisma: unknown
-  postgres?: unknown
-  sqlite?: unknown
-  parsedQuery?: Record<string, unknown>
-  body?: unknown
-  routeConfig?: { pagination?: OperationContext['paginationConfig'] }
-  guardShape?: Record<string, unknown>
-  guardCaller?: string
-  resultData?: unknown
-  resultStatus?: number
-}
-
-type HonoEnv = { Variables: HonoVariables }
-
-const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
+const _env = getEnv()
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
 
 const MODEL_ENUMS = ${JSON.stringify(enumsMeta, null, 2)} as const
 
-type OperationConfigLike = {
-  before?: HonoHookHandler[]
-  after?: HonoHookHandler[]
+type OperationConfigLike<TEnv extends HonoEnvBase> = {
+  before?: HonoHookHandler<TEnv>[]
+  after?: HonoHookHandler<TEnv>[]
   shape?: Record<string, unknown>
 }
 
-const defaultOpConfig: OperationConfigLike = {
-  before: [],
-  after: [],
+const defaultOpConfig = Object.freeze({
+  before: Object.freeze([]),
+  after: Object.freeze([]),
+}) as unknown as OperationConfigLike<HonoEnvBase>
+
+type HandlerContext = Context<{ Variables: HonoInternalVariables }>
+
+function isQueryBuilderEnabled(config: RouteConfig): boolean {
+  if (config.queryBuilder === false) return false
+  if (typeof config.queryBuilder === 'object' && config.queryBuilder.enabled === false) return false
+  if (_env.NODE_ENV === 'production') return false
+  return true
 }
 
-function normalizePrefix(p: string): string {
-  if (!p) return ''
-  let result = p
-  if (!result.startsWith('/')) result = '/' + result
-  while (result.length > 1 && result.endsWith('/')) result = result.slice(0, -1)
-  if (result === '/') return ''
-  return result
+function getQueryBuilderConfig(config: RouteConfig) {
+  if (config.queryBuilder === false) return null
+  if (typeof config.queryBuilder === 'object') return config.queryBuilder
+  return {}
 }
 
-async function safeParseBody(c: Context<HonoEnv>): Promise<unknown> {
-  try {
-    return await c.req.json()
-  } catch {
-    throw new HttpError(400, 'Invalid JSON in request body')
+async function parseQueryMiddleware(c: HandlerContext): Promise<void> {
+  const raw = c.req.query() as Record<string, unknown>
+  if (raw && Object.keys(raw).length > 0) {
+    c.set('parsedQuery', parseQueryParams(raw) as Record<string, unknown>)
   }
 }
 
-export function ${routerFunctionName}<TCtx = unknown>(
-  config: ${modelName}RouteConfig<TCtx> = {},
-): Hono<HonoEnv> {
-  const app = new Hono<HonoEnv>()
+async function parseBodyAsQueryMiddleware(c: HandlerContext): Promise<void> {
+  let body: unknown
+  try {
+    body = await c.req.json()
+  } catch {
+    throw new HTTPException(400, { message: 'Request body must be a JSON object' })
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new HTTPException(400, { message: 'Request body must be a JSON object' })
+  }
+  c.set('parsedQuery', sanitizeKeys(body as Record<string, unknown>))
+}
+
+async function parseWriteBodyMiddleware(c: HandlerContext): Promise<void> {
+  let body: unknown
+  try {
+    body = await c.req.json()
+  } catch {
+    throw new HTTPException(400, { message: 'Request body must be a JSON object' })
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new HTTPException(400, { message: 'Request body must be a JSON object' })
+  }
+  c.set('body', sanitizeKeys(body as Record<string, unknown>))
+}
+
+function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
+  config: ${modelName}RouteConfig<TCtx, TPrisma, TEnv>,
+  opConfig: OperationConfigLike<TEnv>,
+) {
+  return (c: Context<GeneratedHonoEnv<TEnv>>): void => {
+    const paginationConfig = (config as { pagination?: OperationContext['paginationConfig'] }).pagination
+    if (paginationConfig) {
+      c.set('routeConfig', { pagination: paginationConfig })
+    }
+    const headerName = config.guard?.variantHeader || 'x-api-variant'
+    const headerValue = c.req.header(headerName)
+    const caller = config.guard?.resolveVariant?.(c) ?? headerValue ?? undefined
+    if (caller) c.set('guardCaller', caller)
+    if (opConfig.shape) {
+      c.set('guardShape', opConfig.shape)
+    }
+  }
+}
+
+async function runHooks<TEnv extends HonoEnvBase>(
+  hooks: HonoHookHandler<TEnv>[],
+  c: Context<GeneratedHonoEnv<TEnv>>,
+): Promise<Response | undefined> {
+  for (const hook of hooks) {
+    let advanced = false
+    const next: Next = async () => {
+      advanced = true
+    }
+    const result = await hook(c, next)
+    if (result instanceof Response) return result
+    if (!advanced) {
+      if (_env.NODE_ENV !== 'production') {
+        console.warn(
+          '[hono-router] Hook returned without calling next() or returning a Response. ' +
+          'Use \`return c.json(...)\` to short-circuit, or \`await next()\` to continue.',
+        )
+      }
+      return c.body(null) ?? undefined
+    }
+  }
+  return undefined
+}
+
+function sendResult(c: HandlerContext): Response {
+  const data = c.get('resultData')
+  const status = (c.get('resultStatus') as number | undefined) ?? 200
+  if (data === undefined) {
+    throw new HTTPException(500, { message: 'No data set by handler' })
+  }
+  return c.json(transformResult(data) as Record<string, unknown>, status as ContentfulStatusCode)
+}
+
+function sendError(c: HandlerContext, error: unknown): Response {
+  const httpError = mapError(error)
+  return c.json({ message: httpError.message }, httpError.status as ContentfulStatusCode)
+}
+
+export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extends HonoEnvBase = HonoEnvBase>(config: ${modelName}RouteConfig<TCtx, TPrisma, TEnv> = {}): Hono<GeneratedHonoEnv<TEnv>> {
+  const app = new Hono<GeneratedHonoEnv<TEnv>>()
 
   const customPrefix = normalizePrefix(config.customUrlPrefix || '')
   const modelPrefix = config.addModelPrefix !== false ? '/${modelNameLower}' : ''
@@ -141,255 +217,199 @@ export function ${routerFunctionName}<TCtx = unknown>(
 
   const postReadsEnabled = !config.disablePostReads
 
-  app.onError((err, c) => {
-    if (err instanceof HTTPException) {
-      return c.json({ message: err.message }, err.status)
-    }
-    const httpError = mapError(err)
-    return c.json({ message: httpError.message }, httpError.status as Parameters<typeof c.json>[1])
-  })
-
-  const parseQueryMw = async (c: Context<HonoEnv>, next: Next): Promise<void> => {
-    const raw = c.req.query()
-    if (raw && Object.keys(raw).length > 0) {
-      c.set(
-        'parsedQuery',
-        parseQueryParams(raw as Record<string, unknown>) as Record<string, unknown>,
+  const openApiJsonSpec = openApiDisabled
+    ? null
+    : buildModelOpenApi(
+        '${modelName}',
+        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
+        config as RouteConfig,
+        { format: 'json' },
       )
-    }
-    await next()
-  }
+  const openApiYamlSpec = openApiDisabled
+    ? null
+    : buildModelOpenApi(
+        '${modelName}',
+        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
+        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
+        config as RouteConfig,
+        { format: 'yaml' },
+      )
 
-  const parseBodyAsQueryMw = async (c: Context<HonoEnv>, next: Next): Promise<void> => {
-    const body = await safeParseBody(c)
-    if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      throw new HttpError(400, 'Request body must be a JSON object')
-    }
-    c.set('parsedQuery', sanitizeKeys(body as Record<string, unknown>))
-    await next()
-  }
-
-  const parseBodyMw = async (c: Context<HonoEnv>, next: Next): Promise<void> => {
-    const body = await safeParseBody(c)
-    c.set('body', body)
-    await next()
-  }
-
-  const setContextMw = (opConfig: OperationConfigLike) => async (c: Context<HonoEnv>, next: Next): Promise<void> => {
-    const paginationConfig = (config as { pagination?: OperationContext['paginationConfig'] }).pagination
-    if (paginationConfig) {
-      c.set('routeConfig', { pagination: paginationConfig })
-    }
-    if (opConfig.shape) {
-      c.set('guardShape', opConfig.shape)
-      const headerName = config.guard?.variantHeader || 'x-api-variant'
-      const caller = config.guard?.resolveVariant?.(c as Context)
-        ?? c.req.header(headerName)
-        ?? undefined
-      if (caller) {
-        c.set('guardCaller', caller)
+  if (isQueryBuilderEnabled(config as RouteConfig)) {
+    const qbConfig = getQueryBuilderConfig(config as RouteConfig)
+    if (qbConfig) {
+      try {
+        startQueryBuilder(qbConfig)
+      } catch (err) {
+        if (_env.NODE_ENV !== 'production') console.warn('[query-builder]', err)
       }
     }
-    await next()
   }
 
-  const sendResultMw = async (c: Context<HonoEnv>, _next: Next): Promise<Response> => {
-    const data = c.get('resultData')
-    const status = c.get('resultStatus') ?? 200
-    if (data === undefined) {
-      return c.json({ message: 'No data set by handler' }, 500)
+  app.onError((err, c) => {
+    if (err instanceof HTTPException) {
+      return c.json({ message: err.message }, err.status as ContentfulStatusCode)
     }
-    return c.json(
-      transformResult(data) as Parameters<typeof c.json>[0],
-      status as Parameters<typeof c.json>[1],
-    )
-  }
-
-  const wrap = (fn: (c: Context<HonoEnv>) => Promise<void>) =>
-    async (c: Context<HonoEnv>, next: Next): Promise<void> => {
-      await fn(c)
-      await next()
-    }
+    return sendError(c as HandlerContext, err)
+  })
 
   if (!openApiDisabled) {
     const openapiJsonPath = basePath ? \`\${basePath}/openapi.json\` : '/openapi.json'
     const openapiYamlPath = basePath ? \`\${basePath}/openapi.yaml\` : '/openapi.yaml'
-
-    app.get(openapiJsonPath, (c) => {
-      const spec = buildModelOpenApi(
-        '${modelName}',
-        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
-        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
-        config,
-        { format: 'json' },
-      )
-      return c.json(spec as Parameters<typeof c.json>[0])
-    })
-
+    app.get(openapiJsonPath, (c) => c.json(openApiJsonSpec as Record<string, unknown>))
     app.get(openapiYamlPath, (c) => {
-      const yaml = buildModelOpenApi(
-        '${modelName}',
-        MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
-        MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
-        config,
-        { format: 'yaml' },
-      ) as string
-      return c.body(yaml, 200, { 'Content-Type': 'application/yaml' })
+      c.header('Content-Type', 'application/yaml')
+      return c.body(openApiYamlSpec as string)
     })
+  }
+
+  const handleRead = (
+    opConfig: OperationConfigLike<TEnv>,
+    handlerFn: (c: HandlerContext) => Promise<void>,
+    parseFn: (c: HandlerContext) => Promise<void>,
+  ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
+    try {
+      await parseFn(c)
+      makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig)(c)
+      const { before = [], after = [] } = opConfig
+      const beforeResp = await runHooks<TEnv>(before, c)
+      if (beforeResp) return beforeResp
+      await handlerFn(c)
+      const afterResp = await runHooks<TEnv>(after, c)
+      if (afterResp) return afterResp
+      return sendResult(c)
+    } catch (error: unknown) {
+      return sendError(c, error)
+    }
+  }
+
+  const handleWrite = (
+    opConfig: OperationConfigLike<TEnv>,
+    handlerFn: (c: HandlerContext) => Promise<void>,
+  ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
+    try {
+      await parseWriteBodyMiddleware(c)
+      makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig)(c)
+      const { before = [], after = [] } = opConfig
+      const beforeResp = await runHooks<TEnv>(before, c)
+      if (beforeResp) return beforeResp
+      await handlerFn(c)
+      const afterResp = await runHooks<TEnv>(after, c)
+      if (afterResp) return afterResp
+      return sendResult(c)
+    } catch (error: unknown) {
+      return sendError(c, error)
+    }
+  }
+
+  const opFor = <K extends keyof ${modelName}RouteConfig<TCtx, TPrisma, TEnv>>(key: K): OperationConfigLike<TEnv> => {
+    return (config[key] as unknown as OperationConfigLike<TEnv> | undefined)
+      ?? (defaultOpConfig as OperationConfigLike<TEnv>)
   }
 
   if (config.enableAll || config.findFirst) {
-    const opConfig: OperationConfigLike = (config.findFirst as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('findFirst')
     const path = basePath ? \`\${basePath}/first\` : '/first'
-    app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindFirst), ...after, sendResultMw)
-    if (postReadsEnabled) {
-      app.post(path, parseBodyAsQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindFirst), ...after, sendResultMw)
-    }
+    app.get(path, handleRead(opConfig, ${modelName}FindFirst, parseQueryMiddleware))
+    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}FindFirst, parseBodyAsQueryMiddleware))
   }
-
   if (config.enableAll || config.findFirstOrThrow) {
-    const opConfig: OperationConfigLike = (config.findFirstOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('findFirstOrThrow')
     const path = basePath ? \`\${basePath}/first/strict\` : '/first/strict'
-    app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindFirstOrThrow), ...after, sendResultMw)
-    if (postReadsEnabled) {
-      app.post(path, parseBodyAsQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindFirstOrThrow), ...after, sendResultMw)
-    }
+    app.get(path, handleRead(opConfig, ${modelName}FindFirstOrThrow, parseQueryMiddleware))
+    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}FindFirstOrThrow, parseBodyAsQueryMiddleware))
   }
-
   if (config.enableAll || config.findManyPaginated) {
-    const opConfig: OperationConfigLike = (config.findManyPaginated as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('findManyPaginated')
     const path = basePath ? \`\${basePath}/paginated\` : '/paginated'
-    app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindManyPaginated), ...after, sendResultMw)
-    if (postReadsEnabled) {
-      app.post(path, parseBodyAsQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindManyPaginated), ...after, sendResultMw)
-    }
+    app.get(path, handleRead(opConfig, ${modelName}FindManyPaginated, parseQueryMiddleware))
+    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}FindManyPaginated, parseBodyAsQueryMiddleware))
   }
-
   if (config.enableAll || config.aggregate) {
-    const opConfig: OperationConfigLike = (config.aggregate as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('aggregate')
     const path = basePath ? \`\${basePath}/aggregate\` : '/aggregate'
-    app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}Aggregate), ...after, sendResultMw)
-    if (postReadsEnabled) {
-      app.post(path, parseBodyAsQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}Aggregate), ...after, sendResultMw)
-    }
+    app.get(path, handleRead(opConfig, ${modelName}Aggregate, parseQueryMiddleware))
+    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}Aggregate, parseBodyAsQueryMiddleware))
   }
-
   if (config.enableAll || config.count) {
-    const opConfig: OperationConfigLike = (config.count as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('count')
     const path = basePath ? \`\${basePath}/count\` : '/count'
-    app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}Count), ...after, sendResultMw)
-    if (postReadsEnabled) {
-      app.post(path, parseBodyAsQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}Count), ...after, sendResultMw)
-    }
+    app.get(path, handleRead(opConfig, ${modelName}Count, parseQueryMiddleware))
+    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}Count, parseBodyAsQueryMiddleware))
   }
-
   if (config.enableAll || config.groupBy) {
-    const opConfig: OperationConfigLike = (config.groupBy as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('groupBy')
     const path = basePath ? \`\${basePath}/groupby\` : '/groupby'
-    app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}GroupBy), ...after, sendResultMw)
-    if (postReadsEnabled) {
-      app.post(path, parseBodyAsQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}GroupBy), ...after, sendResultMw)
-    }
+    app.get(path, handleRead(opConfig, ${modelName}GroupBy, parseQueryMiddleware))
+    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}GroupBy, parseBodyAsQueryMiddleware))
   }
-
   if (config.enableAll || config.findUniqueOrThrow) {
-    const opConfig: OperationConfigLike = (config.findUniqueOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('findUniqueOrThrow')
     const path = basePath ? \`\${basePath}/unique/strict\` : '/unique/strict'
-    app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindUniqueOrThrow), ...after, sendResultMw)
-    if (postReadsEnabled) {
-      app.post(path, parseBodyAsQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindUniqueOrThrow), ...after, sendResultMw)
-    }
+    app.get(path, handleRead(opConfig, ${modelName}FindUniqueOrThrow, parseQueryMiddleware))
+    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}FindUniqueOrThrow, parseBodyAsQueryMiddleware))
   }
-
   if (config.enableAll || config.findUnique) {
-    const opConfig: OperationConfigLike = (config.findUnique as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('findUnique')
     const path = basePath ? \`\${basePath}/unique\` : '/unique'
-    app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindUnique), ...after, sendResultMw)
-    if (postReadsEnabled) {
-      app.post(path, parseBodyAsQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindUnique), ...after, sendResultMw)
-    }
+    app.get(path, handleRead(opConfig, ${modelName}FindUnique, parseQueryMiddleware))
+    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}FindUnique, parseBodyAsQueryMiddleware))
   }
-
   if (config.enableAll || config.findMany) {
-    const opConfig: OperationConfigLike = (config.findMany as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('findMany')
     const path = basePath || '/'
-    app.get(path, parseQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindMany), ...after, sendResultMw)
+    app.get(path, handleRead(opConfig, ${modelName}FindMany, parseQueryMiddleware))
     if (postReadsEnabled) {
       const postPath = basePath ? \`\${basePath}/read\` : '/read'
-      app.post(postPath, parseBodyAsQueryMw, setContextMw(opConfig), ...before, wrap(${prefix}FindMany), ...after, sendResultMw)
+      app.post(postPath, handleRead(opConfig, ${modelName}FindMany, parseBodyAsQueryMiddleware))
     }
   }
 
   if (config.enableAll || config.createManyAndReturn) {
-    const opConfig: OperationConfigLike = (config.createManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('createManyAndReturn')
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    app.post(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}CreateManyAndReturn), ...after, sendResultMw)
+    app.post(path, handleWrite(opConfig, ${modelName}CreateManyAndReturn))
   }
-
   if (config.enableAll || config.createMany) {
-    const opConfig: OperationConfigLike = (config.createMany as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('createMany')
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    app.post(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}CreateMany), ...after, sendResultMw)
+    app.post(path, handleWrite(opConfig, ${modelName}CreateMany))
   }
-
   if (config.enableAll || config.create) {
-    const opConfig: OperationConfigLike = (config.create as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('create')
     const path = basePath || '/'
-    app.post(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}Create), ...after, sendResultMw)
+    app.post(path, handleWrite(opConfig, ${modelName}Create))
   }
-
   if (config.enableAll || config.updateManyAndReturn) {
-    const opConfig: OperationConfigLike = (config.updateManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('updateManyAndReturn')
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    app.put(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}UpdateManyAndReturn), ...after, sendResultMw)
+    app.put(path, handleWrite(opConfig, ${modelName}UpdateManyAndReturn))
   }
-
   if (config.enableAll || config.updateMany) {
-    const opConfig: OperationConfigLike = (config.updateMany as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('updateMany')
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    app.put(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}UpdateMany), ...after, sendResultMw)
+    app.put(path, handleWrite(opConfig, ${modelName}UpdateMany))
   }
-
   if (config.enableAll || config.update) {
-    const opConfig: OperationConfigLike = (config.update as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('update')
     const path = basePath || '/'
-    app.put(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}Update), ...after, sendResultMw)
+    app.put(path, handleWrite(opConfig, ${modelName}Update))
   }
-
   if (config.enableAll || config.upsert) {
-    const opConfig: OperationConfigLike = (config.upsert as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('upsert')
     const path = basePath || '/'
-    app.patch(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}Upsert), ...after, sendResultMw)
+    app.patch(path, handleWrite(opConfig, ${modelName}Upsert))
   }
-
   if (config.enableAll || config.deleteMany) {
-    const opConfig: OperationConfigLike = (config.deleteMany as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('deleteMany')
     const path = basePath ? \`\${basePath}/many\` : '/many'
-    app.delete(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}DeleteMany), ...after, sendResultMw)
+    app.delete(path, handleWrite(opConfig, ${modelName}DeleteMany))
   }
-
   if (config.enableAll || config.delete) {
-    const opConfig: OperationConfigLike = (config.delete as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('delete')
     const path = basePath || '/'
-    app.delete(path, parseBodyMw, setContextMw(opConfig), ...before, wrap(${prefix}Delete), ...after, sendResultMw)
+    app.delete(path, handleWrite(opConfig, ${modelName}Delete))
   }
 
   return app

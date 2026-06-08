@@ -1,314 +1,136 @@
-import { Target } from '../constants'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
+import type { Target } from '../constants'
 
 export function generateUnifiedDocs(
-  models: string[],
-  target: Target = 'express',
-  importStyle: ImportStyle = 'none',
+  modelNames: string[],
+  target: Target,
+  importStyle: ImportStyle,
 ): string {
   const ext = importExt(importStyle)
-
-  const imports = models
-    .map((model) => `import { ${model}Docs } from './${model}/${model}Docs${ext}'`)
-    .join('\n')
-
-  const handlersEntries = models
-    .map((model) => `  ${model}: ${model}Docs`)
-    .join(',\n')
-
-  const frameworkImport =
-    target === 'fastify'
-      ? `import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'`
-      : target === 'hono'
-        ? `import type { Hono, Context } from 'hono'`
-        : `import type { Request, Response } from 'express'`
-
-  const routeConfigImport = `import type { RouteConfig } from './routeConfig.target${ext}'`
-
-  const handlerType =
-    target === 'fastify'
-      ? `(config: any) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>`
-      : target === 'hono'
-        ? `(config: any) => (c: Context) => Response | Promise<Response>`
-        : `(config: any) => (req: Request, res: Response) => any`
-
-  const combinedDocsReturn =
-    target === 'fastify'
-      ? generateFastifyCombinedDocs()
-      : target === 'hono'
-        ? generateHonoCombinedDocs()
-        : generateExpressCombinedDocs()
-
-  const registerDocs =
-    target === 'fastify'
-      ? generateFastifyRegisterDocs()
-      : target === 'hono'
-        ? generateHonoRegisterDocs()
-        : generateExpressRegisterDocs()
-
-  return `${imports}
-${frameworkImport}
-${routeConfigImport}
-
-const _env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
-
-const docsHandlers: Record<string, ${handlerType}> = {
-${handlersEntries}
+  if (target === 'fastify') return generateFastify(modelNames, ext)
+  if (target === 'hono') return generateHono(modelNames, ext)
+  return generateExpress(modelNames, ext)
 }
 
-type DocsUI = 'docs' | 'scalar' | 'json' | 'yaml' | 'playground'
+const renderIndexFn = `function renderIndex(title: string, modelNames: string[], basePath: string): string {
+  const links = modelNames
+    .map((n) => '<li><a href="' + basePath + '/' + n.toLowerCase() + '">' + n + '</a></li>')
+    .join('')
 
-interface ModelDocsConfig extends RouteConfig {
-  docsTitle?: string
-  docsUi?: DocsUI
-}
+  return '<!DOCTYPE html><html><head><meta charset="utf-8" /><title>' + title +
+    '</title><script src="https://cdn.tailwindcss.com"></script></head>' +
+    '<body class="m-0 bg-white text-gray-900 font-sans">' +
+    '<div class="max-w-[1120px] mx-auto px-5 pt-[30px] pb-20">' +
+    '<h1 class="text-xl font-black border-b-2 border-gray-900 pb-3">' + title + '</h1>' +
+    '<ul class="mt-4 list-disc pl-6 text-sm">' + links + '</ul>' +
+    '</div></body></html>'
+}`
 
-export interface CombinedDocsConfig {
-  disableOpenApi?: boolean
+function generateExpress(modelNames: string[], ext: string): string {
+  return `import type { Router } from 'express'
+import { getEnv, removeTrailingSlash } from './misc${ext}'
+
+const _env = getEnv()
+
+const MODELS = ${JSON.stringify(modelNames)} as const
+
+interface UnifiedDocsConfig {
   title?: string
-  description?: string
   basePath?: string
-  version?: string
-  modelConfigs: {
-    [modelName: string]: ModelDocsConfig
-  }
+  models?: string[]
+  disableInProduction?: boolean
 }
 
-function escapeHtml(input: string) {
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
+export function registerUnifiedDocs(router: Router, config: UnifiedDocsConfig = {}): void {
+  const disabled = config.disableInProduction !== false && _env.NODE_ENV === 'production'
+  if (disabled) return
 
-function removeTrailingSlash(p: string): string {
-  if (p === '/') return ''
-  return p.endsWith('/') ? p.slice(0, -1) : p
-}
-
-function isOpenApiDisabled(disableOpenApi?: boolean) {
-  if (disableOpenApi === true) return true
-  if (disableOpenApi === false) return false
-  return _env.DISABLE_OPENAPI === 'true' || _env.NODE_ENV === 'production'
-}
-
-function isPlaygroundAvailable(config?: ModelDocsConfig) {
-  if (_env.NODE_ENV === 'production') return false
-  if (!config) return true
-  if (config.queryBuilder === false) return false
-  if (typeof config.queryBuilder === 'object' && config.queryBuilder.enabled === false) return false
-  return true
-}
-
-function buildCombinedHtml(
-  config: CombinedDocsConfig,
-  registeredModels: string[],
-) {
-  const title = config.title || 'API Documentation'
-  const description = config.description || ''
-  const version = config.version || ''
   const basePath = removeTrailingSlash(config.basePath || '/docs')
-  const generatedAt = new Date().toISOString()
+  const enabled = config.models && config.models.length > 0
+    ? MODELS.filter((m) => config.models!.includes(m))
+    : MODELS
 
-  const modelRows = registeredModels.map((m) => {
-    const lower = m.toLowerCase()
-    const docsUrl = basePath + '/' + lower
-    const scalarUrl = docsUrl + '?ui=scalar'
-    const jsonUrl = docsUrl + '?ui=json'
-    const yamlUrl = docsUrl + '?ui=yaml'
-    const playgroundUrl = docsUrl + '?ui=playground'
-    const modelCfg = config.modelConfigs[m]
-    const modelPlayground = isPlaygroundAvailable(modelCfg)
-    const playgroundLink = modelPlayground
-      ? ', <a href="' + playgroundUrl + '" class="text-inherit underline">playground</a>'
-      : ''
-    return '<tr>' +
-      '<td class="text-left py-2 px-2 border-b border-gray-300 align-top">' + escapeHtml(m) + '</td>' +
-      '<td class="text-left py-2 px-2 border-b border-gray-300 align-top"><a href="' + docsUrl + '" class="text-inherit underline">' + escapeHtml(docsUrl) + '</a></td>' +
-      '<td class="text-left py-2 px-2 border-b border-gray-300 align-top">' +
-        '<a href="' + scalarUrl + '" class="text-inherit underline">scalar</a>, ' +
-        '<a href="' + jsonUrl + '" class="text-inherit underline">json</a>, ' +
-        '<a href="' + yamlUrl + '" class="text-inherit underline">yaml</a>' +
-        playgroundLink +
-      '</td>' +
-    '</tr>'
-  }).join('')
-
-  const descriptionHtml = description
-    ? '<div class="mt-1.5 text-gray-500 text-sm">' + escapeHtml(description) + '</div>'
-    : ''
-  const versionHtml = version
-    ? '<div>Version: ' + escapeHtml(version) + '</div>'
-    : ''
-
-  return '<!DOCTYPE html>' +
-    '<html lang="en">' +
-    '<head>' +
-      '<meta charset="utf-8" />' +
-      '<meta name="viewport" content="width=device-width, initial-scale=1" />' +
-      '<title>' + escapeHtml(title) + '</title>' +
-      '<script src="https://cdn.tailwindcss.com"></' + 'script>' +
-    '</head>' +
-    '<body class="m-0 bg-white text-gray-900 font-serif leading-normal">' +
-      '<div class="max-w-[980px] mx-auto px-7 pt-10 pb-16">' +
-        '<div class="border-b-2 border-gray-900 pb-3.5 mb-[18px]">' +
-          '<div class="text-[28px] font-bold tracking-wide">' + escapeHtml(title) + '</div>' +
-          descriptionHtml +
-          '<div class="mt-3 flex gap-x-5 text-[13px] text-gray-500">' +
-            versionHtml +
-            '<div>Generated: ' + escapeHtml(generatedAt) + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="mt-[22px]">' +
-          '<h2 class="m-0 mb-2.5 text-lg border-t border-gray-300 pt-3.5">Models</h2>' +
-          '<table class="w-full border-collapse text-[13px]">' +
-            '<thead>' +
-              '<tr>' +
-                '<th class="text-left py-2 px-2 border-b border-gray-300 align-top font-bold">Model</th>' +
-                '<th class="text-left py-2 px-2 border-b border-gray-300 align-top font-bold">Documentation</th>' +
-                '<th class="text-left py-2 px-2 border-b border-gray-300 align-top font-bold">Views</th>' +
-              '</tr>' +
-            '</thead>' +
-            '<tbody>' + modelRows + '</tbody>' +
-          '</table>' +
-        '</div>' +
-      '</div>' +
-    '</body>' +
-    '</html>'
-}
-
-function getRegisteredModels(config: CombinedDocsConfig) {
-  return Object.keys(config.modelConfigs).filter((m) => {
-    const cfg = config.modelConfigs[m]
-    return m in docsHandlers && !isOpenApiDisabled(cfg?.disableOpenApi ?? config.disableOpenApi)
+  router.get(basePath, (_req, res) => {
+    res.type('html').send(renderIndex(config.title || 'API Documentation', enabled as string[], basePath))
   })
 }
 
-${combinedDocsReturn}
+${renderIndexFn}
 
-${registerDocs}
+export default registerUnifiedDocs
 `
 }
 
-function generateExpressCombinedDocs(): string {
-  return `export function generateCombinedDocs(config: CombinedDocsConfig) {
-  return (req: Request, res: Response) => {
-    const registeredModels = getRegisteredModels(config)
+function generateFastify(modelNames: string[], ext: string): string {
+  return `import type { FastifyInstance } from 'fastify'
+import { getEnv, removeTrailingSlash } from './misc${ext}'
 
-    if (registeredModels.length === 0) {
-      return res.status(404).send('OpenAPI documentation is disabled')
-    }
+const _env = getEnv()
 
-    const html = buildCombinedHtml(config, registeredModels)
-    res.type('html').send(html)
-  }
-}`
+const MODELS = ${JSON.stringify(modelNames)} as const
+
+interface UnifiedDocsConfig {
+  title?: string
+  basePath?: string
+  models?: string[]
+  disableInProduction?: boolean
 }
 
-function generateFastifyCombinedDocs(): string {
-  return `export function generateCombinedDocs(config: CombinedDocsConfig) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
-    const registeredModels = getRegisteredModels(config)
+export async function registerUnifiedDocs(
+  fastify: FastifyInstance,
+  config: UnifiedDocsConfig = {},
+): Promise<void> {
+  const disabled = config.disableInProduction !== false && _env.NODE_ENV === 'production'
+  if (disabled) return
 
-    if (registeredModels.length === 0) {
-      return reply.code(404).send('OpenAPI documentation is disabled')
-    }
+  const basePath = removeTrailingSlash(config.basePath || '/docs')
+  const enabled = config.models && config.models.length > 0
+    ? MODELS.filter((m) => config.models!.includes(m))
+    : MODELS
 
-    const html = buildCombinedHtml(config, registeredModels)
-    return reply.type('text/html').send(html)
-  }
-}`
+  fastify.get(basePath, async (_request, reply) => {
+    reply.type('text/html').send(renderIndex(config.title || 'API Documentation', enabled as string[], basePath))
+  })
 }
 
-function generateHonoCombinedDocs(): string {
-  return `export function generateCombinedDocs(config: CombinedDocsConfig) {
-  return (c: Context): Response | Promise<Response> => {
-    const registeredModels = getRegisteredModels(config)
+${renderIndexFn}
 
-    if (registeredModels.length === 0) {
-      return c.text('OpenAPI documentation is disabled', 404)
-    }
-
-    const html = buildCombinedHtml(config, registeredModels)
-    return c.html(html)
-  }
-}`
+export default registerUnifiedDocs
+`
 }
 
-function generateExpressRegisterDocs(): string {
-  return `export function registerModelDocs(
-  app: any,
-  basePath: string = '/docs',
-  configs: CombinedDocsConfig['modelConfigs'] = {},
-  options?: { disableOpenApi?: boolean }
-) {
-  const normalizedBase = removeTrailingSlash(basePath)
-  const registeredModels = Object.keys(configs).filter((m) => {
-    const cfg = configs[m]
-    return m in docsHandlers && !isOpenApiDisabled(cfg?.disableOpenApi ?? options?.disableOpenApi)
-  })
+function generateHono(modelNames: string[], ext: string): string {
+  return `import type { Hono } from 'hono'
+import { getEnv, removeTrailingSlash } from './misc${ext}'
 
-  if (registeredModels.length === 0) return
+const _env = getEnv()
 
-  registeredModels.forEach((model) => {
-    const handler = docsHandlers[model]
-    const cfg = configs[model] || {}
-    const docPath = normalizedBase + '/' + model.toLowerCase()
-    console.log('  Registered docs: ' + docPath)
-    app.get(docPath, handler(cfg))
-  })
-}`
+const MODELS = ${JSON.stringify(modelNames)} as const
+
+interface UnifiedDocsConfig {
+  title?: string
+  basePath?: string
+  models?: string[]
+  disableInProduction?: boolean
 }
 
-function generateFastifyRegisterDocs(): string {
-  return `export function registerModelDocs(
-  app: FastifyInstance,
-  basePath: string = '/docs',
-  configs: CombinedDocsConfig['modelConfigs'] = {},
-  options?: { disableOpenApi?: boolean }
-) {
-  const normalizedBase = removeTrailingSlash(basePath)
-  const registeredModels = Object.keys(configs).filter((m) => {
-    const cfg = configs[m]
-    return m in docsHandlers && !isOpenApiDisabled(cfg?.disableOpenApi ?? options?.disableOpenApi)
-  })
+export function registerUnifiedDocs(app: Hono, config: UnifiedDocsConfig = {}): void {
+  const disabled = config.disableInProduction !== false && _env.NODE_ENV === 'production'
+  if (disabled) return
 
-  if (registeredModels.length === 0) return
+  const basePath = removeTrailingSlash(config.basePath || '/docs')
+  const enabled = config.models && config.models.length > 0
+    ? MODELS.filter((m) => config.models!.includes(m))
+    : MODELS
 
-  registeredModels.forEach((model) => {
-    const handler = docsHandlers[model]
-    const cfg = configs[model] || {}
-    const docPath = normalizedBase + '/' + model.toLowerCase()
-    console.log('  Registered docs: ' + docPath)
-    app.get(docPath, handler(cfg))
+  app.get(basePath, (c) => {
+    return c.html(renderIndex(config.title || 'API Documentation', enabled as string[], basePath))
   })
-}`
 }
 
-function generateHonoRegisterDocs(): string {
-  return `export function registerModelDocs(
-  app: Hono<any>,
-  basePath: string = '/docs',
-  configs: CombinedDocsConfig['modelConfigs'] = {},
-  options?: { disableOpenApi?: boolean }
-) {
-  const normalizedBase = removeTrailingSlash(basePath)
-  const registeredModels = Object.keys(configs).filter((m) => {
-    const cfg = configs[m]
-    return m in docsHandlers && !isOpenApiDisabled(cfg?.disableOpenApi ?? options?.disableOpenApi)
-  })
+${renderIndexFn}
 
-  if (registeredModels.length === 0) return
-
-  registeredModels.forEach((model) => {
-    const handler = docsHandlers[model]
-    const cfg = configs[model] || {}
-    const docPath = normalizedBase + '/' + model.toLowerCase()
-    console.log('  Registered docs: ' + docPath)
-    app.get(docPath, handler(cfg))
-  })
-}`
+export default registerUnifiedDocs
+`
 }

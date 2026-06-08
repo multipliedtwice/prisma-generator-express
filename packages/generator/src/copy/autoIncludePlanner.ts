@@ -1,3 +1,5 @@
+import { isPlainObject } from './misc'
+
 export type ModelRelationDirection = 'parentOwnsFk' | 'childOwnsFk' | 'implicitM2M'
 
 export type ModelRelationField = {
@@ -14,7 +16,6 @@ export type ModelRelationMap = {
   name: string
   delegateKey: string
   scalarFields: string[]
-  idFields: string[]
   relations: Record<string, ModelRelationField>
 }
 
@@ -47,22 +48,8 @@ export const DEFAULT_AUTO_INCLUDE_MAX_STAGES = 20
 
 const ALLOWED_TO_ONE_ARGS = new Set(['select', 'include', 'omit'])
 const ALLOWED_TO_MANY_ARGS = new Set([
-  'select',
-  'include',
-  'omit',
-  'where',
-  'orderBy',
-  'take',
-  'skip',
-  'cursor',
-  'distinct',
+  'select', 'include', 'omit', 'where', 'orderBy', 'take', 'skip', 'cursor', 'distinct',
 ])
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object') return false
-  if (Array.isArray(value)) return false
-  return true
-}
 
 function isPubliclySelected(projection: Record<string, unknown>, field: string): boolean {
   return projection[field] === true
@@ -224,7 +211,7 @@ function walk(
 
     for (const linkField of relation.parentLinkFields) {
       if (localOmit && localOmit[linkField] === true) {
-        const where = parentPath ? parentPath + '.' : 'root '
+        const where = parentPath ? parentPath + '.' : 'root.'
         return { unsupportedReason: 'required parent link field omitted: ' + where + linkField }
       }
     }
