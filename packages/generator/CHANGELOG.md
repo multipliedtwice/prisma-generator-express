@@ -1,3 +1,10 @@
+# [1.46.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.45.1...v1.46.0) (2026-06-08)
+
+
+### Features
+
+* Refactor unified documentation generation and handlers ([e9f36ac](https://github.com/multipliedtwice/prisma-generator-express/commit/e9f36acd8589d0e17f820bf7f623c693ca451126))
+
 ## [1.45.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.45.0...v1.45.1) (2026-06-07)
 
 
