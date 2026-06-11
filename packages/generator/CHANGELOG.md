@@ -1,3 +1,10 @@
+# [1.47.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.46.0...v1.47.0) (2026-06-11)
+
+
+### Features
+
+* add updateEach operation and router handling for batch updates ([93bd713](https://github.com/multipliedtwice/prisma-generator-express/commit/93bd7136e7cf7a4117e21d86fd1befe44be7d613))
+
 # [1.46.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.45.1...v1.46.0) (2026-06-08)
 
 
