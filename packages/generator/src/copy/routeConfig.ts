@@ -117,6 +117,7 @@ export interface BaseRouteConfig<
   upsert?: BaseOperationConfig<HookHandler, TShape>
   delete?: BaseOperationConfig<HookHandler, TShape>
   deleteMany?: BaseOperationConfig<HookHandler, TShape>
+  updateEach?: BaseOperationConfig<HookHandler, TShape>
   aggregate?: BaseOperationConfig<HookHandler, TShape>
   count?: BaseOperationConfig<HookHandler, TShape>
   groupBy?: BaseOperationConfig<HookHandler, TShape>

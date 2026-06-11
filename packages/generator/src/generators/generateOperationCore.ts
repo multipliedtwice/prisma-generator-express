@@ -61,6 +61,8 @@ ${validationLines}
 
   return `import {
   OperationContext,
+  PrismaClientLike,
+  HttpError,
   getExtendedClient,
   getDelegate,
   validateBody,
@@ -68,6 +70,7 @@ ${validationLines}
   applyPaginationLimits,
   assertGuard,
   countForPagination,
+  mapError,
 } from '../operationRuntime${ext}'
 
 export async function findMany(ctx: OperationContext): Promise<unknown> {
@@ -139,6 +142,39 @@ export async function findManyPaginated(
   const hasMore = items.length >= absTake && skip + items.length < total
 
   return { data: items, total, hasMore }
+}
+
+export async function updateEach(
+  ctx: OperationContext,
+  atomic: boolean,
+): Promise<unknown> {
+  const body = ctx.body
+  if (!Array.isArray(body)) {
+    throw new HttpError(400, 'updateEach body must be an array of { where, data } items')
+  }
+  const items = body as Record<string, unknown>[]
+  const client = ctx.prisma as PrismaClientLike
+  const delegate = getDelegate(client, '${modelNameLower}')
+
+  if (atomic) {
+    if (typeof client.$transaction !== 'function') {
+      throw new HttpError(500, 'Atomic updateEach requires transaction support on the Prisma client')
+    }
+    const ops = items.map((item) => delegate.update(item))
+    const runArray = client.$transaction as unknown as (
+      promises: unknown[],
+    ) => Promise<unknown[]>
+    return runArray(ops)
+  }
+
+  const settled = await Promise.allSettled(
+    items.map((item) => delegate.update(item)),
+  )
+  return settled.map((result) =>
+    result.status === 'fulfilled'
+      ? { status: 'ok', data: result.value }
+      : { status: 'error', error: mapError(result.reason).message },
+  )
 }
 `
 }
