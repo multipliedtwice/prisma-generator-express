@@ -1,3 +1,10 @@
+# [1.48.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.47.0...v1.48.0) (2026-06-11)
+
+
+### Features
+
+* update router to handle updateEach operation with correct path and method ([03f2ee3](https://github.com/multipliedtwice/prisma-generator-express/commit/03f2ee30ca04a6005a5b245e51ea7b4e0ee745fb))
+
 # [1.47.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.46.0...v1.47.0) (2026-06-11)
 
 
