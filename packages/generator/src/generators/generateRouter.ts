@@ -477,9 +477,9 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
     router.delete(path, setShape(opConfig), ...before, ${modelName}Delete as RequestHandler, ...after, respond)
   }
   if (config.updateEach) {
-    const opConfig: OperationConfigLike = (config.batch as OperationConfigLike | undefined) ?? defaultOpConfig
+    const opConfig: OperationConfigLike = (config.updateEach as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/batch\` : '/batch'
+    const path = basePath ? \`\${basePath}/updateEach\` : '/updateEach'
     router.post(
       path,
       setShape(opConfig),
@@ -487,7 +487,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
       async (req: Request, res: Response, next: NextFunction) => {
         try {
           const atomic = req.get('x-batch-atomic') === 'true'
-          readLocals(res).data = await core.batch(buildContext(req, res), atomic)
+          readLocals(res).data = await core.updateEach(buildContext(req, res), atomic)
           next()
         } catch (err) {
           next(mapError(err))
