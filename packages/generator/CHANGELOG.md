@@ -1,3 +1,10 @@
+## [1.48.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.48.0...v1.48.1) (2026-06-13)
+
+
+### Bug Fixes
+
+* update path for updateEach operation to /each ([27fad85](https://github.com/multipliedtwice/prisma-generator-express/commit/27fad85133beab389dbdfc4f9647038cb29db0dd))
+
 # [1.48.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.47.0...v1.48.0) (2026-06-11)
 
 
