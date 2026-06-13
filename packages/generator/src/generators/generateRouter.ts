@@ -479,7 +479,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
   if (config.updateEach) {
     const opConfig: OperationConfigLike = (config.updateEach as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/updateEach\` : '/updateEach'
+    const path = basePath ? \`\${basePath}/each\` : '/each'
     router.post(
       path,
       setShape(opConfig),
