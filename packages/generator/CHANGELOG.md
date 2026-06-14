@@ -1,3 +1,10 @@
+# [1.50.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.49.1...v1.50.0) (2026-06-14)
+
+
+### Features
+
+* add standalone materialized views router for read-only access in Express ([6049579](https://github.com/multipliedtwice/prisma-generator-express/commit/6049579f013cb4c506a1afca4e32f0c4bfdd2c0e))
+
 ## [1.49.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.49.0...v1.49.1) (2026-06-14)
 
 
