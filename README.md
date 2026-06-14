@@ -13,6 +13,7 @@ Running `npx prisma generate` produces:
 - Router generator with middleware support (before/after hooks per operation)
 - POST read endpoints for all read operations (for complex queries exceeding URL length limits)
 - Express-only progressive read streaming over Server-Sent Events (SSE), using manual stages or auto-include splitting for single-record relation reads
+- Express-only standalone materialized view router for read-only access to registered PostgreSQL materialized views
 - OpenAPI 3.1 spec (JSON and YAML endpoints registered automatically per router)
 - Documentation helpers for contract view and Scalar UI (require manual mounting)
 - Client-side query parameter encoder
@@ -34,6 +35,7 @@ Supports **Express**, **Fastify**, and **Hono** targets via the `target` configu
 - [Request body format](#request-body-format)
 - [Query encoding (client side)](#query-encoding-client-side)
 - [POST read endpoints](#post-read-endpoints)
+- [Materialized views router (Express)](#materialized-views-router-express)
 - [Progressive Endpoint Composition (Express SSE)](#progressive-endpoint-composition-express-sse)
 - [Response shaping: select, include, omit](#response-shaping-select-include-omit)
 - [BigInt and Decimal handling](#bigint-and-decimal-handling)
@@ -1326,6 +1328,220 @@ app.use('/', UserRouter({
   disablePostReads: true,
 }))
 ```
+
+## Materialized views router (Express)
+
+The Express target includes a standalone helper for read-only access to PostgreSQL materialized views.
+
+Materialized views are not Prisma models and do not have Prisma delegates, so they are not generated as normal per-model routers. Instead, mount one standalone router and provide an explicit registry of allowed views.
+
+This feature is **Express-only**.
+
+### Usage
+
+```ts
+import express from 'express'
+import { PrismaClient } from '@prisma/client'
+import { materializedViewsRouter } from './generated/materializedRouter'
+
+const prisma = new PrismaClient()
+const app = express()
+
+app.use('/api', materializedViewsRouter({
+  prisma,
+  basePath: '/materialized',
+  views: {
+    jobAdStats: {
+      relation: 'mv_jobad_stats',
+      orderBy: {
+        field: 'updatedAt',
+        direction: 'desc',
+      },
+    },
+    companyStats: {
+      relation: 'mv_company_stats',
+    },
+  },
+}))
+
+app.listen(3000)
+```
+
+This registers:
+
+```http
+GET /api/materialized/jobAdStats?take=50&skip=0
+GET /api/materialized/companyStats?take=50
+```
+
+### View registry
+
+Each key in `views` is the public API name. The `relation` value is the actual database relation name.
+
+```ts
+views: {
+  jobAdStats: {
+    relation: 'mv_jobad_stats',
+    schema: 'public',
+    defaultLimit: 50,
+    maxLimit: 500,
+    orderBy: {
+      field: 'updatedAt',
+      direction: 'desc',
+      nulls: 'last',
+    },
+  },
+}
+```
+
+Supported view options:
+
+| Option | Type | Description |
+| ------ | ---- | ----------- |
+| `relation` | `string` | Database materialized view name |
+| `schema` | `string` | Optional schema name |
+| `defaultLimit` | `number` | Default page size for this view |
+| `maxLimit` | `number` | Maximum page size for this view |
+| `orderBy` | `string \| object` | Deterministic sort column |
+| `authorize` | `function` | Optional per-view authorization hook |
+
+`orderBy` can be a string:
+
+```ts
+orderBy: 'updatedAt'
+```
+
+Or an object:
+
+```ts
+orderBy: {
+  field: 'updatedAt',
+  direction: 'desc',
+  nulls: 'last',
+}
+```
+
+### Router options
+
+```ts
+materializedViewsRouter({
+  prisma,
+  basePath: '/materialized',
+  defaultLimit: 50,
+  maxLimit: 1000,
+  before: [authMiddleware],
+  after: [auditMiddleware],
+  views: {
+    jobAdStats: { relation: 'mv_jobad_stats' },
+  },
+})
+```
+
+Supported router options:
+
+| Option | Type | Description |
+| ------ | ---- | ----------- |
+| `prisma` | Prisma client-like object | Must expose `$queryRawUnsafe` |
+| `views` | `Record<string, ViewDef>` | Registry of allowed materialized views |
+| `basePath` | `string` | Path inside this router, default `''` |
+| `defaultLimit` | `number` | Global default page size, default `50` |
+| `maxLimit` | `number` | Global max page size, default `1000` |
+| `before` | `RequestHandler[]` | Express middleware before the query |
+| `after` | `RequestHandler[]` | Express middleware after the query |
+
+### Authorization
+
+Use `before` for shared middleware and `authorize` for per-view checks.
+
+```ts
+const forbidden = (message: string) => Object.assign(new Error(message), { status: 403 })
+
+app.use('/api', materializedViewsRouter({
+  prisma,
+  basePath: '/materialized',
+  before: [requireAuth],
+  views: {
+    publicStats: {
+      relation: 'mv_public_stats',
+    },
+    adminStats: {
+      relation: 'mv_admin_stats',
+      authorize: (req) => {
+        if (req.user?.role !== 'admin') {
+          throw forbidden('Forbidden')
+        }
+      },
+    },
+  },
+}))
+```
+
+If a view is not in the registry, the router returns:
+
+```json
+{ "message": "unknown view" }
+```
+
+### Pagination
+
+The router supports `take` and `skip` query parameters:
+
+```http
+GET /materialized/jobAdStats?take=100&skip=200
+```
+
+`take` is clamped to the configured max limit. `skip` is clamped to zero or greater.
+
+When `skip > 0`, the view must define `orderBy`. This prevents unstable offset pagination.
+
+```ts
+views: {
+  jobAdStats: {
+    relation: 'mv_jobad_stats',
+    orderBy: {
+      field: 'updatedAt',
+      direction: 'desc',
+    },
+  },
+}
+```
+
+### Identifier safety
+
+Only registered view names can be queried. Database identifiers such as `schema`, `relation`, and `orderBy.field` must match this pattern:
+
+```txt
+^[A-Za-z_][A-Za-z0-9_]*$
+```
+
+Identifiers are double-quoted before being used in SQL.
+
+This means camel-case database columns must exist as quoted identifiers. For example, `orderBy: 'updatedAt'` queries `"updatedAt"`. If the materialized view was created without a quoted alias, PostgreSQL stores the column as `updatedat`.
+
+### Response serialization
+
+Responses use the same serialization behavior as generated routers:
+
+- `BigInt` values become strings
+- `Decimal` values become strings
+- `Buffer` and `Uint8Array` values become base64 strings
+- `DateTime` values become ISO 8601 strings
+
+### Limitations
+
+The materialized views router is intentionally small and read-only.
+
+It does not support:
+
+- Prisma `where`
+- Prisma `select`
+- Prisma `include`
+- Prisma guard shapes
+- OpenAPI generation
+- Fastify or Hono targets
+- refreshing materialized views
+
+Use it for explicit read-only endpoints over known materialized views. For normal Prisma models, use the generated model routers.
 
 ## Progressive Endpoint Composition (Express SSE)
 
