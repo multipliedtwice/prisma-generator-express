@@ -18,6 +18,7 @@ const SHARED_FILES = [
 const EXPRESS_ONLY_FILES = [
   'autoIncludePlanner.ts',
   'autoIncludeRuntime.ts',
+  'materializedRouter.ts',
 ]
 
 interface CopyFileOptions {

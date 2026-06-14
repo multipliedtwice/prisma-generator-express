@@ -1,5 +1,11 @@
 import express from 'express'
-import type { NextFunction, Request, RequestHandler, Response, Router } from 'express'
+import type {
+  NextFunction,
+  Request,
+  RequestHandler,
+  Response,
+  Router,
+} from 'express'
 import { HttpError, mapError, transformResult } from './operationRuntime'
 
 type SortDirection = 'asc' | 'desc'
@@ -7,11 +13,7 @@ type NullsOrder = 'first' | 'last'
 
 type OrderByDef =
   | string
-  | {
-      field: string
-      direction?: SortDirection
-      nulls?: NullsOrder
-    }
+  | { field: string; direction?: SortDirection; nulls?: NullsOrder }
 
 type ViewDef = {
   relation: string
@@ -19,11 +21,18 @@ type ViewDef = {
   defaultLimit?: number
   maxLimit?: number
   orderBy?: OrderByDef
-  authorize?: (req: Request, viewName: string, def: ViewDef) => void | Promise<void>
+  authorize?: (
+    req: Request,
+    viewName: string,
+    def: ViewDef,
+  ) => void | Promise<void>
 }
 
 type PrismaRawClient = {
-  $queryRawUnsafe: <T = unknown>(sql: string, ...values: unknown[]) => Promise<T>
+  $queryRawUnsafe: <T = unknown>(
+    sql: string,
+    ...values: unknown[]
+  ) => Promise<T>
 }
 
 type MaterializedRouterOptions = {
@@ -39,7 +48,8 @@ type MaterializedRouterOptions = {
 const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 const quoteIdent = (name: string): string => {
-  if (!IDENT_RE.test(name)) throw new Error('invalid identifier: ' + name)
+  if (!IDENT_RE.test(name))
+    throw new HttpError(400, 'invalid identifier: ' + name)
   return '"' + name.replace(/"/g, '""') + '"'
 }
 
@@ -54,7 +64,12 @@ const buildFqn = (def: ViewDef): string =>
     ? quoteIdent(def.schema) + '.' + quoteIdent(def.relation)
     : quoteIdent(def.relation)
 
-const clampInt = (v: unknown, fallback: number, min: number, max: number): number => {
+const clampInt = (
+  v: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number => {
   const n = Number(v ?? fallback)
   if (!Number.isFinite(n)) return fallback
   return Math.min(Math.max(Math.trunc(n), min), max)
@@ -63,23 +78,21 @@ const clampInt = (v: unknown, fallback: number, min: number, max: number): numbe
 const normalizeDirection = (value: unknown): 'ASC' | 'DESC' => {
   if (value === undefined || value === 'asc' || value === 'ASC') return 'ASC'
   if (value === 'desc' || value === 'DESC') return 'DESC'
-  throw new Error('invalid sort direction')
+  throw new HttpError(400, 'invalid sort direction')
 }
 
-const normalizeNulls = (value: unknown): '' | ' NULLS FIRST' | ' NULLS LAST' => {
+const normalizeNulls = (
+  value: unknown,
+): '' | ' NULLS FIRST' | ' NULLS LAST' => {
   if (value === undefined) return ''
   if (value === 'first' || value === 'FIRST') return ' NULLS FIRST'
   if (value === 'last' || value === 'LAST') return ' NULLS LAST'
-  throw new Error('invalid nulls order')
+  throw new HttpError(400, 'invalid nulls order')
 }
 
 const buildOrderBy = (orderBy?: OrderByDef): string => {
   if (!orderBy) return ''
-
-  if (typeof orderBy === 'string') {
-    return ' ORDER BY ' + quoteIdent(orderBy)
-  }
-
+  if (typeof orderBy === 'string') return ' ORDER BY ' + quoteIdent(orderBy)
   return (
     ' ORDER BY ' +
     quoteIdent(orderBy.field) +
@@ -89,7 +102,9 @@ const buildOrderBy = (orderBy?: OrderByDef): string => {
   )
 }
 
-export const materializedViewsRouter = (opts: MaterializedRouterOptions): Router => {
+export const materializedViewsRouter = (
+  opts: MaterializedRouterOptions,
+): Router => {
   const router = express.Router()
   const basePath = normalizeBasePath(opts.basePath)
   const defaultLimit = opts.defaultLimit ?? 50
@@ -104,14 +119,8 @@ export const materializedViewsRouter = (opts: MaterializedRouterOptions): Router
       try {
         const viewName = req.params.viewName
         const def = opts.views[viewName]
-
-        if (!def) {
-          throw new HttpError(404, 'unknown view')
-        }
-
-        if (def.authorize) {
-          await def.authorize(req, viewName, def)
-        }
+        if (!def) throw new HttpError(404, 'unknown view')
+        if (def.authorize) await def.authorize(req, viewName, def)
 
         const take = clampInt(
           req.query.take,
@@ -119,11 +128,13 @@ export const materializedViewsRouter = (opts: MaterializedRouterOptions): Router
           1,
           def.maxLimit ?? maxLimit,
         )
-
         const skip = clampInt(req.query.skip, 0, 0, Number.MAX_SAFE_INTEGER)
 
         if (skip > 0 && !def.orderBy) {
-          throw new HttpError(400, 'skip requires orderBy for deterministic pagination')
+          throw new HttpError(
+            400,
+            'skip requires orderBy for deterministic pagination',
+          )
         }
 
         const sql =
@@ -132,8 +143,11 @@ export const materializedViewsRouter = (opts: MaterializedRouterOptions): Router
           buildOrderBy(def.orderBy) +
           ' LIMIT $1 OFFSET $2'
 
-        const rows = await opts.prisma.$queryRawUnsafe<unknown[]>(sql, take, skip)
-
+        const rows = await opts.prisma.$queryRawUnsafe<unknown[]>(
+          sql,
+          take,
+          skip,
+        )
         res.locals.data = transformResult(rows)
         next()
       } catch (err) {
@@ -146,23 +160,28 @@ export const materializedViewsRouter = (opts: MaterializedRouterOptions): Router
     },
   )
 
-  router.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
-    const httpError =
-      err instanceof HttpError
-        ? err
-        : err && typeof err === 'object' && typeof (err as { status?: number }).status === 'number'
-          ? new HttpError(
-              (err as { status: number }).status,
-              (err as { message?: string }).message || 'Internal server error',
-            )
-          : mapError(err)
+  router.use(
+    (err: unknown, _req: Request, res: Response, next: NextFunction) => {
+      const httpError =
+        err instanceof HttpError
+          ? err
+          : err &&
+              typeof err === 'object' &&
+              typeof (err as { status?: number }).status === 'number'
+            ? new HttpError(
+                (err as { status: number }).status,
+                (err as { message?: string }).message ||
+                  'Internal server error',
+              )
+            : mapError(err)
 
-    if (!res.headersSent) {
-      return res.status(httpError.status).json({ message: httpError.message })
-    }
+      if (!res.headersSent) {
+        return res.status(httpError.status).json({ message: httpError.message })
+      }
 
-    next(err)
-  })
+      next(err)
+    },
+  )
 
   return router
 }
