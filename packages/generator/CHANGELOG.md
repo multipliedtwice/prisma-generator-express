@@ -1,3 +1,10 @@
+# [1.51.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.50.0...v1.51.0) (2026-06-14)
+
+
+### Features
+
+* enhance orderBy handling in materialized views router with parsing and allowlist enforcement ([4e256d6](https://github.com/multipliedtwice/prisma-generator-express/commit/4e256d6d1e259eb017f78f88396d47f678803ace))
+
 # [1.50.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.49.1...v1.50.0) (2026-06-14)
 
 
