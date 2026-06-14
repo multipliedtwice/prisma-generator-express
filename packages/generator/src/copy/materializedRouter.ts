@@ -21,6 +21,7 @@ type ViewDef = {
   defaultLimit?: number
   maxLimit?: number
   orderBy?: OrderByDef
+  allowedOrderBy?: string[]
   authorize?: (
     req: Request,
     viewName: string,
@@ -102,6 +103,47 @@ const buildOrderBy = (orderBy?: OrderByDef): string => {
   )
 }
 
+const parseOrderByParam = (raw: unknown): OrderByDef | undefined => {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  if (typeof raw !== 'string') return undefined
+  if (raw.startsWith('{') || raw.startsWith('[')) {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      throw new HttpError(400, 'invalid orderBy JSON')
+    }
+    if (typeof parsed === 'string') return parsed
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const keys = Object.keys(parsed as Record<string, unknown>)
+      if (keys.length === 0) return undefined
+      const field = keys[0]
+      const dirRaw = (parsed as Record<string, unknown>)[field]
+      if (dirRaw === 'asc' || dirRaw === 'desc')
+        return { field, direction: dirRaw }
+      if (dirRaw && typeof dirRaw === 'object') {
+        const sort = (dirRaw as { sort?: unknown }).sort
+        const nulls = (dirRaw as { nulls?: unknown }).nulls
+        const direction = sort === 'asc' || sort === 'desc' ? sort : undefined
+        const nullsOrder =
+          nulls === 'first' || nulls === 'last' ? nulls : undefined
+        return { field, direction, nulls: nullsOrder }
+      }
+      return { field }
+    }
+    throw new HttpError(400, 'invalid orderBy shape')
+  }
+  return raw
+}
+
+const enforceAllowlist = (orderBy: OrderByDef, allowed?: string[]): void => {
+  if (!allowed) return
+  const field = typeof orderBy === 'string' ? orderBy : orderBy.field
+  if (!allowed.includes(field)) {
+    throw new HttpError(400, 'orderBy field not allowed: ' + field)
+  }
+}
+
 export const materializedViewsRouter = (
   opts: MaterializedRouterOptions,
 ): Router => {
@@ -130,7 +172,11 @@ export const materializedViewsRouter = (
         )
         const skip = clampInt(req.query.skip, 0, 0, Number.MAX_SAFE_INTEGER)
 
-        if (skip > 0 && !def.orderBy) {
+        const queryOrderBy = parseOrderByParam(req.query.orderBy)
+        if (queryOrderBy) enforceAllowlist(queryOrderBy, def.allowedOrderBy)
+        const effectiveOrderBy = queryOrderBy ?? def.orderBy
+
+        if (skip > 0 && !effectiveOrderBy) {
           throw new HttpError(
             400,
             'skip requires orderBy for deterministic pagination',
@@ -140,7 +186,7 @@ export const materializedViewsRouter = (
         const sql =
           'SELECT * FROM ' +
           buildFqn(def) +
-          buildOrderBy(def.orderBy) +
+          buildOrderBy(effectiveOrderBy) +
           ' LIMIT $1 OFFSET $2'
 
         const rows = await opts.prisma.$queryRawUnsafe<unknown[]>(
