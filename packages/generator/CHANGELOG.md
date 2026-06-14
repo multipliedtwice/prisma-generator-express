@@ -1,3 +1,10 @@
+## [1.49.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.49.0...v1.49.1) (2026-06-14)
+
+
+### Bug Fixes
+
+* add materializedRouter.ts to EXPRESS_ONLY_FILES ([213f6ff](https://github.com/multipliedtwice/prisma-generator-express/commit/213f6ffc037b9021e5cb945df655b57a9b96abff))
+
 # [1.49.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.48.1...v1.49.0) (2026-06-14)
 
 
