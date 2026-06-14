@@ -1,3 +1,10 @@
+# [1.49.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.48.1...v1.49.0) (2026-06-14)
+
+
+### Features
+
+* implement materialized views router with CRUD operations ([2b3edd4](https://github.com/multipliedtwice/prisma-generator-express/commit/2b3edd48fd7b68616b7f83b8d6116aee3ad0a1ab))
+
 ## [1.48.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.48.0...v1.48.1) (2026-06-13)
 
 
