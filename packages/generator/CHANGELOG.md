@@ -1,3 +1,10 @@
+# [1.53.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.52.0...v1.53.0) (2026-06-15)
+
+
+### Features
+
+* enhance auto-include functionality for findMany and findManyPaginated operations ([3f1596e](https://github.com/multipliedtwice/prisma-generator-express/commit/3f1596e778410890dc2259cb6254180bc98c2e8b))
+
 # [1.52.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.51.0...v1.52.0) (2026-06-15)
 
 
