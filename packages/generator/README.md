@@ -1562,7 +1562,7 @@ Progressive SSE has two modes:
 
 Manual mode is explicit staged data loading. You define stages yourself and each stage decides what query to run and which field path to patch.
 
-Auto-include mode is generated relation loading. The router keeps the normal GET endpoint, runs the root query first, then loads supported included relations as separate follow-up queries. For single-record reads, relation paths are streamed as field patches. For `findMany` and `findManyPaginated`, root rows are streamed first, direct root relation stages are streamed as index-aligned relation batches, and deeper nested relation stages are merged into the final result.
+Auto-include mode is generated relation loading. The router keeps the normal GET endpoint, runs the root query first, then loads supported included relations as separate follow-up queries. For single-record reads, relation paths are streamed as field patches. For `findMany` and `findManyPaginated`, root rows are streamed first, direct root relation stages are streamed as index-aligned relation batches, and deeper nested relation stages are streamed as locator-based nested relation batches. The terminal `result` event still contains the fully assembled payload.
 
 ### Request format
 
@@ -1643,6 +1643,21 @@ Relation batch event for a direct root relation in `findMany` / `findManyPaginat
 { "type": "relationBatch", "relationPath": "profile", "values": [{ "id": "profile-1" }, null] }
 ```
 
+Nested relation batch event for a depth-2-or-deeper relation in `findMany` / `findManyPaginated` auto-include:
+
+```json
+{
+  "type": "nestedRelationBatch",
+  "relationPath": "companies.users",
+  "depth": 2,
+  "attachments": [
+    { "locator": [0, "companies", 0], "value": [{ "id": "user-1" }] }
+  ]
+}
+```
+
+Each `attachments[].locator` is walked from `rootArray.data` to the parent object. The leaf field to assign is the last segment of `relationPath`. For example, `relationPath: "companies.users"` and `locator: [0, "companies", 0]` means `rootArray.data[0].companies[0].users = value`.
+
 Final result event:
 
 ```json
@@ -1657,7 +1672,7 @@ Error event:
 
 For single-record progressive responses, the final `result.data` is the accumulated object built from all applied patches, unless a manual stage returns a stop result.
 
-For `findMany` auto-include responses, `rootArray.data` is the source of truth for root row identity and order. Each depth-1 `relationBatch.values` array is index-aligned with `rootArray.data`, so `values[i]` belongs to `rootArray.data[i]`. Deeper nested stages emit progress events but do not emit relation batches, because their flattened parent indexes are not root-row indexes. The terminal `result.data` is the fully merged array.
+For `findMany` auto-include responses, `rootArray.data` is the source of truth for root row identity and order. Each depth-1 `relationBatch.values` array is index-aligned with `rootArray.data`, so `values[i]` belongs to `rootArray.data[i]`. Each depth-2-or-deeper `nestedRelationBatch.attachments` array carries locator/value pairs that can be applied to the accumulated root rows immediately. The terminal `result.data` is the fully merged array and can be used as a final reconcile.
 
 For `findManyPaginated` auto-include responses, `pageMeta` is sent before `rootArray`. The terminal `result.data` has the normal paginated shape: `{ data, total, hasMore }`.
 
@@ -1926,7 +1941,7 @@ On single-record reads, auto-include sends root scalar fields first, then sends 
 
 The final `result` event contains the assembled object.
 
-For `findMany`, auto-include sends the root rows first, then sends one relation batch event for each supported direct root relation stage. Nested relation stages emit progress and are included in the final result:
+For `findMany`, auto-include sends the root rows first, then sends one relation batch event for each supported direct root relation stage. Depth-2-or-deeper stages send `nestedRelationBatch` events with locators pointing to the parent object inside the accumulated root rows:
 
 ```ts
 const listConfig = {
@@ -1980,7 +1995,7 @@ Example shallow `findMany` auto-include event sequence:
 { "type": "result", "data": [{ "id": "user-1", "profile": { "id": "profile-1", "displayName": "Alice" } }, { "id": "user-2", "profile": null }] }
 ```
 
-Deep `findMany` and `findManyPaginated` requests use the same planner. Nested stages are loaded by flattening the parent rows at each path:
+Deep `findMany` and `findManyPaginated` requests use the same planner. Nested stages are loaded by flattening the parent rows at each path, then emitted as locator-based attachment batches:
 
 ```ts
 const params = encodeQueryParams({
@@ -2026,11 +2041,25 @@ Example deep event sequence:
 ```
 
 ```json
-{ "type": "progress", "stage": "companies.users", "completed": 2, "total": 3 }
+{
+  "type": "nestedRelationBatch",
+  "relationPath": "companies.users",
+  "depth": 2,
+  "attachments": [
+    { "locator": [0, "companies", 0], "value": [{ "id": "user-1" }] }
+  ]
+}
 ```
 
 ```json
-{ "type": "progress", "stage": "companies.users.profile", "completed": 3, "total": 3 }
+{
+  "type": "nestedRelationBatch",
+  "relationPath": "companies.users.profile",
+  "depth": 3,
+  "attachments": [
+    { "locator": [0, "companies", 0, "users", 0], "value": { "id": "profile-1", "displayName": "Alice" } }
+  ]
+}
 ```
 
 ```json
@@ -2068,7 +2097,7 @@ Supported `findMany` and `findManyPaginated` relation shapes:
 - single-column link fields only
 - nested depth up to the configured planner limit
 
-For `findMany` and `findManyPaginated`, each stage loads children with a batched query over the flattened parent rows at that stage's `parentPath`. Direct root stages can stream `relationBatch` events. Deeper stages are merged into the server-side result and visible in the terminal `result` event.
+For `findMany` and `findManyPaginated`, each stage loads children with a batched query over the flattened parent rows at that stage's `parentPath`. Direct root stages stream `relationBatch` events. Depth-2-or-deeper stages stream `nestedRelationBatch` events with locator/value attachments, then also appear in the terminal `result` event.
 
 `findMany` and `findManyPaginated` auto-include apply configured pagination limits to the root query before loading relation batches. If the client omits `take`, `pagination.defaultLimit` is applied when configured. If the client sends a large `take`, `pagination.maxLimit` is enforced before the root query runs.
 
@@ -2137,6 +2166,20 @@ let rows: Array<Record<string, unknown>> = []
 let fields: Record<string, unknown> = {}
 let data: unknown = undefined
 
+const lastSegment = (path: string) => {
+  const parts = path.split('.')
+  return parts[parts.length - 1] ?? path
+}
+
+const walk = (source: Array<Record<string, unknown>>, locator: Array<number | string>) => {
+  let cursor: unknown = source[locator[0] as number]
+  for (let i = 1; i < locator.length; i++) {
+    if (cursor == null) return null
+    cursor = (cursor as Record<string | number, unknown>)[locator[i]]
+  }
+  return cursor
+}
+
 while (true) {
   const { value, done } = await reader.read()
   if (done) break
@@ -2163,10 +2206,22 @@ while (true) {
     }
 
     if (event.type === 'relationBatch') {
+      const field = lastSegment(event.relationPath)
       rows = rows.map((row, index) => ({
         ...row,
-        [event.relationPath]: event.values[index],
+        [field]: event.values[index],
       }))
+    }
+
+    if (event.type === 'nestedRelationBatch') {
+      const field = lastSegment(event.relationPath)
+      for (const attachment of event.attachments) {
+        const parent = walk(rows, attachment.locator)
+        if (parent && typeof parent === 'object' && !Array.isArray(parent)) {
+          const record = parent as Record<string, unknown>
+          record[field] = attachment.value
+        }
+      }
     }
 
     if (event.type === 'result') {
@@ -2184,7 +2239,7 @@ For React Query, include the variant and mode in the query key:
 
 Do not reuse the same query key as the JSON endpoint because the same URL can return different shapes depending on `x-api-variant`.
 
-For deep `findMany` / `findManyPaginated` auto-include, consume the final `result` event as the authoritative nested payload. Only direct root relation stages emit `relationBatch` events.
+For deep `findMany` / `findManyPaginated` auto-include, apply `nestedRelationBatch` events for progressive rendering and still treat the final `result` event as the authoritative nested payload for reconciliation. Direct root relation stages emit `relationBatch`; depth-2-or-deeper relation stages emit `nestedRelationBatch`.
 
 ### Runtime notes
 

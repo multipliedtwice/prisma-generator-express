@@ -503,6 +503,15 @@ export function sendSSERelationBatch(
   return sendSSE(res, { type: 'relationBatch', relationPath, values })
 }
 
+export function sendSSENestedRelationBatch(
+  res: SseWritable,
+  relationPath: string,
+  depth: number,
+  attachments: Array<{ locator: Array<number | string>; value: unknown }>,
+): boolean {
+  return sendSSE(res, { type: 'nestedRelationBatch', relationPath, depth, attachments })
+}
+
 export function sendSSEPageMeta(
   res: SseWritable,
   total: number,

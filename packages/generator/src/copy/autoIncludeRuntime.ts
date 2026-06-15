@@ -9,6 +9,7 @@ import {
   sendSSEProgress,
   sendSSERootArray,
   sendSSERelationBatch,
+  sendSSENestedRelationBatch,
   sendSSEPageMeta,
   runSingleResultSSE,
   emitTerminalSSEError,
@@ -60,6 +61,10 @@ export type RunAutoIncludeOptions = {
 type RowPair = {
   internal: Record<string, unknown>
   public: Record<string, unknown>
+}
+
+type ParentEntry = RowPair & {
+  locator: Array<number | string>
 }
 
 function readPath(source: Record<string, unknown>, path: string): unknown {
@@ -235,35 +240,49 @@ function singleUnsupportedReason(plan: AutoIncludePlan): string | null {
   return null
 }
 
-function collectParentPairs(
+function collectParentEntries(
   rootPairs: RowPair[],
   parentPath: string,
-): RowPair[] {
-  if (parentPath === '') return rootPairs
-  let pairs = rootPairs
+): ParentEntry[] {
+  const initial: ParentEntry[] = rootPairs.map((p, i) => ({
+    internal: p.internal,
+    public: p.public,
+    locator: [i],
+  }))
+  if (parentPath === '') return initial
+
+  let entries = initial
   for (const segment of parentPath.split('.')) {
-    const next: RowPair[] = []
-    for (const pair of pairs) {
-      const internalValue = pair.internal[segment]
-      const publicValue = pair.public[segment]
+    const next: ParentEntry[] = []
+    for (const entry of entries) {
+      const internalValue = entry.internal[segment]
+      const publicValue = entry.public[segment]
       if (Array.isArray(internalValue) && Array.isArray(publicValue)) {
         const length = Math.min(internalValue.length, publicValue.length)
         for (let i = 0; i < length; i++) {
           const internalItem = internalValue[i]
           const publicItem = publicValue[i]
           if (isPlainObject(internalItem) && isPlainObject(publicItem)) {
-            next.push({ internal: internalItem, public: publicItem })
+            next.push({
+              internal: internalItem,
+              public: publicItem,
+              locator: [...entry.locator, segment, i],
+            })
           }
         }
         continue
       }
       if (isPlainObject(internalValue) && isPlainObject(publicValue)) {
-        next.push({ internal: internalValue, public: publicValue })
+        next.push({
+          internal: internalValue,
+          public: publicValue,
+          locator: [...entry.locator, segment],
+        })
       }
     }
-    pairs = next
+    entries = next
   }
-  return pairs
+  return entries
 }
 
 async function runOneStageSingle(options: {
@@ -522,12 +541,12 @@ async function runOneStageMany(options: {
   extended: unknown
   models: Record<string, ModelRelationMap>
   stage: AutoIncludeStage
-  parentPairs: RowPair[]
+  parentEntries: ParentEntry[]
   internalFieldPaths: string[]
   res: Response
   isAborted: () => boolean
 }): Promise<void> {
-  const { extended, models, stage, parentPairs, internalFieldPaths, res, isAborted } = options
+  const { extended, models, stage, parentEntries, internalFieldPaths, res, isAborted } = options
 
   if (isAborted()) return
 
@@ -540,14 +559,16 @@ async function runOneStageMany(options: {
     throw new Error('Target model not in relation metadata: ' + rel.type)
   }
 
-  if (parentPairs.length === 0) {
+  if (parentEntries.length === 0) {
     if (stage.depth === 1) {
       sendSSERelationBatch(res, stage.relationPath, [])
+    } else {
+      sendSSENestedRelationBatch(res, stage.relationPath, stage.depth, [])
     }
     return
   }
 
-  const internalParents = parentPairs.map((p) => p.internal)
+  const internalParents = parentEntries.map((p) => p.internal)
   const distinctValues = collectDistinctParentValues(internalParents, parentKey)
   const delegate: PrismaDelegate = getDelegate(extended, targetModel.delegateKey)
 
@@ -571,11 +592,11 @@ async function runOneStageMany(options: {
     : internalFieldPaths
 
   const grouped = groupRelatedRows(children, childKey)
-  const publicValues: unknown[] = new Array(parentPairs.length)
+  const publicValues: unknown[] = new Array(parentEntries.length)
 
-  for (let i = 0; i < parentPairs.length; i++) {
-    const pair = parentPairs[i]
-    const fkVal = pair.internal[parentKey]
+  for (let i = 0; i < parentEntries.length; i++) {
+    const entry = parentEntries[i]
+    const fkVal = entry.internal[parentKey]
     let internalVal: unknown
 
     if (fkVal === undefined || fkVal === null) {
@@ -591,8 +612,8 @@ async function runOneStageMany(options: {
 
     const publicVal = buildPublicForStage(internalVal, effectivePaths, stage.relationPath)
 
-    pair.internal[stage.relationName] = internalVal
-    pair.public[stage.relationName] = publicVal
+    entry.internal[stage.relationName] = internalVal
+    entry.public[stage.relationName] = publicVal
     publicValues[i] = publicVal
   }
 
@@ -600,7 +621,14 @@ async function runOneStageMany(options: {
 
   if (stage.depth === 1) {
     sendSSERelationBatch(res, stage.relationPath, publicValues)
+    return
   }
+
+  const attachments = parentEntries.map((entry, i) => ({
+    locator: entry.locator,
+    value: publicValues[i],
+  }))
+  sendSSENestedRelationBatch(res, stage.relationPath, stage.depth, attachments)
 }
 
 function buildRootPairs(
@@ -652,13 +680,13 @@ async function processFindManyStages(args: {
 
     await runConcurrent(group, STAGE_CONCURRENCY, async (stage) => {
       if (isAborted()) return
-      const parentPairs = collectParentPairs(rootPairs, stage.parentPath)
+      const parentEntries = collectParentEntries(rootPairs, stage.parentPath)
       try {
         await runOneStageMany({
           extended,
           models,
           stage,
-          parentPairs,
+          parentEntries,
           internalFieldPaths: plan.internalFieldPaths,
           res,
           isAborted,
