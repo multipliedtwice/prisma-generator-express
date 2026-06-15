@@ -12,7 +12,7 @@ Running `npx prisma generate` produces:
 - Handler functions for all Prisma operations (findMany, create, update, delete, etc.)
 - Router generator with middleware support (before/after hooks per operation)
 - POST read endpoints for all read operations (for complex queries exceeding URL length limits)
-- Express-only progressive read streaming over Server-Sent Events (SSE), using manual stages or auto-include splitting for supported relation reads
+- Express-only progressive read streaming over Server-Sent Events (SSE), using manual stages or auto-include splitting for supported relation reads, including deep `findMany` / `findManyPaginated` auto-include paths
 - Express-only standalone materialized view router for read-only access to registered PostgreSQL materialized views
 - OpenAPI 3.1 spec (JSON and YAML endpoints registered automatically per router)
 - Documentation helpers for contract view and Scalar UI (require manual mounting)
@@ -74,7 +74,7 @@ Some operations require newer versions:
 
 The Hono target v1 is tested on Node.js runtimes only. See [Cloudflare Workers and edge runtimes](#cloudflare-workers-and-edge-runtimes).
 
-Progressive Endpoint Composition over Server-Sent Events is currently supported by the Express target only. Express supports both manual staged streaming and auto-include streaming for supported relation reads, including single-record reads and limited `findMany` reads. Fastify and Hono continue to support normal JSON read and write routes.
+Progressive Endpoint Composition over Server-Sent Events is currently supported by the Express target only. Express supports both manual staged streaming and auto-include streaming for supported relation reads, including single-record reads and deep `findMany` / `findManyPaginated` reads within the configured planner limits. Fastify and Hono continue to support normal JSON read and write routes.
 
 ### Database provider support
 
@@ -1562,7 +1562,7 @@ Progressive SSE has two modes:
 
 Manual mode is explicit staged data loading. You define stages yourself and each stage decides what query to run and which field path to patch.
 
-Auto-include mode is generated relation loading. The router keeps the normal GET endpoint, runs the root query first, then loads supported included relations as separate follow-up queries. For single-record reads, relation paths are streamed as field patches. For `findMany`, direct root relations are loaded in batches and streamed as index-aligned relation batches.
+Auto-include mode is generated relation loading. The router keeps the normal GET endpoint, runs the root query first, then loads supported included relations as separate follow-up queries. For single-record reads, relation paths are streamed as field patches. For `findMany` and `findManyPaginated`, root rows are streamed first, direct root relation stages are streamed as index-aligned relation batches, and deeper nested relation stages are merged into the final result.
 
 ### Request format
 
@@ -1601,8 +1601,9 @@ Auto-include progressive SSE supports these Express GET read operations:
 - `findFirst`
 - `findFirstOrThrow`
 - `findMany`
+- `findManyPaginated`
 
-`findMany` support is intentionally narrower than single-record support. It supports direct root relation loading only, with additional fallback cases listed in [Auto-include behavior and limits](#auto-include-behavior-and-limits).
+`findMany` and `findManyPaginated` support deep relation loading by flattening parent rows at each relation path, with fallback cases listed in [Auto-include behavior and limits](#auto-include-behavior-and-limits).
 
 If auto-include is configured on an unsupported operation, the router either falls back to single-result SSE or sends an SSE error depending on `fallback`.
 
@@ -1630,13 +1631,13 @@ Nested field event:
 { "type": "field", "key": "profile.appliedTo", "value": [] }
 ```
 
-Root array event for `findMany` auto-include:
+Root array event for `findMany` / `findManyPaginated` auto-include:
 
 ```json
 { "type": "rootArray", "data": [{ "id": "user-1" }, { "id": "user-2" }] }
 ```
 
-Relation batch event for `findMany` auto-include:
+Relation batch event for a direct root relation in `findMany` / `findManyPaginated` auto-include:
 
 ```json
 { "type": "relationBatch", "relationPath": "profile", "values": [{ "id": "profile-1" }, null] }
@@ -1656,7 +1657,9 @@ Error event:
 
 For single-record progressive responses, the final `result.data` is the accumulated object built from all applied patches, unless a manual stage returns a stop result.
 
-For `findMany` auto-include responses, `rootArray.data` is the source of truth for root row identity and order. Each `relationBatch.values` array is index-aligned with `rootArray.data`, so `values[i]` belongs to `rootArray.data[i]`. The terminal `result.data` is the fully merged array.
+For `findMany` auto-include responses, `rootArray.data` is the source of truth for root row identity and order. Each depth-1 `relationBatch.values` array is index-aligned with `rootArray.data`, so `values[i]` belongs to `rootArray.data[i]`. Deeper nested stages emit progress events but do not emit relation batches, because their flattened parent indexes are not root-row indexes. The terminal `result.data` is the fully merged array.
+
+For `findManyPaginated` auto-include responses, `pageMeta` is sent before `rootArray`. The terminal `result.data` has the normal paginated shape: `{ data, total, hasMore }`.
 
 ### Manual staged mode
 
@@ -1923,7 +1926,7 @@ On single-record reads, auto-include sends root scalar fields first, then sends 
 
 The final `result` event contains the assembled object.
 
-For `findMany`, auto-include sends the root rows first, then sends one relation batch event per supported relation stage:
+For `findMany`, auto-include sends the root rows first, then sends one relation batch event for each supported direct root relation stage. Nested relation stages emit progress and are included in the final result:
 
 ```ts
 const listConfig = {
@@ -1963,7 +1966,7 @@ const response = await fetch(`/user?${params}`, {
 })
 ```
 
-Example `findMany` auto-include event sequence:
+Example shallow `findMany` auto-include event sequence:
 
 ```json
 { "type": "rootArray", "data": [{ "id": "user-1" }, { "id": "user-2" }] }
@@ -1977,6 +1980,64 @@ Example `findMany` auto-include event sequence:
 { "type": "result", "data": [{ "id": "user-1", "profile": { "id": "profile-1", "displayName": "Alice" } }, { "id": "user-2", "profile": null }] }
 ```
 
+Deep `findMany` and `findManyPaginated` requests use the same planner. Nested stages are loaded by flattening the parent rows at each path:
+
+```ts
+const params = encodeQueryParams({
+  take: 20,
+  include: {
+    companies: {
+      include: {
+        users: {
+          include: {
+            profile: {
+              select: {
+                id: true,
+                displayName: true,
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+})
+
+const response = await fetch(`/organization/paginated?${params}`, {
+  headers: {
+    Accept: 'text/event-stream',
+    'x-api-variant': 'list',
+  },
+})
+```
+
+Example deep event sequence:
+
+```json
+{ "type": "pageMeta", "total": 120, "hasMore": true }
+```
+
+```json
+{ "type": "rootArray", "data": [{ "id": "org-1" }, { "id": "org-2" }] }
+```
+
+```json
+{ "type": "relationBatch", "relationPath": "companies", "values": [[{ "id": "company-1" }], []] }
+```
+
+```json
+{ "type": "progress", "stage": "companies.users", "completed": 2, "total": 3 }
+```
+
+```json
+{ "type": "progress", "stage": "companies.users.profile", "completed": 3, "total": 3 }
+```
+
+```json
+{ "type": "result", "data": { "data": [{ "id": "org-1", "companies": [{ "id": "company-1", "users": [{ "id": "user-1", "profile": { "id": "profile-1", "displayName": "Alice" } }] }] }, { "id": "org-2", "companies": [] }], "total": 120, "hasMore": true } }
+```
+
+
 ### Auto-include behavior and limits
 
 Auto-include is designed for supported Prisma `include` and relation `select` trees on reads.
@@ -1988,22 +2049,28 @@ Supported root operations:
 - `findFirst`
 - `findFirstOrThrow`
 - `findMany`
+- `findManyPaginated`
 
 Supported single-record relation shapes:
 
 - direct to-one relation includes/selects
 - direct to-many relation includes/selects
 - to-many relation args such as `where`, `orderBy`, `take`, `skip`, `cursor`, and `distinct`
-- nested to-one relation loading through to-one parents
+- nested relation loading through to-one parents
 
-Supported `findMany` relation shapes:
+Single-record auto-include falls back when a nested stage crosses a to-many parent. Direct to-many loading is still supported, but nested loading under that array is not handled by the single-record progressive runtime.
 
-- direct root to-one relation includes/selects
-- direct root to-many relation includes/selects
+Supported `findMany` and `findManyPaginated` relation shapes:
+
+- direct and nested to-one relation includes/selects
+- direct and nested to-many relation includes/selects
 - relation-level `where` and `orderBy`
 - single-column link fields only
+- nested depth up to the configured planner limit
 
-`findMany` auto-include applies configured pagination limits to the root query before loading relation batches. If the client omits `take`, `pagination.defaultLimit` is applied when configured. If the client sends a large `take`, `pagination.maxLimit` is enforced before the root query runs.
+For `findMany` and `findManyPaginated`, each stage loads children with a batched query over the flattened parent rows at that stage's `parentPath`. Direct root stages can stream `relationBatch` events. Deeper stages are merged into the server-side result and visible in the terminal `result` event.
+
+`findMany` and `findManyPaginated` auto-include apply configured pagination limits to the root query before loading relation batches. If the client omits `take`, `pagination.defaultLimit` is applied when configured. If the client sends a large `take`, `pagination.maxLimit` is enforced before the root query runs.
 
 Current MVP fallback cases include:
 
@@ -2013,13 +2080,12 @@ Current MVP fallback cases include:
 - `select` and `omit` at the same level
 - relation filters/order/cursor in the root query
 - relation filters/order/cursor inside staged relation queries when unsupported
-- nested relation loading through a to-many parent
 - omitted required link fields needed to stitch parent and child records
 - planner limits for maximum depth or stage count
-- `findMany` relation stages with composite link fields
-- `findMany` nested relation stages deeper than direct root relations
-- `findMany` to-many relation stages using `take`, `skip`, `cursor`, or `distinct`
-- `findManyPaginated`, `createManyAndReturn`, and `updateManyAndReturn`
+- single-record nested relation loading through a to-many parent
+- `findMany` / `findManyPaginated` relation stages with composite link fields
+- `findMany` / `findManyPaginated` to-many relation stages using `take`, `skip`, `cursor`, or `distinct`
+- `createManyAndReturn` and `updateManyAndReturn`
 
 When fallback happens:
 
@@ -2028,7 +2094,7 @@ When fallback happens:
 
 If `fallback` is omitted, the default behavior is equivalent to `'singleResult'`.
 
-`findMany` auto-include uses a batched relation loading strategy. It does not preserve Prisma's per-parent semantics for to-many `take`, `skip`, `cursor`, or `distinct`, so those cases fall back instead of returning silently different data.
+`findMany` and `findManyPaginated` auto-include use a batched relation loading strategy. They do not preserve Prisma's per-parent semantics for to-many `take`, `skip`, `cursor`, or `distinct`, so those cases fall back instead of returning silently different data.
 
 Auto-include does not require `resolveContext` or `progressiveStages`.
 
@@ -2117,6 +2183,8 @@ For React Query, include the variant and mode in the query key:
 ```
 
 Do not reuse the same query key as the JSON endpoint because the same URL can return different shapes depending on `x-api-variant`.
+
+For deep `findMany` / `findManyPaginated` auto-include, consume the final `result` event as the authoritative nested payload. Only direct root relation stages emit `relationBatch` events.
 
 ### Runtime notes
 

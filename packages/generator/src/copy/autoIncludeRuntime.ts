@@ -9,12 +9,14 @@ import {
   sendSSEProgress,
   sendSSERootArray,
   sendSSERelationBatch,
+  sendSSEPageMeta,
   runSingleResultSSE,
   emitTerminalSSEError,
   setByPath,
   getDelegate,
   getExtendedClient,
   applyPaginationLimits,
+  countForPagination,
   mapError,
   type OperationContext,
   type PrismaDelegate,
@@ -39,6 +41,7 @@ export type AutoIncludeBaseOp =
   | 'findFirst'
   | 'findFirstOrThrow'
   | 'findMany'
+  | 'findManyPaginated'
 
 export type RunAutoIncludeOptions = {
   req: Request
@@ -52,6 +55,11 @@ export type RunAutoIncludeOptions = {
   variantConfig: AutoIncludeProgressiveVariantConfig
   coreQueryFn: () => Promise<unknown>
   signal?: AbortSignal
+}
+
+type RowPair = {
+  internal: Record<string, unknown>
+  public: Record<string, unknown>
 }
 
 function readPath(source: Record<string, unknown>, path: string): unknown {
@@ -196,9 +204,6 @@ function findManyUnsupportedReason(plan: AutoIncludePlan): string | null {
     if (rel.parentLinkFields.length !== 1 || rel.childLinkFields.length !== 1) {
       return 'auto-progressive fallback: composite link fields not supported for findMany batched auto-include'
     }
-    if (stage.depth > 1) {
-      return 'auto-progressive fallback: nested relations not supported for findMany batched auto-include'
-    }
     if (rel.isList) {
       const sa = stage.stageArgs
       if (
@@ -212,6 +217,53 @@ function findManyUnsupportedReason(plan: AutoIncludePlan): string | null {
     }
   }
   return null
+}
+
+function singleUnsupportedReason(plan: AutoIncludePlan): string | null {
+  const stagesByPath = new Map(plan.stages.map((s) => [s.relationPath, s]))
+  for (const stage of plan.stages) {
+    let parentPath = stage.parentPath
+    while (parentPath) {
+      const parentStage = stagesByPath.get(parentPath)
+      if (parentStage?.relationField.isList) {
+        return 'auto-progressive fallback: nested relation through to-many parent is not supported for single-result auto-include'
+      }
+      const dot = parentPath.lastIndexOf('.')
+      parentPath = dot === -1 ? '' : parentPath.slice(0, dot)
+    }
+  }
+  return null
+}
+
+function collectParentPairs(
+  rootPairs: RowPair[],
+  parentPath: string,
+): RowPair[] {
+  if (parentPath === '') return rootPairs
+  let pairs = rootPairs
+  for (const segment of parentPath.split('.')) {
+    const next: RowPair[] = []
+    for (const pair of pairs) {
+      const internalValue = pair.internal[segment]
+      const publicValue = pair.public[segment]
+      if (Array.isArray(internalValue) && Array.isArray(publicValue)) {
+        const length = Math.min(internalValue.length, publicValue.length)
+        for (let i = 0; i < length; i++) {
+          const internalItem = internalValue[i]
+          const publicItem = publicValue[i]
+          if (isPlainObject(internalItem) && isPlainObject(publicItem)) {
+            next.push({ internal: internalItem, public: publicItem })
+          }
+        }
+        continue
+      }
+      if (isPlainObject(internalValue) && isPlainObject(publicValue)) {
+        next.push({ internal: internalValue, public: publicValue })
+      }
+    }
+    pairs = next
+  }
+  return pairs
 }
 
 async function runOneStageSingle(options: {
@@ -300,7 +352,7 @@ async function runAutoIncludeSingle(
 
     let rootResult: unknown
     try {
-      rootResult = await rootDelegate[baseOp as Exclude<AutoIncludeBaseOp, 'findMany'>](plan.rootArgs)
+      rootResult = await rootDelegate[baseOp as Exclude<AutoIncludeBaseOp, 'findMany' | 'findManyPaginated'>](plan.rootArgs)
     } catch (err) {
       if (isClientGone()) return
       console.error('[auto-progressive] root query failed:', err)
@@ -470,16 +522,12 @@ async function runOneStageMany(options: {
   extended: unknown
   models: Record<string, ModelRelationMap>
   stage: AutoIncludeStage
-  internalRows: Record<string, unknown>[]
-  publicRows: Record<string, unknown>[]
+  parentPairs: RowPair[]
   internalFieldPaths: string[]
   res: Response
   isAborted: () => boolean
 }): Promise<void> {
-  const {
-    extended, models, stage, internalRows, publicRows,
-    internalFieldPaths, res, isAborted,
-  } = options
+  const { extended, models, stage, parentPairs, internalFieldPaths, res, isAborted } = options
 
   if (isAborted()) return
 
@@ -492,7 +540,15 @@ async function runOneStageMany(options: {
     throw new Error('Target model not in relation metadata: ' + rel.type)
   }
 
-  const distinctValues = collectDistinctParentValues(internalRows, parentKey)
+  if (parentPairs.length === 0) {
+    if (stage.depth === 1) {
+      sendSSERelationBatch(res, stage.relationPath, [])
+    }
+    return
+  }
+
+  const internalParents = parentPairs.map((p) => p.internal)
+  const distinctValues = collectDistinctParentValues(internalParents, parentKey)
   const delegate: PrismaDelegate = getDelegate(extended, targetModel.delegateKey)
 
   const children: unknown[] = []
@@ -515,11 +571,11 @@ async function runOneStageMany(options: {
     : internalFieldPaths
 
   const grouped = groupRelatedRows(children, childKey)
-  const publicValues: unknown[] = new Array(internalRows.length)
+  const publicValues: unknown[] = new Array(parentPairs.length)
 
-  for (let i = 0; i < internalRows.length; i++) {
-    const row = internalRows[i]
-    const fkVal = row[parentKey]
+  for (let i = 0; i < parentPairs.length; i++) {
+    const pair = parentPairs[i]
+    const fkVal = pair.internal[parentKey]
     let internalVal: unknown
 
     if (fkVal === undefined || fkVal === null) {
@@ -535,13 +591,124 @@ async function runOneStageMany(options: {
 
     const publicVal = buildPublicForStage(internalVal, effectivePaths, stage.relationPath)
 
-    internalRows[i][stage.relationName] = internalVal
-    publicRows[i][stage.relationName] = publicVal
+    pair.internal[stage.relationName] = internalVal
+    pair.public[stage.relationName] = publicVal
     publicValues[i] = publicVal
   }
 
   if (isAborted()) return
-  sendSSERelationBatch(res, stage.relationPath, publicValues)
+
+  if (stage.depth === 1) {
+    sendSSERelationBatch(res, stage.relationPath, publicValues)
+  }
+}
+
+function buildRootPairs(
+  rootRows: unknown[],
+  internalFieldPaths: string[],
+): { publicRows: Record<string, unknown>[]; rootPairs: RowPair[] } {
+  const n = rootRows.length
+  const publicRows: Record<string, unknown>[] = new Array(n)
+  const rootPairs: RowPair[] = new Array(n)
+  for (let i = 0; i < n; i++) {
+    const row = rootRows[i]
+    if (!isPlainObject(row)) {
+      const internalEmpty: Record<string, unknown> = {}
+      const publicEmpty: Record<string, unknown> = {}
+      publicRows[i] = publicEmpty
+      rootPairs[i] = { internal: internalEmpty, public: publicEmpty }
+      continue
+    }
+    const internalCopy: Record<string, unknown> = { ...row }
+    const publicCopy: Record<string, unknown> = { ...row }
+    stripInternalAtScope(publicCopy, internalFieldPaths, '')
+    publicRows[i] = publicCopy
+    rootPairs[i] = { internal: internalCopy, public: publicCopy }
+  }
+  return { publicRows, rootPairs }
+}
+
+async function processFindManyStages(args: {
+  extended: unknown
+  models: Record<string, ModelRelationMap>
+  plan: AutoIncludePlan
+  rootPairs: RowPair[]
+  res: Response
+  signal?: AbortSignal
+}): Promise<string | null> {
+  const { extended, models, plan, rootPairs, res, signal } = args
+  const groups = groupStagesByDepth(plan.stages)
+  let completed = 0
+  let stageErrorMessage: string | null = null
+  const isAborted = () =>
+    stageErrorMessage !== null ||
+    signal?.aborted === true ||
+    res.writableEnded ||
+    res.destroyed
+
+  for (const group of groups) {
+    if (signal?.aborted === true || res.writableEnded || res.destroyed) return stageErrorMessage
+    if (stageErrorMessage) break
+
+    await runConcurrent(group, STAGE_CONCURRENCY, async (stage) => {
+      if (isAborted()) return
+      const parentPairs = collectParentPairs(rootPairs, stage.parentPath)
+      try {
+        await runOneStageMany({
+          extended,
+          models,
+          stage,
+          parentPairs,
+          internalFieldPaths: plan.internalFieldPaths,
+          res,
+          isAborted,
+        })
+      } catch (err) {
+        if (isAborted()) return
+        console.error('[auto-progressive] stage failed:', stage.relationPath, err)
+        stageErrorMessage = mapError(err).message
+        return
+      }
+      if (isAborted()) return
+      completed++
+      sendSSEProgress(res, stage.relationPath, completed, plan.stages.length)
+    })
+  }
+  return stageErrorMessage
+}
+
+async function runPaginatedRoot(
+  extended: unknown,
+  rootDelegate: PrismaDelegate,
+  delegateKey: string,
+  rootArgs: Record<string, unknown>,
+  distinctCountLimit: number | undefined,
+): Promise<{ data: unknown[]; count: number }> {
+  const txClient = extended as {
+    $transaction?: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>
+  }
+
+  if (typeof txClient.$transaction === 'function') {
+    try {
+      const result = await txClient.$transaction(async (tx: unknown) => {
+        const txDelegate = getDelegate(tx, delegateKey)
+        const d = await txDelegate.findMany(rootArgs)
+        const t = await countForPagination(txDelegate, rootArgs, undefined, undefined, distinctCountLimit)
+        return { d, t }
+      })
+      return { data: result.d as unknown[], count: result.t }
+    } catch (err) {
+      const e = err as { code?: string }
+      if (e?.code !== 'P2028') throw err
+      console.warn('[auto-progressive] Interactive transactions not available, paginated queries are non-atomic')
+    }
+  }
+
+  const [data, count] = await Promise.all([
+    rootDelegate.findMany(rootArgs),
+    countForPagination(rootDelegate, rootArgs, undefined, undefined, distinctCountLimit),
+  ])
+  return { data: data as unknown[], count }
 }
 
 async function runAutoIncludeMany(
@@ -582,69 +749,20 @@ async function runAutoIncludeMany(
       return
     }
 
-    const internalRows: Record<string, unknown>[] = new Array(rootResult.length)
-    const publicRows: Record<string, unknown>[] = new Array(rootResult.length)
-
-    for (let i = 0; i < rootResult.length; i++) {
-      const row = rootResult[i]
-      if (!isPlainObject(row)) {
-        internalRows[i] = {}
-        publicRows[i] = {}
-        continue
-      }
-      const internalCopy: Record<string, unknown> = { ...row }
-      const publicCopy: Record<string, unknown> = { ...row }
-      stripInternalAtScope(publicCopy, plan.internalFieldPaths, '')
-      internalRows[i] = internalCopy
-      publicRows[i] = publicCopy
-    }
+    const { publicRows, rootPairs } = buildRootPairs(rootResult, plan.internalFieldPaths)
 
     sendSSERootArray(res, publicRows)
     sendSSEProgress(res, 'root', 0, plan.stages.length)
 
-    const groups = groupStagesByDepth(plan.stages)
-    let completed = 0
-    let stageErrorMessage: string | null = null
-    const isAborted = () =>
-      stageErrorMessage !== null ||
-      signal?.aborted === true ||
-      res.writableEnded ||
-      res.destroyed
-
-    for (const group of groups) {
-      if (isClientGone()) return
-      if (stageErrorMessage) break
-
-      await runConcurrent(group, STAGE_CONCURRENCY, async (stage) => {
-        if (isAborted()) return
-        try {
-          await runOneStageMany({
-            extended,
-            models,
-            stage,
-            internalRows,
-            publicRows,
-            internalFieldPaths: plan.internalFieldPaths,
-            res,
-            isAborted,
-          })
-        } catch (err) {
-          if (isAborted()) return
-          console.error('[auto-progressive] stage failed:', stage.relationPath, err)
-          stageErrorMessage = mapError(err).message
-          return
-        }
-        if (isAborted()) return
-        completed++
-        sendSSEProgress(res, stage.relationPath, completed, plan.stages.length)
-      })
-    }
+    const stageError = await processFindManyStages({
+      extended, models, plan, rootPairs, res, signal,
+    })
 
     if (isClientGone()) return
 
-    if (stageErrorMessage) {
+    if (stageError) {
       if (!res.writableEnded && !res.destroyed) {
-        sendSSEError(res, stageErrorMessage)
+        sendSSEError(res, stageError)
       }
       return
     }
@@ -654,6 +772,82 @@ async function runAutoIncludeMany(
   } catch (err) {
     if (isClientGone()) return
     console.error('[auto-progressive] many dispatch error:', err)
+    if (!res.writableEnded && !res.destroyed) {
+      sendSSEError(res, mapError(err).message)
+    }
+  } finally {
+    endSSE(res, keepalive)
+  }
+}
+
+async function runAutoIncludePaginated(
+  options: RunAutoIncludeOptions,
+  plan: AutoIncludePlan,
+): Promise<void> {
+  const { res, ctx, delegateKey, models, signal } = options
+
+  const isClientGone = () =>
+    signal?.aborted === true || res.writableEnded || res.destroyed
+
+  let keepalive: IntervalHandle | null = null
+  try {
+    initSSE(res)
+    keepalive = startSSEKeepalive(res)
+    if (isClientGone()) return
+
+    const extended = await getExtendedClient(ctx)
+    if (isClientGone()) return
+
+    const rootDelegate = getDelegate(extended, delegateKey)
+    const rootArgs = applyPaginationLimits(plan.rootArgs, ctx.paginationConfig)
+    const distinctCountLimit = ctx.paginationConfig?.distinctCountLimit
+
+    let rootRows: unknown[]
+    let total: number
+    try {
+      const { data, count } = await runPaginatedRoot(
+        extended, rootDelegate, delegateKey, rootArgs, distinctCountLimit,
+      )
+      rootRows = data
+      total = count
+    } catch (err) {
+      if (isClientGone()) return
+      console.error('[auto-progressive] root findManyPaginated failed:', err)
+      sendSSEError(res, mapError(err).message)
+      return
+    }
+
+    if (isClientGone()) return
+
+    const skip = typeof rootArgs.skip === 'number' ? rootArgs.skip : 0
+    const takeRaw = typeof rootArgs.take === 'number' ? rootArgs.take : rootRows.length
+    const absTake = Math.abs(takeRaw)
+    const hasMore = rootRows.length >= absTake && skip + rootRows.length < total
+
+    const { publicRows, rootPairs } = buildRootPairs(rootRows, plan.internalFieldPaths)
+
+    sendSSEPageMeta(res, total, hasMore)
+    sendSSERootArray(res, publicRows)
+    sendSSEProgress(res, 'root', 0, plan.stages.length)
+
+    const stageError = await processFindManyStages({
+      extended, models, plan, rootPairs, res, signal,
+    })
+
+    if (isClientGone()) return
+
+    if (stageError) {
+      if (!res.writableEnded && !res.destroyed) {
+        sendSSEError(res, stageError)
+      }
+      return
+    }
+
+    if (res.writableEnded || res.destroyed) return
+    sendSSEResult(res, { data: publicRows, total, hasMore })
+  } catch (err) {
+    if (isClientGone()) return
+    console.error('[auto-progressive] paginated dispatch error:', err)
     if (!res.writableEnded && !res.destroyed) {
       sendSSEError(res, mapError(err).message)
     }
@@ -682,8 +876,11 @@ export async function runAutoIncludeProgressive(
     return handleAutoIncludeFallback(options, plan.unsupportedReason)
   }
 
-  if (options.baseOp === 'findMany') {
+  if (options.baseOp === 'findMany' || options.baseOp === 'findManyPaginated') {
     const reason = findManyUnsupportedReason(plan)
+    if (reason) return handleAutoIncludeFallback(options, reason)
+  } else {
+    const reason = singleUnsupportedReason(plan)
     if (reason) return handleAutoIncludeFallback(options, reason)
   }
 
@@ -697,6 +894,9 @@ export async function runAutoIncludeProgressive(
 
   if (options.baseOp === 'findMany') {
     return runAutoIncludeMany(options, plan)
+  }
+  if (options.baseOp === 'findManyPaginated') {
+    return runAutoIncludePaginated(options, plan)
   }
   return runAutoIncludeSingle(options, plan)
 }

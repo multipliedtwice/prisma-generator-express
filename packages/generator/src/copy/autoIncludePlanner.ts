@@ -269,14 +269,8 @@ function walk(
       isPlainObject(relationArgs.omit)
 
     if (hasNestedProjection) {
-      const stagesBeforeRecursion = ctx.stages.length
-
       const nested = walk(ctx, relation.type, relationPath, relationArgs, depth + 1)
       if (nested.unsupportedReason) return nested
-
-      if (relation.isList && ctx.stages.length > stagesBeforeRecursion) {
-        return { unsupportedReason: 'nested relation through to-many parent not supported in MVP' }
-      }
 
       if (nested.projectionAfterStrip) {
         ctx.stages[stageIndex].stageArgs.select = nested.projectionAfterStrip

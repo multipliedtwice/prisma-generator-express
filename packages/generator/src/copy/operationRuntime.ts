@@ -503,6 +503,14 @@ export function sendSSERelationBatch(
   return sendSSE(res, { type: 'relationBatch', relationPath, values })
 }
 
+export function sendSSEPageMeta(
+  res: SseWritable,
+  total: number,
+  hasMore: boolean,
+): boolean {
+  return sendSSE(res, { type: 'pageMeta', total, hasMore })
+}
+
 export function sendSSEError(res: SseWritable, message: string): boolean {
   if (res.writableEnded || res.destroyed) return false
   try {

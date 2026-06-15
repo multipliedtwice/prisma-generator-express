@@ -253,7 +253,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
           const isAutoIncludeReadable =
             baseOp === 'findUnique' || baseOp === 'findUniqueOrThrow' ||
             baseOp === 'findFirst' || baseOp === 'findFirstOrThrow' ||
-            baseOp === 'findMany'
+            baseOp === 'findMany' || baseOp === 'findManyPaginated'
 
           if (!isAutoIncludeReadable) {
             if (progressiveConfig.fallback === 'error') {
@@ -279,7 +279,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
               res,
               ctx,
               args,
-              baseOp: baseOp as 'findUnique' | 'findUniqueOrThrow' | 'findFirst' | 'findFirstOrThrow' | 'findMany',
+              baseOp: baseOp as 'findUnique' | 'findUniqueOrThrow' | 'findFirst' | 'findFirstOrThrow' | 'findMany' | 'findManyPaginated',
               modelName: '${modelName}',
               delegateKey: '${delegateKey}',
               models: relationModels,
