@@ -491,6 +491,18 @@ export function sendSSEResult(res: SseWritable, data: unknown): boolean {
   return sendSSE(res, { type: 'result', data })
 }
 
+export function sendSSERootArray(res: SseWritable, rows: unknown[]): boolean {
+  return sendSSE(res, { type: 'rootArray', data: rows })
+}
+
+export function sendSSERelationBatch(
+  res: SseWritable,
+  relationPath: string,
+  values: unknown[],
+): boolean {
+  return sendSSE(res, { type: 'relationBatch', relationPath, values })
+}
+
 export function sendSSEError(res: SseWritable, message: string): boolean {
   if (res.writableEnded || res.destroyed) return false
   try {

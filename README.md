@@ -12,7 +12,7 @@ Running `npx prisma generate` produces:
 - Handler functions for all Prisma operations (findMany, create, update, delete, etc.)
 - Router generator with middleware support (before/after hooks per operation)
 - POST read endpoints for all read operations (for complex queries exceeding URL length limits)
-- Express-only progressive read streaming over Server-Sent Events (SSE), using manual stages or auto-include splitting for single-record relation reads
+- Express-only progressive read streaming over Server-Sent Events (SSE), using manual stages or auto-include splitting for supported relation reads
 - Express-only standalone materialized view router for read-only access to registered PostgreSQL materialized views
 - OpenAPI 3.1 spec (JSON and YAML endpoints registered automatically per router)
 - Documentation helpers for contract view and Scalar UI (require manual mounting)
@@ -74,7 +74,7 @@ Some operations require newer versions:
 
 The Hono target v1 is tested on Node.js runtimes only. See [Cloudflare Workers and edge runtimes](#cloudflare-workers-and-edge-runtimes).
 
-Progressive Endpoint Composition over Server-Sent Events is currently supported by the Express target only. Express supports both manual staged streaming and auto-include streaming for single-record relation reads. Fastify and Hono continue to support normal JSON read and write routes.
+Progressive Endpoint Composition over Server-Sent Events is currently supported by the Express target only. Express supports both manual staged streaming and auto-include streaming for supported relation reads, including single-record reads and limited `findMany` reads. Fastify and Hono continue to support normal JSON read and write routes.
 
 ### Database provider support
 
@@ -1558,11 +1558,11 @@ Progressive SSE has two modes:
 | Mode | Config | Best for |
 | ---- | ------ | -------- |
 | Manual stages | `{ stages: [...] }` or `{ mode: 'manual', stages: [...] }` | Custom page-level composition where each stage runs its own query and returns patches |
-| Auto include | `{ mode: 'autoInclude' }` | Single-record reads where the client already sends a Prisma `include` or relation `select` tree and you want relation fields streamed progressively |
+| Auto include | `{ mode: 'autoInclude' }` | Reads where the client already sends a Prisma `include` or relation `select` tree and you want relation fields streamed progressively |
 
 Manual mode is explicit staged data loading. You define stages yourself and each stage decides what query to run and which field path to patch.
 
-Auto-include mode is generated relation loading. The router keeps the normal GET endpoint, runs the root single-record query first, streams root fields, then loads supported included relations as separate follow-up queries and streams each relation path as it resolves.
+Auto-include mode is generated relation loading. The router keeps the normal GET endpoint, runs the root query first, then loads supported included relations as separate follow-up queries. For single-record reads, relation paths are streamed as field patches. For `findMany`, direct root relations are loaded in batches and streamed as index-aligned relation batches.
 
 ### Request format
 
@@ -1594,14 +1594,17 @@ Manual progressive SSE can be configured on Express GET read operations only:
 - `aggregate`
 - `groupBy`
 
-Auto-include progressive SSE only supports single-record read operations:
+Auto-include progressive SSE supports these Express GET read operations:
 
 - `findUnique`
 - `findUniqueOrThrow`
 - `findFirst`
 - `findFirstOrThrow`
+- `findMany`
 
-If auto-include is configured on another operation, the router either falls back to single-result SSE or sends an SSE error depending on `fallback`.
+`findMany` support is intentionally narrower than single-record support. It supports direct root relation loading only, with additional fallback cases listed in [Auto-include behavior and limits](#auto-include-behavior-and-limits).
+
+If auto-include is configured on an unsupported operation, the router either falls back to single-result SSE or sends an SSE error depending on `fallback`.
 
 Write operations do not support progressive SSE.
 
@@ -1627,6 +1630,18 @@ Nested field event:
 { "type": "field", "key": "profile.appliedTo", "value": [] }
 ```
 
+Root array event for `findMany` auto-include:
+
+```json
+{ "type": "rootArray", "data": [{ "id": "user-1" }, { "id": "user-2" }] }
+```
+
+Relation batch event for `findMany` auto-include:
+
+```json
+{ "type": "relationBatch", "relationPath": "profile", "values": [{ "id": "profile-1" }, null] }
+```
+
 Final result event:
 
 ```json
@@ -1639,7 +1654,9 @@ Error event:
 { "type": "error", "message": "Could not load progressive response" }
 ```
 
-The final `result.data` is the accumulated object built from all applied patches, unless a manual stage returns a stop result.
+For single-record progressive responses, the final `result.data` is the accumulated object built from all applied patches, unless a manual stage returns a stop result.
+
+For `findMany` auto-include responses, `rootArray.data` is the source of truth for root row identity and order. Each `relationBatch.values` array is index-aligned with `rootArray.data`, so `values[i]` belongs to `rootArray.data[i]`. The terminal `result.data` is the fully merged array.
 
 ### Manual staged mode
 
@@ -1890,7 +1907,7 @@ const response = await fetch(`/user/unique?${params}`, {
 })
 ```
 
-Auto-include sends root scalar fields first, then sends relation field events as separate relation queries finish:
+On single-record reads, auto-include sends root scalar fields first, then sends relation field events as separate relation queries finish:
 
 ```json
 { "type": "field", "key": "id", "value": "user-id" }
@@ -1906,9 +1923,63 @@ Auto-include sends root scalar fields first, then sends relation field events as
 
 The final `result` event contains the assembled object.
 
+For `findMany`, auto-include sends the root rows first, then sends one relation batch event per supported relation stage:
+
+```ts
+const listConfig = {
+  guard: {
+    variantHeader: 'x-api-variant',
+  },
+
+  findMany: {
+    progressive: {
+      list: {
+        enabled: true,
+        mode: 'autoInclude',
+        fallback: 'singleResult',
+      },
+    },
+  },
+}
+
+const params = encodeQueryParams({
+  where: { isActive: true },
+  take: 50,
+  include: {
+    profile: {
+      select: {
+        id: true,
+        displayName: true,
+      },
+    },
+  },
+})
+
+const response = await fetch(`/user?${params}`, {
+  headers: {
+    Accept: 'text/event-stream',
+    'x-api-variant': 'list',
+  },
+})
+```
+
+Example `findMany` auto-include event sequence:
+
+```json
+{ "type": "rootArray", "data": [{ "id": "user-1" }, { "id": "user-2" }] }
+```
+
+```json
+{ "type": "relationBatch", "relationPath": "profile", "values": [{ "id": "profile-1", "displayName": "Alice" }, null] }
+```
+
+```json
+{ "type": "result", "data": [{ "id": "user-1", "profile": { "id": "profile-1", "displayName": "Alice" } }, { "id": "user-2", "profile": null }] }
+```
+
 ### Auto-include behavior and limits
 
-Auto-include is designed for supported Prisma `include` and relation `select` trees on single-record reads.
+Auto-include is designed for supported Prisma `include` and relation `select` trees on reads.
 
 Supported root operations:
 
@@ -1916,13 +1987,23 @@ Supported root operations:
 - `findUniqueOrThrow`
 - `findFirst`
 - `findFirstOrThrow`
+- `findMany`
 
-Supported relation shapes:
+Supported single-record relation shapes:
 
 - direct to-one relation includes/selects
 - direct to-many relation includes/selects
 - to-many relation args such as `where`, `orderBy`, `take`, `skip`, `cursor`, and `distinct`
 - nested to-one relation loading through to-one parents
+
+Supported `findMany` relation shapes:
+
+- direct root to-one relation includes/selects
+- direct root to-many relation includes/selects
+- relation-level `where` and `orderBy`
+- single-column link fields only
+
+`findMany` auto-include applies configured pagination limits to the root query before loading relation batches. If the client omits `take`, `pagination.defaultLimit` is applied when configured. If the client sends a large `take`, `pagination.maxLimit` is enforced before the root query runs.
 
 Current MVP fallback cases include:
 
@@ -1935,6 +2016,10 @@ Current MVP fallback cases include:
 - nested relation loading through a to-many parent
 - omitted required link fields needed to stitch parent and child records
 - planner limits for maximum depth or stage count
+- `findMany` relation stages with composite link fields
+- `findMany` nested relation stages deeper than direct root relations
+- `findMany` to-many relation stages using `take`, `skip`, `cursor`, or `distinct`
+- `findManyPaginated`, `createManyAndReturn`, and `updateManyAndReturn`
 
 When fallback happens:
 
@@ -1942,6 +2027,8 @@ When fallback happens:
 - `fallback: 'error'` sends an SSE `error` event instead
 
 If `fallback` is omitted, the default behavior is equivalent to `'singleResult'`.
+
+`findMany` auto-include uses a batched relation loading strategy. It does not preserve Prisma's per-parent semantics for to-many `take`, `skip`, `cursor`, or `distinct`, so those cases fall back instead of returning silently different data.
 
 Auto-include does not require `resolveContext` or `progressiveStages`.
 
@@ -1980,6 +2067,9 @@ if (!response.body) {
 const reader = response.body.getReader()
 const decoder = new TextDecoder()
 let buffer = ''
+let rows: Array<Record<string, unknown>> = []
+let fields: Record<string, unknown> = {}
+let data: unknown = undefined
 
 while (true) {
   const { value, done } = await reader.read()
@@ -1998,12 +2088,23 @@ while (true) {
 
     const event = JSON.parse(line.slice('data: '.length))
 
+    if (event.type === 'rootArray') {
+      rows = event.data
+    }
+
     if (event.type === 'field') {
-      // patch local field state
+      fields[event.key] = event.value
+    }
+
+    if (event.type === 'relationBatch') {
+      rows = rows.map((row, index) => ({
+        ...row,
+        [event.relationPath]: event.values[index],
+      }))
     }
 
     if (event.type === 'result') {
-      // replace with final result
+      data = event.data
     }
   }
 }

@@ -250,13 +250,14 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
         }
 
         if (progressiveConfig.mode === 'autoInclude') {
-          const isSingleRecordRead =
+          const isAutoIncludeReadable =
             baseOp === 'findUnique' || baseOp === 'findUniqueOrThrow' ||
-            baseOp === 'findFirst' || baseOp === 'findFirstOrThrow'
+            baseOp === 'findFirst' || baseOp === 'findFirstOrThrow' ||
+            baseOp === 'findMany'
 
-          if (!isSingleRecordRead) {
+          if (!isAutoIncludeReadable) {
             if (progressiveConfig.fallback === 'error') {
-              emitTerminalSSEError(res, 'auto-progressive fallback: operation not single-record')
+              emitTerminalSSEError(res, 'auto-progressive fallback: operation not supported by auto-include')
               return
             }
             await runSingleResultSSE({
@@ -278,7 +279,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
               res,
               ctx,
               args,
-              baseOp: baseOp as 'findUnique' | 'findUniqueOrThrow' | 'findFirst' | 'findFirstOrThrow',
+              baseOp: baseOp as 'findUnique' | 'findUniqueOrThrow' | 'findFirst' | 'findFirstOrThrow' | 'findMany',
               modelName: '${modelName}',
               delegateKey: '${delegateKey}',
               models: relationModels,
