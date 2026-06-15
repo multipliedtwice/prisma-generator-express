@@ -1,3 +1,10 @@
+# [1.54.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.53.0...v1.54.0) (2026-06-15)
+
+
+### Features
+
+* enhance auto-include functionality with locator-based nested relation batches ([b6ff8e0](https://github.com/multipliedtwice/prisma-generator-express/commit/b6ff8e091fb3b8db97dd26b320636eaddc2db6b8))
+
 # [1.53.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.52.0...v1.53.0) (2026-06-15)
 
 
