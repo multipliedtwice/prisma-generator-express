@@ -154,7 +154,7 @@ ${validationLines}
 
 export async function findMany(ctx: OperationContext): Promise<unknown> {
   const rawQuery = ctx.parsedQuery || {}
-  const query = applyPaginationLimits(rawQuery, ctx.paginationConfig)
+  const query = applyPaginationLimits(rawQuery, ctx.paginationConfig, !!ctx.guardShape)
   const extended = await getExtendedClient(ctx)
   const delegate = getDelegate(extended, '${modelNameLower}')
   if (ctx.guardShape) {
@@ -170,7 +170,7 @@ export async function findManyPaginated(
   ctx: OperationContext,
 ): Promise<{ data: unknown[]; total: number; hasMore: boolean }> {
   const rawQuery = ctx.parsedQuery || {}
-  const query = applyPaginationLimits(rawQuery, ctx.paginationConfig)
+  const query = applyPaginationLimits(rawQuery, ctx.paginationConfig, !!ctx.guardShape)
   const extended = await getExtendedClient(ctx)
   const shape = ctx.guardShape
   const caller = ctx.guardCaller

@@ -780,7 +780,7 @@ async function runAutoIncludeMany(
     if (isClientGone()) return
 
     const rootDelegate = getDelegate(extended, delegateKey)
-    const rootArgs = applyPaginationLimits(plan.rootArgs, ctx.paginationConfig)
+    const rootArgs = applyPaginationLimits(plan.rootArgs, ctx.paginationConfig, !!ctx.guardShape)
 
     let rootResult: unknown
     try {
@@ -848,7 +848,7 @@ async function runAutoIncludePaginated(
     const extended = await getExtendedClient(ctx)
     if (isClientGone()) return
 
-    const rootArgs = applyPaginationLimits(plan.rootArgs, ctx.paginationConfig)
+    const rootArgs = applyPaginationLimits(plan.rootArgs, ctx.paginationConfig, !!ctx.guardShape)
     const mode: FindManyPaginatedMode = ctx.findManyPaginatedMode ?? 'promiseAll'
 
     let rootRows: unknown[]

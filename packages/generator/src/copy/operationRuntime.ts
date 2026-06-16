@@ -246,8 +246,9 @@ export function requireBodyField(body: Record<string, unknown>, field: string): 
 export function applyPaginationLimits(
   query: Record<string, unknown>,
   config?: PaginationConfig,
+  hasGuardShape?: boolean,
 ): Record<string, unknown> {
-  if (!config) return query
+  if (!config || hasGuardShape) return query
   const result: Record<string, unknown> = { ...query }
   if (result.take === undefined && config.defaultLimit !== undefined) {
     result.take = config.defaultLimit
