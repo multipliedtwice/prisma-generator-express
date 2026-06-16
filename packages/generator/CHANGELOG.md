@@ -1,3 +1,10 @@
+## [1.56.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.56.0...v1.56.1) (2026-06-16)
+
+
+### Bug Fixes
+
+* remove unused pagination import from generateRouteConfigType function ([fc7589b](https://github.com/multipliedtwice/prisma-generator-express/commit/fc7589bf8c30ddacc834c7c7b271dc9eba41421f))
+
 # [1.56.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.55.0...v1.56.0) (2026-06-16)
 
 
