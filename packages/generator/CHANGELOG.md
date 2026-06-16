@@ -1,3 +1,10 @@
+## [1.56.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.56.1...v1.56.2) (2026-06-16)
+
+
+### Bug Fixes
+
+* enhance applyPaginationLimits to consider guardShape in pagination queries ([2ef1434](https://github.com/multipliedtwice/prisma-generator-express/commit/2ef1434fd5c608022cdff783e0d6fb3ba5cfd152))
+
 ## [1.56.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.56.0...v1.56.1) (2026-06-16)
 
 
