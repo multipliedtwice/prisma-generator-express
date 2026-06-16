@@ -91,8 +91,6 @@ export function generateRouteConfigType(
     return progressiveTypeImport + `export type ${m}RouteConfig${generics} = ${baseConfig}\n`
   }
 
-  const paginationImport = `import type { PaginationConfig } from '../routeConfig.target${ext}'\n`
-
   const shapeOps = Object.values(ROUTER_OP_TO_SHAPE_OP).filter((v, i, a) => a.indexOf(v) === i)
   const opShapeImports = shapeOps.map((op) => `${m}${capitalize(op)}ShapeInput`).join(',\n  ')
 
@@ -117,7 +115,6 @@ export function generateRouteConfigType(
 
   return (
     progressiveTypeImport +
-    paginationImport +
     `import type {\n  ${opShapeImports}\n} from '${guardShapesImport}${ext}'\n\n` +
     `export type ${m}RouteConfig${generics} = Omit<\n` +
     `  ${baseConfig},\n` +
