@@ -6,13 +6,19 @@ import type {
   OpenApiServerConfig,
   OpenApiSecuritySchemeConfig,
   WriteStrategy,
+  FindManyPaginatedMode,
+  PaginationConfig,
+  PaginationCountSource,
 } from './routeConfig'
 
 export type {
   QueryBuilderConfig,
   OpenApiServerConfig,
   OpenApiSecuritySchemeConfig,
-  WriteStrategy
+  WriteStrategy,
+  FindManyPaginatedMode,
+  PaginationConfig,
+  PaginationCountSource,
 }
 
 export type HonoEnvBase = {
@@ -26,7 +32,7 @@ export type HonoInternalVariables = {
   sqlite?: unknown
   parsedQuery?: Record<string, unknown>
   body?: unknown
-  routeConfig?: { pagination?: unknown }
+  routeConfig?: { pagination?: PaginationConfig }
   guardShape?: Record<string, unknown>
   guardCaller?: string
   resultData?: unknown

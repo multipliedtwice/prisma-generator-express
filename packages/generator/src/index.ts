@@ -25,7 +25,7 @@ import {
 import { writeFileSafely } from './utils/writeFileSafely'
 import { copyFiles } from './utils/copyFiles'
 import { resolveImportStyle, ImportStyle } from './utils/resolveImportStyle'
-import { GENERATOR_NAME, Target, WriteStrategy } from './constants'
+import { GENERATOR_NAME, Target, WriteStrategy, FindManyPaginatedMode } from './constants'
 
 const GENERATOR_OFF_RE = /\bgenerator off\b/
 
@@ -56,6 +56,18 @@ function getWriteStrategy(options: GeneratorOptions): WriteStrategy {
   )
 }
 
+function getFindManyPaginatedMode(options: GeneratorOptions): FindManyPaginatedMode {
+  const raw = String(
+    (options.generator.config as Record<string, unknown>).findManyPaginatedMode ?? 'promiseAll',
+  )
+  const lower = raw.toLowerCase()
+  if (lower === 'transaction') return 'transaction'
+  if (lower === 'promiseall') return 'promiseAll'
+  throw new Error(
+    `Invalid findManyPaginatedMode "${raw}". Expected "transaction" or "promiseAll".`,
+  )
+}
+
 function validateClientGeneratorPresent(options: GeneratorOptions): void {
   getRelativeClientPath(options, options.dmmf.datamodel.models[0]?.name ?? 'Model')
 }
@@ -72,6 +84,7 @@ generatorHandler({
   async onGenerate(options: GeneratorOptions) {
     const target = getTarget(options)
     const writeStrategy = getWriteStrategy(options)
+    const findManyPaginatedMode = getFindManyPaginatedMode(options)
     const hasExplicitOutput =
       !!options.generator.output?.fromEnvVar ||
       (options.generator.config as Record<string, unknown>).output !== undefined
@@ -89,6 +102,7 @@ generatorHandler({
     console.log(`  Output: ${options.generator.output?.value}`)
     console.log(`  Import style: ${importStyle}`)
     console.log(`  Write strategy: ${writeStrategy}`)
+    console.log(`  findManyPaginated mode: ${findManyPaginatedMode}`)
 
     if (options.dmmf.datamodel.models.length > 0) {
       validateClientGeneratorPresent(options)
@@ -119,7 +133,12 @@ generatorHandler({
       const guardShapesImport = getGuardShapesImport(options, model.name)
 
       await writeFileSafely({
-        content: generateModelCore({ model: model as DMMF.Model, importStyle, writeStrategy }),
+        content: generateModelCore({
+          model: model as DMMF.Model,
+          importStyle,
+          writeStrategy,
+          findManyPaginatedMode,
+        }),
         options,
         model: model as DMMF.Model,
         operation: 'Core',
@@ -140,6 +159,7 @@ generatorHandler({
               guardShapesImport,
               importStyle,
               writeStrategy,
+              findManyPaginatedMode,
             })
           : target === 'hono'
             ? generateHonoRouterFunction({
@@ -148,6 +168,7 @@ generatorHandler({
                 guardShapesImport,
                 importStyle,
                 writeStrategy,
+                findManyPaginatedMode,
               })
             : generateRouterFunction({
                 model: model as DMMF.Model,
@@ -155,6 +176,7 @@ generatorHandler({
                 guardShapesImport,
                 importStyle,
                 writeStrategy,
+                findManyPaginatedMode,
               })
 
       await writeFileSafely({

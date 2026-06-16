@@ -22,6 +22,25 @@ export interface OpenApiSecuritySchemeConfig {
 
 export type WriteStrategy = 'regular' | 'throwOnNonReturning' | 'forceReturn'
 
+export type FindManyPaginatedMode = 'transaction' | 'promiseAll'
+
+export type PaginationCountSource =
+  | { type?: 'delegate' }
+  | {
+      type: 'materializedView'
+      relation: string
+      schema?: string
+      column?: string
+      where?: Record<string, unknown>
+    }
+
+export interface PaginationConfig {
+  defaultLimit?: number
+  maxLimit?: number
+  distinctCountLimit?: number
+  countSource?: PaginationCountSource
+}
+
 export type ProgressivePatch = {
   key: string
   value: unknown
@@ -72,6 +91,7 @@ export interface BaseOperationConfig<HookHandler, TShape = Record<string, unknow
   before?: HookHandler[]
   after?: HookHandler[]
   shape?: TShape
+  pagination?: Partial<PaginationConfig>
 }
 
 export interface BaseRouteConfig<
@@ -99,11 +119,7 @@ export interface BaseRouteConfig<
   }
   resolveContext?: (request: RequestType) => TCtx | Promise<TCtx>
   queryBuilder?: QueryBuilderConfig | false
-  pagination?: {
-    defaultLimit?: number
-    maxLimit?: number
-    distinctCountLimit?: number
-  }
+  pagination?: PaginationConfig
   findUnique?: BaseOperationConfig<HookHandler, TShape>
   findUniqueOrThrow?: BaseOperationConfig<HookHandler, TShape>
   findFirst?: BaseOperationConfig<HookHandler, TShape>

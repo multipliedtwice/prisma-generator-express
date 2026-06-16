@@ -19,8 +19,10 @@ import {
   applyPaginationLimits,
   countForPagination,
   mapError,
+  HttpError,
   type OperationContext,
   type PrismaDelegate,
+  type FindManyPaginatedMode,
 } from './operationRuntime'
 import { isPlainObject } from './misc'
 import {
@@ -300,9 +302,7 @@ async function runOneStageSingle(options: {
 
   const parentRaw = readPath(internal, stage.parentPath)
   if (!isPlainObject(parentRaw)) {
-    if (stage.parentPath !== '') {
-      return
-    }
+    if (stage.parentPath !== '') return
     const empty = emptyResultFor(stage.relationField.isList)
     const applied = setByPath(publicState, stage.relationPath, empty)
     if (applied) sendSSEField(res, stage.relationPath, empty)
@@ -705,36 +705,58 @@ async function processFindManyStages(args: {
   return stageErrorMessage
 }
 
-async function runPaginatedRoot(
-  extended: unknown,
-  rootDelegate: PrismaDelegate,
-  delegateKey: string,
-  rootArgs: Record<string, unknown>,
-  distinctCountLimit: number | undefined,
-): Promise<{ data: unknown[]; count: number }> {
-  const txClient = extended as {
-    $transaction?: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>
-  }
+async function runPaginatedRoot(args: {
+  extended: unknown
+  delegateKey: string
+  rootArgs: Record<string, unknown>
+  ctx: OperationContext
+  mode: FindManyPaginatedMode
+}): Promise<{ data: unknown[]; count: number }> {
+  const { extended, delegateKey, rootArgs, ctx, mode } = args
+  const distinctCountLimit = ctx.paginationConfig?.distinctCountLimit
+  const countSource = ctx.paginationConfig?.countSource
 
-  if (typeof txClient.$transaction === 'function') {
-    try {
-      const result = await txClient.$transaction(async (tx: unknown) => {
-        const txDelegate = getDelegate(tx, delegateKey)
-        const d = await txDelegate.findMany(rootArgs)
-        const t = await countForPagination(txDelegate, rootArgs, undefined, undefined, distinctCountLimit)
-        return { d, t }
-      })
-      return { data: result.d as unknown[], count: result.t }
-    } catch (err) {
-      const e = err as { code?: string }
-      if (e?.code !== 'P2028') throw err
-      console.warn('[auto-progressive] Interactive transactions not available, paginated queries are non-atomic')
+  if (mode === 'transaction') {
+    const txClient = extended as {
+      $transaction?: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>
     }
+    if (typeof txClient.$transaction !== 'function') {
+      throw new HttpError(
+        500,
+        'findManyPaginatedMode="transaction" requires transaction support on the Prisma client',
+      )
+    }
+    const result = await txClient.$transaction(async (tx: unknown) => {
+      const txDelegate = getDelegate(tx, delegateKey)
+      const [data, count] = await Promise.all([
+        txDelegate.findMany(rootArgs),
+        countForPagination(
+          txDelegate,
+          rootArgs,
+          undefined,
+          undefined,
+          distinctCountLimit,
+          countSource,
+          tx,
+        ),
+      ])
+      return { data, count }
+    })
+    return { data: result.data as unknown[], count: result.count }
   }
 
+  const rootDelegate = getDelegate(extended, delegateKey)
   const [data, count] = await Promise.all([
     rootDelegate.findMany(rootArgs),
-    countForPagination(rootDelegate, rootArgs, undefined, undefined, distinctCountLimit),
+    countForPagination(
+      rootDelegate,
+      rootArgs,
+      undefined,
+      undefined,
+      distinctCountLimit,
+      countSource,
+      extended,
+    ),
   ])
   return { data: data as unknown[], count }
 }
@@ -826,18 +848,21 @@ async function runAutoIncludePaginated(
     const extended = await getExtendedClient(ctx)
     if (isClientGone()) return
 
-    const rootDelegate = getDelegate(extended, delegateKey)
     const rootArgs = applyPaginationLimits(plan.rootArgs, ctx.paginationConfig)
-    const distinctCountLimit = ctx.paginationConfig?.distinctCountLimit
+    const mode: FindManyPaginatedMode = ctx.findManyPaginatedMode ?? 'promiseAll'
 
     let rootRows: unknown[]
     let total: number
     try {
-      const { data, count } = await runPaginatedRoot(
-        extended, rootDelegate, delegateKey, rootArgs, distinctCountLimit,
-      )
-      rootRows = data
-      total = count
+      const r = await runPaginatedRoot({
+        extended,
+        delegateKey,
+        rootArgs,
+        ctx,
+        mode,
+      })
+      rootRows = r.data
+      total = r.count
     } catch (err) {
       if (isClientGone()) return
       console.error('[auto-progressive] root findManyPaginated failed:', err)

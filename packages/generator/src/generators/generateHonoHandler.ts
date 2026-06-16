@@ -70,7 +70,7 @@ export async function ${exportName}(c: Context<HonoEnv>): Promise<void> {
 
   return `import type { Context } from 'hono'
 import * as core from './${modelName}Core${ext}'
-import type { OperationContext } from '../operationRuntime${ext}'
+import type { OperationContext, FindManyPaginatedMode } from '../operationRuntime${ext}'
 
 type HonoVariables = {
   prisma: unknown
@@ -81,6 +81,7 @@ type HonoVariables = {
   routeConfig?: { pagination?: OperationContext['paginationConfig'] }
   guardShape?: Record<string, unknown>
   guardCaller?: string
+  findManyPaginatedMode?: FindManyPaginatedMode
   resultData?: unknown
   resultStatus?: number
 }
@@ -97,6 +98,7 @@ function buildContext(c: Context<HonoEnv>): OperationContext {
     guardShape: c.get('guardShape'),
     guardCaller: c.get('guardCaller'),
     paginationConfig: c.get('routeConfig')?.pagination,
+    findManyPaginatedMode: c.get('findManyPaginatedMode'),
   }
 }
 ${readHandlers}

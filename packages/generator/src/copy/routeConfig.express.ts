@@ -8,6 +8,9 @@ import type {
   OpenApiServerConfig,
   OpenApiSecuritySchemeConfig,
   WriteStrategy,
+  FindManyPaginatedMode,
+  PaginationConfig,
+  PaginationCountSource,
 } from './routeConfig'
 
 export type {
@@ -15,6 +18,9 @@ export type {
   OpenApiServerConfig,
   OpenApiSecuritySchemeConfig,
   WriteStrategy,
+  FindManyPaginatedMode,
+  PaginationConfig,
+  PaginationCountSource,
 }
 
 export type {

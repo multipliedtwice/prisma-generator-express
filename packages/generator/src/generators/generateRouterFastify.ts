@@ -2,7 +2,7 @@ import { DMMF } from '@prisma/generator-helper'
 import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
-import { WriteStrategy } from '../constants'
+import { WriteStrategy, FindManyPaginatedMode } from '../constants'
 
 export function generateFastifyRouterFunction({
   model,
@@ -10,12 +10,14 @@ export function generateFastifyRouterFunction({
   guardShapesImport,
   importStyle,
   writeStrategy,
+  findManyPaginatedMode,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
   guardShapesImport: string | null
   importStyle: ImportStyle
   writeStrategy: WriteStrategy
+  findManyPaginatedMode: FindManyPaginatedMode
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
@@ -67,16 +69,23 @@ import {
   ${modelName}Count,
   ${modelName}GroupBy,
 } from './${modelName}Handlers${ext}'
-import type { RouteConfig, FastifyHookHandler, WriteStrategy } from '../routeConfig.target${ext}'
+import type {
+  RouteConfig,
+  FastifyHookHandler,
+  WriteStrategy,
+  FindManyPaginatedMode,
+  PaginationConfig,
+} from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
-import { mapError, transformResult, HttpError, type OperationContext } from '../operationRuntime${ext}'
+import { mapError, transformResult, mergePaginationConfig, HttpError, type OperationContext } from '../operationRuntime${ext}'
 
 ${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, importStyle, 'fastify')}
 const _env = getEnv()
 
 const WRITE_STRATEGY: WriteStrategy = '${writeStrategy}'
+const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode}'
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
 
@@ -86,6 +95,7 @@ type OperationConfigLike = {
   before?: FastifyHookHandler[]
   after?: FastifyHookHandler[]
   shape?: Record<string, unknown>
+  pagination?: Partial<PaginationConfig>
 }
 
 type FastifyExtended = FastifyRequest & {
@@ -93,7 +103,7 @@ type FastifyExtended = FastifyRequest & {
   postgres?: unknown
   sqlite?: unknown
   parsedQuery?: Record<string, unknown>
-  routeConfig?: { pagination?: OperationContext['paginationConfig'] }
+  routeConfig?: { pagination?: PaginationConfig }
   guardShape?: Record<string, unknown>
   guardCaller?: string
   resultData?: unknown
@@ -139,9 +149,9 @@ function makeShapeHook(
 ): (request: FastifyRequest) => void {
   return (request: FastifyRequest) => {
     const fx = request as FastifyExtended
-    const paginationConfig = (config as { pagination?: OperationContext['paginationConfig'] }).pagination
-    if (paginationConfig) {
-      fx.routeConfig = { pagination: paginationConfig }
+    const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
+    if (merged) {
+      fx.routeConfig = { pagination: merged }
     }
     const headerName = (config.guard?.variantHeader || 'x-api-variant').toLowerCase()
     const headerValue = request.headers[headerName]
@@ -232,6 +242,10 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
       }
     }
   }
+
+  fastify.addHook('onRequest', async (request: FastifyRequest) => {
+    (request as FastifyExtended & { findManyPaginatedMode?: FindManyPaginatedMode }).findManyPaginatedMode = FIND_MANY_PAGINATED_MODE
+  })
 
   fastify.setErrorHandler((error: FastifyError, _request: FastifyRequest, reply: FastifyReply) => {
     const e = error as { status?: number; statusCode?: number; message?: string }

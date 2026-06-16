@@ -6,13 +6,19 @@ import type {
   OpenApiServerConfig,
   OpenApiSecuritySchemeConfig,
   WriteStrategy,
+  FindManyPaginatedMode,
+  PaginationConfig,
+  PaginationCountSource,
 } from './routeConfig'
 
 export type {
   QueryBuilderConfig,
   OpenApiServerConfig,
   OpenApiSecuritySchemeConfig,
-  WriteStrategy
+  WriteStrategy,
+  FindManyPaginatedMode,
+  PaginationConfig,
+  PaginationCountSource,
 }
 
 export type FastifyHookHandler = (

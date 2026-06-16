@@ -2,7 +2,7 @@ import { DMMF } from '@prisma/generator-helper'
 import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
-import { WriteStrategy } from '../constants'
+import { WriteStrategy, FindManyPaginatedMode } from '../constants'
 
 export function generateHonoRouterFunction({
   model,
@@ -10,12 +10,14 @@ export function generateHonoRouterFunction({
   guardShapesImport,
   importStyle,
   writeStrategy,
+  findManyPaginatedMode,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
   guardShapesImport: string | null
   importStyle: ImportStyle
   writeStrategy: WriteStrategy
+  findManyPaginatedMode: FindManyPaginatedMode
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
@@ -77,16 +79,24 @@ import type {
   HonoInternalVariables,
   GeneratedHonoEnv,
   WriteStrategy,
+  FindManyPaginatedMode,
+  PaginationConfig,
 } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
-import { mapError, transformResult, type OperationContext } from '../operationRuntime${ext}'
+import {
+  mapError,
+  transformResult,
+  mergePaginationConfig,
+  type OperationContext,
+} from '../operationRuntime${ext}'
 
 ${generateRouteConfigType(modelName, 'HonoHookHandler', guardShapesImport, importStyle, 'hono')}
 const _env = getEnv()
 
 const WRITE_STRATEGY: WriteStrategy = '${writeStrategy}'
+const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode}'
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
 
@@ -96,6 +106,7 @@ type OperationConfigLike<TEnv extends HonoEnvBase> = {
   before?: HonoHookHandler<TEnv>[]
   after?: HonoHookHandler<TEnv>[]
   shape?: Record<string, unknown>
+  pagination?: Partial<PaginationConfig>
 }
 
 const defaultOpConfig = Object.freeze({
@@ -103,7 +114,7 @@ const defaultOpConfig = Object.freeze({
   after: Object.freeze([]),
 }) as unknown as OperationConfigLike<HonoEnvBase>
 
-type HandlerContext = Context<{ Variables: HonoInternalVariables }>
+type HandlerContext = Context<{ Variables: HonoInternalVariables & { findManyPaginatedMode?: FindManyPaginatedMode } }>
 
 function isQueryBuilderEnabled(config: RouteConfig): boolean {
   if (config.queryBuilder === false) return false
@@ -156,10 +167,11 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
   opConfig: OperationConfigLike<TEnv>,
 ) {
   return (c: Context<GeneratedHonoEnv<TEnv>>): void => {
-    const paginationConfig = (config as { pagination?: OperationContext['paginationConfig'] }).pagination
-    if (paginationConfig) {
-      c.set('routeConfig', { pagination: paginationConfig })
+    const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
+    if (merged) {
+      c.set('routeConfig', { pagination: merged })
     }
+    ;(c as unknown as HandlerContext).set('findManyPaginatedMode', FIND_MANY_PAGINATED_MODE)
     const headerName = config.guard?.variantHeader || 'x-api-variant'
     const headerValue = c.req.header(headerName)
     const caller = config.guard?.resolveVariant?.(c) ?? headerValue ?? undefined
@@ -276,17 +288,17 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
     parseFn: (c: HandlerContext) => Promise<void>,
   ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
     try {
-      await parseFn(c)
+      await parseFn(c as unknown as HandlerContext)
       makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig)(c)
       const { before = [], after = [] } = opConfig
       const beforeResp = await runHooks<TEnv>(before, c)
       if (beforeResp) return beforeResp
-      await handlerFn(c)
+      await handlerFn(c as unknown as HandlerContext)
       const afterResp = await runHooks<TEnv>(after, c)
       if (afterResp) return afterResp
-      return sendResult(c)
+      return sendResult(c as unknown as HandlerContext)
     } catch (error: unknown) {
-      return sendError(c, error)
+      return sendError(c as unknown as HandlerContext, error)
     }
   }
 
@@ -295,17 +307,17 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
     handlerFn: (c: HandlerContext) => Promise<void>,
   ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
     try {
-      await parseWriteBodyMiddleware(c)
+      await parseWriteBodyMiddleware(c as unknown as HandlerContext)
       makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig)(c)
       const { before = [], after = [] } = opConfig
       const beforeResp = await runHooks<TEnv>(before, c)
       if (beforeResp) return beforeResp
-      await handlerFn(c)
+      await handlerFn(c as unknown as HandlerContext)
       const afterResp = await runHooks<TEnv>(after, c)
       if (afterResp) return afterResp
-      return sendResult(c)
+      return sendResult(c as unknown as HandlerContext)
     } catch (error: unknown) {
-      return sendError(c, error)
+      return sendError(c as unknown as HandlerContext, error)
     }
   }
 

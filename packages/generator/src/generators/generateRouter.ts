@@ -2,7 +2,7 @@ import { DMMF } from '@prisma/generator-helper'
 import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
-import { WriteStrategy } from '../constants'
+import { WriteStrategy, FindManyPaginatedMode } from '../constants'
 
 export function generateRouterFunction({
   model,
@@ -10,12 +10,14 @@ export function generateRouterFunction({
   guardShapesImport,
   importStyle,
   writeStrategy,
+  findManyPaginatedMode,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
   guardShapesImport: string | null
   importStyle: ImportStyle
   writeStrategy: WriteStrategy
+  findManyPaginatedMode: FindManyPaginatedMode
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
@@ -70,7 +72,13 @@ import {
   ${modelName}GroupBy,
 } from './${modelName}Handlers${ext}'
 import * as core from './${modelName}Core${ext}'
-import type { RouteConfig, QueryBuilderConfig, WriteStrategy } from '../routeConfig.target${ext}'
+import type {
+  RouteConfig,
+  QueryBuilderConfig,
+  WriteStrategy,
+  FindManyPaginatedMode,
+  PaginationConfig,
+} from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
@@ -82,6 +90,7 @@ import {
   runSingleResultSSE,
   emitTerminalSSEError,
   removeReqCloseListener,
+  mergePaginationConfig,
   mapError,
   HttpError,
 } from '../operationRuntime${ext}'
@@ -92,6 +101,7 @@ ${generateRouteConfigType(modelName, 'RequestHandler', guardShapesImport, import
 const _env = getEnv()
 
 const WRITE_STRATEGY: WriteStrategy = '${writeStrategy}'
+const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode}'
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
 const MODEL_ENUMS = ${JSON.stringify(enumsMeta, null, 2)} as const
@@ -100,6 +110,7 @@ type OperationConfigLike = {
   before?: RequestHandler[]
   after?: RequestHandler[]
   shape?: Record<string, unknown>
+  pagination?: Partial<PaginationConfig>
   progressive?: Record<string, ProgressiveVariantConfig>
   progressiveStages?: Record<string, ProgressiveStage<unknown>>
 }
@@ -112,7 +123,7 @@ type ExtendedRequest = Request & {
 
 type LocalsBag = {
   parsedQuery?: Record<string, unknown>
-  routeConfig?: { pagination?: OperationContext['paginationConfig'] }
+  routeConfig?: { pagination?: PaginationConfig }
   guardShape?: Record<string, unknown>
   guardCaller?: string
   data?: unknown
@@ -195,6 +206,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
       guardShape: locals.guardShape,
       guardCaller: locals.guardCaller,
       paginationConfig: locals.routeConfig?.pagination,
+      findManyPaginatedMode: FIND_MANY_PAGINATED_MODE,
     }
   }
 
@@ -218,8 +230,9 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
   const setShape = (opConfig: OperationConfigLike): RequestHandler => {
     return (req, res, next) => {
       const locals = readLocals(res)
-      if (config.pagination) {
-        locals.routeConfig = { pagination: config.pagination }
+      const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
+      if (merged) {
+        locals.routeConfig = { pagination: merged }
       }
       const headerName = config.guard?.variantHeader || 'x-api-variant'
       const headerValue = req.get(headerName)

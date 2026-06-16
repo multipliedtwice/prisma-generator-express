@@ -77,7 +77,7 @@ export async function ${exportName}(
 
   return `import type { FastifyRequest, FastifyReply } from 'fastify'
 import * as core from './${modelName}Core${ext}'
-import type { OperationContext } from '../operationRuntime${ext}'
+import type { OperationContext, FindManyPaginatedMode } from '../operationRuntime${ext}'
 
 type FastifyExtended = FastifyRequest & {
   prisma?: unknown
@@ -87,6 +87,7 @@ type FastifyExtended = FastifyRequest & {
   routeConfig?: { pagination?: OperationContext['paginationConfig'] }
   guardShape?: Record<string, unknown>
   guardCaller?: string
+  findManyPaginatedMode?: FindManyPaginatedMode
   resultData?: unknown
   resultStatus?: number
 }
@@ -102,6 +103,7 @@ function buildContext(request: FastifyRequest): OperationContext {
     guardShape: req.guardShape,
     guardCaller: req.guardCaller,
     paginationConfig: req.routeConfig?.pagination,
+    findManyPaginatedMode: req.findManyPaginatedMode,
   }
 }
 ${readHandlers}

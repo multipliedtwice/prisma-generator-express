@@ -1,12 +1,13 @@
 import { DMMF } from '@prisma/generator-helper'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
-import { WriteStrategy } from '../constants'
+import { WriteStrategy, FindManyPaginatedMode } from '../constants'
 
 export interface ModelCoreOptions {
   model: DMMF.Model
   importStyle: ImportStyle
   writeStrategy: WriteStrategy
+  findManyPaginatedMode: FindManyPaginatedMode
 }
 
 type WriteOpDecision =
@@ -33,11 +34,49 @@ function decideWriteOp(
   return { mode: 'normal', method: defaultMethod }
 }
 
+function renderPaginatedBody(modelNameLower: string, mode: FindManyPaginatedMode): string {
+  if (mode === 'transaction') {
+    return `
+  const txClient = extended as { $transaction?: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T> }
+  if (typeof txClient.$transaction !== 'function') {
+    throw new HttpError(500, 'findManyPaginatedMode="transaction" requires transaction support on the Prisma client')
+  }
+
+  const txResult = await txClient.$transaction(async (tx: unknown) => {
+    const txDelegate = getDelegate(tx, '${modelNameLower}')
+    if (shape) assertGuard(txDelegate)
+    const findP = shape
+      ? (txDelegate.guard as NonNullable<typeof txDelegate.guard>)(shape, caller).findMany(query)
+      : txDelegate.findMany(query)
+    const countP = countForPagination(
+      txDelegate, query, shape, caller, distinctCountLimit, countSource, tx,
+    )
+    const [data, count] = await Promise.all([findP, countP])
+    return { data, count }
+  })
+  items = txResult.data as unknown[]
+  total = txResult.count`
+  }
+
+  return `
+  const delegate = getDelegate(extended, '${modelNameLower}')
+  if (shape) assertGuard(delegate)
+  const [data, count] = await Promise.all([
+    shape
+      ? (delegate.guard as NonNullable<typeof delegate.guard>)(shape, caller).findMany(query)
+      : delegate.findMany(query),
+    countForPagination(delegate, query, shape, caller, distinctCountLimit, countSource, extended),
+  ])
+  items = data as unknown[]
+  total = count`
+}
+
 export function generateModelCore(options: ModelCoreOptions): string {
   const ext = importExt(options.importStyle)
   const modelName = options.model.name
   const modelNameLower = modelName.charAt(0).toLowerCase() + modelName.slice(1)
   const writeStrategy = options.writeStrategy
+  const paginatedBody = renderPaginatedBody(modelNameLower, options.findManyPaginatedMode)
 
   const standardReadOps = [
     'findFirst', 'findUnique', 'findUniqueOrThrow', 'findFirstOrThrow',
@@ -136,45 +175,11 @@ export async function findManyPaginated(
   const shape = ctx.guardShape
   const caller = ctx.guardCaller
   const distinctCountLimit = ctx.paginationConfig?.distinctCountLimit
-  const delegate = getDelegate(extended, '${modelNameLower}')
-
-  if (shape) assertGuard(delegate)
+  const countSource = ctx.paginationConfig?.countSource
 
   let items: unknown[]
   let total: number
-
-  const txClient = extended as { $transaction?: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T> }
-
-  if (shape || typeof txClient.$transaction !== 'function') {
-    const [data, count] = await Promise.all([
-      shape
-        ? (delegate.guard as NonNullable<typeof delegate.guard>)(shape, caller).findMany(query)
-        : delegate.findMany(query),
-      countForPagination(delegate, query, shape, caller, distinctCountLimit),
-    ])
-    items = data as unknown[]
-    total = count
-  } else {
-    try {
-      const txResult = await txClient.$transaction(async (tx: unknown) => {
-        const txDelegate = getDelegate(tx, '${modelNameLower}')
-        const d = await txDelegate.findMany(query)
-        const t = await countForPagination(txDelegate, query, undefined, undefined, distinctCountLimit)
-        return { d, t }
-      })
-      items = txResult.d as unknown[]
-      total = txResult.t
-    } catch (txError: unknown) {
-      const txe = txError as { message?: string; code?: string }
-      if (txe?.code === 'P2028') {
-        console.warn('[prisma-generator-express] Interactive transactions not available, pagination queries are non-atomic')
-        items = (await delegate.findMany(query)) as unknown[]
-        total = await countForPagination(delegate, query, undefined, undefined, distinctCountLimit)
-      } else {
-        throw txError
-      }
-    }
-  }
+${paginatedBody}
 
   const skip = (typeof query.skip === 'number' ? query.skip : 0)
   const takeRaw = (typeof query.take === 'number' ? query.take : items.length)

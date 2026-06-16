@@ -10,6 +10,8 @@ Prisma generator that creates Express, Fastify, or Hono CRUD API routes with Ope
 Running `npx prisma generate` produces:
 
 - Handler functions for all Prisma operations (findMany, create, update, delete, etc.)
+- Schema-level `findManyPaginated` execution mode selection (`Promise.all` or interactive transaction)
+- Per-route and per-endpoint pagination config, including optional materialized-view count sources
 - Router generator with middleware support (before/after hooks per operation)
 - POST read endpoints for all read operations (for complex queries exceeding URL length limits)
 - Express-only progressive read streaming over Server-Sent Events (SSE), using manual stages or auto-include splitting for supported relation reads, including deep `findMany` / `findManyPaginated` auto-include paths
@@ -27,6 +29,7 @@ Supports **Express**, **Fastify**, and **Hono** targets via the `target` configu
 - [Installation](#installation)
 - [Setup](#setup)
 - [Write strategy](#write-strategy)
+- [findManyPaginated execution mode](#findmanypaginated-execution-mode)
 - [Path casing in generated endpoints](#path-casing-in-generated-endpoints)
 - [Usage (Express)](#usage-express)
 - [Usage (Fastify)](#usage-fastify)
@@ -190,6 +193,38 @@ generator express {
   provider      = "prisma-generator-express"
   target        = "express"
   writeStrategy = "forceReturn"
+}
+```
+
+## findManyPaginated execution mode
+
+`findManyPaginatedMode` is a schema-wide generator option. It controls how generated `findManyPaginated` handlers execute the root `findMany` query and the total-count query.
+
+```prisma
+generator express {
+  provider              = "prisma-generator-express"
+  findManyPaginatedMode = "promiseAll"
+}
+```
+
+Valid values:
+
+| Value | Behavior |
+| ----- | -------- |
+| `promiseAll` | Default. Generates `Promise.all([findMany, count])`. This is faster and works on clients without interactive transaction support, but the returned `data` and `total` are not atomic under concurrent writes. |
+| `transaction` | Generates an interactive transaction around `findMany` and `count`. This keeps `data` and `total` consistent inside the transaction, but returns `500` if the Prisma client does not expose `$transaction`. There is no implicit fallback. |
+
+This option affects normal JSON `findManyPaginated` responses and Express SSE auto-include `findManyPaginated` responses.
+
+Use `transaction` when atomic page metadata matters more than latency. Use `promiseAll` when throughput and broad runtime compatibility matter more than strict consistency between `data` and `total`.
+
+Example:
+
+```prisma
+generator express {
+  provider              = "prisma-generator-express"
+  target                = "express"
+  findManyPaginatedMode = "transaction"
 }
 ```
 
@@ -2317,11 +2352,11 @@ On the client side, `encodeQueryParams` handles BigInt serialization automatical
 
 ## Pagination
 
-`findManyPaginated` returns `{ data, total, hasMore }`. When the runtime supports interactive transactions, the count and query execute in a transaction for consistency. On runtimes without interactive transaction support, the queries run independently with eventual consistency on the `total` count.
+`findManyPaginated` returns `{ data, total, hasMore }`. Execution is controlled by the schema-wide `findManyPaginatedMode` generator option. The default is `"promiseAll"`, which runs `findMany` and `count` concurrently with `Promise.all`. This is faster but not atomic under concurrent writes. `"transaction"` runs both queries inside an interactive transaction and returns `500` if transaction support is missing.
 
 The `hasMore` field is reliable for forward offset pagination (`skip` + `take`) only. When using cursor-based pagination or negative `take` (backward pagination), `hasMore` may be inaccurate.
 
-When `distinct` is used with `findManyPaginated`, the total count is determined by executing a distinct query up to the configured limit (default: 100,000 rows). If the number of distinct values exceeds this limit, the total falls back to an approximate non-distinct count. When guard shapes are active, the distinct counting query respects the guard's where restrictions.
+When `distinct` is used with `findManyPaginated`, the total count is determined by executing a distinct query up to the configured limit (default: 100,000 rows). If the number of distinct values exceeds this limit, the total falls back to an approximate non-distinct count. When a guard shape is configured together with `distinct`, the total falls back to a guarded non-distinct count so the internal count query does not need to reuse the public read projection.
 
 Configure default and maximum page sizes and the distinct count limit:
 
@@ -2337,6 +2372,68 @@ UserRouter({
 ```
 
 `pagination.defaultLimit` is applied when the client omits `take`. `pagination.maxLimit` caps `take` by absolute value. `pagination.distinctCountLimit` overrides the default 100,000 row threshold for distinct count estimation. All settings apply to `findMany` and `findManyPaginated`.
+
+### Materialized count source
+
+`findManyPaginated` can read `total` from a materialized view instead of calling Prisma `count`. This is useful for large static or periodically refreshed datasets where a precomputed count is cheaper than a live count.
+
+Configure it globally for the router:
+
+```ts
+UserRouter({
+  findManyPaginated: {},
+  pagination: {
+    countSource: {
+      type: 'materializedView',
+      schema: 'public',
+      relation: 'mv_user_count',
+      column: 'total',
+    },
+  },
+})
+```
+
+Or override it per endpoint:
+
+```ts
+UserRouter({
+  pagination: {
+    defaultLimit: 20,
+    maxLimit: 100,
+  },
+  findManyPaginated: {
+    pagination: {
+      countSource: {
+        type: 'materializedView',
+        schema: 'public',
+        relation: 'mv_active_user_count',
+        column: 'total',
+      },
+    },
+  },
+})
+```
+
+The materialized-view count source is used only when the request has no dynamic `where`, no `distinct`, and no guard shape. If any of those are present, the handler falls back to the normal delegate count so `total` stays consistent with the filtered data.
+
+The materialized count query uses PostgreSQL-style `$N` placeholders and `LIMIT 1`, so it is intended for PostgreSQL and CockroachDB-style clients. The optional `countSource.where` supports flat equality and `null` only. Operators and nested objects are not supported.
+
+Example with a static filter on the count view:
+
+```ts
+UserRouter({
+  findManyPaginated: {
+    pagination: {
+      countSource: {
+        type: 'materializedView',
+        relation: 'mv_user_count_by_status',
+        column: 'total',
+        where: { status: 'active' },
+      },
+    },
+  },
+})
+```
 
 ## Error handling
 
@@ -2356,7 +2453,7 @@ For the Hono target, thrown `HTTPException` instances are caught by `app.onError
 | 403    | Guard policy rejected                      |
 | 404    | Record not found                           |
 | 409    | Unique constraint or transaction conflict  |
-| 500    | Internal server error                      |
+| 500    | Internal server error, including transaction mode without transaction support |
 | 501    | Feature not supported by database provider |
 | 503    | Database connection pool timeout           |
 
@@ -2642,6 +2739,8 @@ POST read endpoints are enabled by default. Set `disablePostReads: true` to remo
 
 The schema-wide `writeStrategy` option can change the behavior of `POST /{modelname}/many` and `PUT /{modelname}/many`. It does not change `DELETE /{modelname}/many`.
 
+The schema-wide `findManyPaginatedMode` option changes the generated implementation behind `GET` and `POST /{modelname}/paginated`, but not the public response shape.
+
 For the Express target, GET read endpoints can also stream SSE events when the request sends `Accept: text/event-stream`. SSE uses the same GET paths shown above; no additional routes are generated. See [Progressive Endpoint Composition](#progressive-endpoint-composition-express-sse).
 
 ## Skipping models
@@ -2663,9 +2762,10 @@ Generator options are configured in `schema.prisma` and apply schema-wide.
 
 ```prisma
 generator express {
-  provider      = "prisma-generator-express"
-  target        = "express"
-  writeStrategy = "regular"
+  provider              = "prisma-generator-express"
+  target                = "express"
+  writeStrategy         = "regular"
+  findManyPaginatedMode = "promiseAll"
 }
 ```
 
@@ -2673,10 +2773,28 @@ generator express {
 | ------ | ------ | ------- | ----------- |
 | `target` | `"express"`, `"fastify"`, `"hono"` | `"express"` | Selects the generated router target. |
 | `writeStrategy` | `"regular"`, `"throwOnNonReturning"`, `"forceReturn"` | `"regular"` | Controls only `createMany` and `updateMany`. See [Write strategy](#write-strategy). |
+| `findManyPaginatedMode` | `"promiseAll"`, `"transaction"` | `"promiseAll"` | Controls whether generated `findManyPaginated` handlers run data and count with `Promise.all` or inside an interactive transaction. See [findManyPaginated execution mode](#findmanypaginated-execution-mode). |
 
 ### Express
 
 ```ts
+type PaginationCountSource =
+  | { type?: 'delegate' }
+  | {
+      type: 'materializedView'
+      relation: string
+      schema?: string
+      column?: string
+      where?: Record<string, unknown>
+    }
+
+interface PaginationConfig {
+  defaultLimit?: number
+  maxLimit?: number
+  distinctCountLimit?: number
+  countSource?: PaginationCountSource
+}
+
 interface RouteConfig<TCtx = unknown> {
   enableAll?: boolean
   addModelPrefix?: boolean           // default: true
@@ -2702,11 +2820,7 @@ interface RouteConfig<TCtx = unknown> {
 
   queryBuilder?: QueryBuilderConfig | false
 
-  pagination?: {
-    defaultLimit?: number
-    maxLimit?: number
-    distinctCountLimit?: number      // default: 100000
-  }
+  pagination?: PaginationConfig
 
   // read operation config
   findMany?: ReadOperationConfig<TCtx>
@@ -2735,6 +2849,7 @@ interface OperationConfig {
   before?: RequestHandler[]
   after?: RequestHandler[]
   shape?: Record<string, any>
+  pagination?: Partial<PaginationConfig>
 }
 
 interface ReadOperationConfig<TCtx = unknown> extends OperationConfig {
@@ -2806,6 +2921,7 @@ interface OperationConfig {
   before?: FastifyHookHandler[]
   after?: FastifyHookHandler[]
   shape?: Record<string, any>
+  pagination?: Partial<PaginationConfig>
 }
 
 type FastifyHookHandler = (
@@ -2825,6 +2941,7 @@ interface OperationConfig {
   before?: HonoHookHandler[]
   after?: HonoHookHandler[]
   shape?: Record<string, any>
+  pagination?: Partial<PaginationConfig>
 }
 
 type HonoHookHandler<Env extends { Variables: any } = any> = (
@@ -2839,7 +2956,7 @@ The Hono router does not auto-start the Query Builder. Set `queryBuilder: false`
 
 ### Shared route options
 
-These options are passed to the generated router at runtime. They are separate from schema-wide generator options such as `target` and `writeStrategy`.
+These options are passed to the generated router at runtime. They are separate from schema-wide generator options such as `target`, `writeStrategy`, and `findManyPaginatedMode`.
 
 `customUrlPrefix` is normalized to ensure a leading slash and strip trailing slashes.
 
@@ -2848,6 +2965,8 @@ These options are passed to the generated router at runtime. They are separate f
 `disablePostReads` removes all POST read endpoints when set to `true`. POST read endpoints are enabled by default. This is a global setting — there is no per-operation toggle.
 
 `resolveContext` is Express-only and is required for enabled progressive SSE variants. It is called before progressive stages run and its return value is passed to each stage as `ctx`.
+
+`pagination` can be set at the router level and overridden per operation with `operation.pagination`. Endpoint-level pagination config is shallow-merged over router-level pagination config. `countSource` is only used by `findManyPaginated`.
 
 `openApiServers` sets the `servers` array in the OpenAPI spec:
 

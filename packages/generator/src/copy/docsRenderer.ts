@@ -881,7 +881,7 @@ export function renderDocs(
     return argsReferenceWriteBase
   })()
 
- const batchMutationNote =
+  const batchMutationNote =
     writeStrategy === 'forceReturn'
       ? 'Batch mutations: deleteMany returns { count }. createMany and updateMany silently invoke their returning counterparts and return arrays of records. Batch data inputs are scalar-only — nested relation writes are not supported.'
       : writeStrategy === 'throwOnNonReturning'
@@ -895,7 +895,7 @@ export function renderDocs(
     'findManyPaginated returns { data, total, hasMore }. hasMore is reliable for forward offset pagination only.',
     batchMutationNote,
     'findUnique and findFirst return null (not 404) when no record matches. Use the OrThrow variants for 404 behavior.',
-    'createManyAndReturn requires Prisma 5.14.0+, updateManyAndReturn requires Prisma 6.2.0+. Both are limited to PostgreSQL, CockroachDB, and SQLite.',
+    'createManyAndReturn requires Prisma 5.14.0+, updateManyAndReturn requires Prisma 6.2.0+. Both are limited to PostgreSQL/CockroachDB/SQLite.',
   ]
 
   const errorRows = [
@@ -903,7 +903,7 @@ export function renderDocs(
     { status: '403', description: 'Forbidden', causes: 'Guard policy rejected the operation.' },
     { status: '404', description: 'Not found', causes: 'Record not found. Only from OrThrow operations, update, and delete.' },
     { status: '409', description: 'Conflict', causes: 'Unique constraint violation on create/update/upsert, or transaction conflict (e.g. in findManyPaginated).' },
-    { status: '500', description: 'Internal server error', causes: 'Database error, table/column missing, raw query failure, or unhandled error.' },
+    { status: '500', description: 'Internal server error', causes: 'Database error, table/column missing, raw query failure, unhandled error, or findManyPaginatedMode="transaction" without transaction support on the Prisma client.' },
     { status: '501', description: 'Not implemented', causes: 'Database provider does not support the requested feature, or writeStrategy disabled the endpoint.' },
     { status: '503', description: 'Service unavailable', causes: 'Database connection pool timeout.' },
   ]
@@ -1033,7 +1033,8 @@ export function renderDocs(
     '<strong>POST read endpoints:</strong> All read operations accept POST as an alternative transport. The request body is a plain JSON object with the same argument structure as the GET query params — no JSON-string encoding needed. POST reads use native JSON types (numbers, booleans, objects) directly. findMany POST read is at <span class="font-mono">/read</span>; all other read operations use the same path as their GET counterpart. Disable with <span class="font-mono">disablePostReads: true</span> in route config.',
     '<strong>Request body validation:</strong> All write endpoints require a JSON object body. Sending <span class="font-mono">null</span>, arrays, or non-object JSON values returns 400.',
     '<strong>Documentation in production:</strong> Docs endpoints are disabled by default when <span class="font-mono">NODE_ENV=production</span> or <span class="font-mono">DISABLE_OPENAPI=true</span>. To enable in production, set <span class="font-mono">disableOpenApi: false</span> in the route config.',
-    '<strong>Paginated query atomicity:</strong> findManyPaginated wraps data + count in a database transaction when available. If interactive transactions are not supported (e.g. some edge adapters), the queries run separately and data/total may be slightly inconsistent under concurrent writes. When a guard shape is configured, the data and count queries run in parallel without a transaction to keep the guard wrapper in scope, so atomicity is not guaranteed in that mode.',
+    '<strong>Paginated query execution:</strong> findManyPaginated execution is controlled by the generator option <span class="font-mono">findManyPaginatedMode</span>. The default <span class="font-mono">"promiseAll"</span> runs data and count with <span class="font-mono">Promise.all</span> — faster, but not atomic under concurrent writes (data and total may be slightly inconsistent). <span class="font-mono">"transaction"</span> runs data and count inside an interactive transaction and throws <span class="font-mono">500</span> if the Prisma client does not support transactions. There is no implicit fallback in transaction mode.',
+    '<strong>Materialized count source:</strong> findManyPaginated supports endpoint-level <span class="font-mono">pagination.countSource.type="materializedView"</span> for counts driven by a materialized view. The view query is used only when the request has no dynamic <span class="font-mono">where</span>, no <span class="font-mono">distinct</span>, and no guard shape — any of those falls back to the delegate count to keep the total consistent with the filtered data. The generated SQL uses PostgreSQL-style <span class="font-mono">$N</span> placeholders (PostgreSQL and CockroachDB). The optional <span class="font-mono">countSource.where</span> field supports flat equality and <span class="font-mono">null</span> only — no operators, no nested objects.',
     '<strong>Distinct count approximation:</strong> When findManyPaginated is used with distinct and the number of unique values exceeds 100,000, the total falls back to a non-distinct count which may overcount. When a guard shape is configured alongside distinct, the total also falls back to a non-distinct count to avoid imposing the public read shape on the internal counting query. The hasMore value is affected accordingly.',
     '<strong>Serialization:</strong> BigInt values are serialized as strings. Bytes/Buffer values are serialized as base64 strings. Decimal values are serialized as strings. DateTime values are serialized as ISO 8601 strings.',
     '<strong>Playground:</strong> The query playground embeds an iframe to a local prisma-query-builder-ui instance. It connects to your real database using the configured DATABASE_URL. It is disabled in production and when queryBuilder is set to false or queryBuilder.enabled is set to false.',
