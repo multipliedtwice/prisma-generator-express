@@ -1,3 +1,10 @@
+# [1.56.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.55.0...v1.56.0) (2026-06-16)
+
+
+### Features
+
+* introduce findManyPaginatedMode for enhanced pagination control ([3bf8c8c](https://github.com/multipliedtwice/prisma-generator-express/commit/3bf8c8cdf087b6f634e0fb12267f44670102104f))
+
 # [1.55.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.54.0...v1.55.0) (2026-06-16)
 
 
