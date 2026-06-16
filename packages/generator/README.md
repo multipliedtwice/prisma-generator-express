@@ -26,6 +26,7 @@ Supports **Express**, **Fastify**, and **Hono** targets via the `target` configu
 - [Compatibility](#compatibility)
 - [Installation](#installation)
 - [Setup](#setup)
+- [Write strategy](#write-strategy)
 - [Path casing in generated endpoints](#path-casing-in-generated-endpoints)
 - [Usage (Express)](#usage-express)
 - [Usage (Fastify)](#usage-fastify)
@@ -62,6 +63,7 @@ Some operations require newer versions:
 | Operation             | Minimum Prisma version | Notes                                |
 | --------------------- | ---------------------- | ------------------------------------ |
 | `omit` parameter      | 6.2.0                  | Returns 400 on versions 6.0.x–6.1.x |
+| `createManyAndReturn` | 5.14.0                 | PostgreSQL, CockroachDB, SQLite only |
 | `updateManyAndReturn` | 6.2.0                  | PostgreSQL, CockroachDB, SQLite only |
 
 ### Framework support
@@ -158,6 +160,37 @@ Generate:
 
 ```bash
 npx prisma generate
+```
+
+## Write strategy
+
+`writeStrategy` is a schema-wide generator option. It controls only non-returning bulk data writes that have Prisma returning counterparts: `createMany` and `updateMany`. It does not affect `deleteMany`.
+
+```prisma
+generator express {
+  provider      = "prisma-generator-express"
+  writeStrategy = "regular"
+}
+```
+
+Valid values:
+
+| Value | Behavior |
+| ----- | -------- |
+| `regular` | Default. `createMany` and `updateMany` call the normal Prisma methods and return `{ count }`. |
+| `throwOnNonReturning` | Disables the generated `createMany` and `updateMany` endpoints (`POST /{modelname}/many` and `PUT /{modelname}/many`). Direct calls return `501`. Use `createManyAndReturn` and `updateManyAndReturn` endpoints instead. |
+| `forceReturn` | `createMany` silently invokes `createManyAndReturn`, and `updateMany` silently invokes `updateManyAndReturn`. These endpoints return arrays of records instead of `{ count }` and support `select`, `include`, and `omit`. |
+
+`forceReturn` still follows Prisma provider support. If the current provider does not support `createManyAndReturn` or `updateManyAndReturn`, the generated endpoint returns `501 Not Implemented` at runtime.
+
+Example:
+
+```prisma
+generator express {
+  provider      = "prisma-generator-express"
+  target        = "express"
+  writeStrategy = "forceReturn"
+}
 ```
 
 ## Path casing in generated endpoints
@@ -961,7 +994,7 @@ const userConfig = {
 }
 ```
 
-The client can include `include` or `select` in the request body. If the shape does not define projection, the client cannot request one. Batch methods (`createMany`, `updateMany`, `deleteMany`) do not support projection.
+The client can include `include` or `select` in the request body. If the shape does not define projection, the client cannot request one. Non-returning batch methods (`createMany`, `updateMany`, `deleteMany`) do not support projection. When `writeStrategy = "forceReturn"`, the generated `createMany` and `updateMany` endpoints invoke returning methods and can use `select`, `include`, and `omit` like `createManyAndReturn` and `updateManyAndReturn`.
 
 For mutations, projection shapes only validate and constrain client-requested projections by default — if the client omits `select`/`include`, Prisma returns the full record. This differs from read operations, where the shape's projection is automatically applied as default. Enable `enforceProjection` in the prisma-guard generator config to always apply mutation projection shapes.
 
@@ -1230,13 +1263,15 @@ All write operations accept the full Prisma args object as the JSON request body
 { "where": { "id": 1 }, "create": { "name": "Alice" }, "update": { "name": "Bob" } }
 ```
 
-Write operations that return records (create, update, delete, upsert, createManyAndReturn, updateManyAndReturn) support `select`, `include`, and `omit` in the request body to control the response shape.
+Write operations that return records (`create`, `update`, `delete`, `upsert`, `createManyAndReturn`, `updateManyAndReturn`) support `select`, `include`, and `omit` in the request body to control the response shape. When `writeStrategy = "forceReturn"`, the generated `createMany` and `updateMany` endpoints are rewritten to returning methods and also support `select`, `include`, and `omit`.
 
 For Express, mount `express.json()` before the router so request bodies are parsed. For Hono, malformed JSON bodies are rejected with 400 (`{ "message": "Invalid JSON in request body" }`) before reaching the handler.
 
 ### Bulk operations
 
 `createMany`, `createManyAndReturn`, `updateMany`, and `updateManyAndReturn` accept scalar-only data inputs. Nested relation writes are not supported in bulk operations.
+
+By default, `createMany` and `updateMany` return `{ count }`, while `createManyAndReturn` and `updateManyAndReturn` return arrays of records. With `writeStrategy = "forceReturn"`, the generated `createMany` and `updateMany` endpoints return arrays of records because they invoke the returning Prisma methods internally.
 
 ### Batch operation safety
 
@@ -2605,6 +2640,8 @@ Paths shown are relative suffixes. Actual paths include the model prefix (e.g., 
 
 POST read endpoints are enabled by default. Set `disablePostReads: true` to remove them.
 
+The schema-wide `writeStrategy` option can change the behavior of `POST /{modelname}/many` and `PUT /{modelname}/many`. It does not change `DELETE /{modelname}/many`.
+
 For the Express target, GET read endpoints can also stream SSE events when the request sends `Accept: text/event-stream`. SSE uses the same GET paths shown above; no additional routes are generated. See [Progressive Endpoint Composition](#progressive-endpoint-composition-express-sse).
 
 ## Skipping models
@@ -2619,6 +2656,23 @@ model InternalLog {
 ```
 
 ## Configuration
+
+### Generator options
+
+Generator options are configured in `schema.prisma` and apply schema-wide.
+
+```prisma
+generator express {
+  provider      = "prisma-generator-express"
+  target        = "express"
+  writeStrategy = "regular"
+}
+```
+
+| Option | Values | Default | Description |
+| ------ | ------ | ------- | ----------- |
+| `target` | `"express"`, `"fastify"`, `"hono"` | `"express"` | Selects the generated router target. |
+| `writeStrategy` | `"regular"`, `"throwOnNonReturning"`, `"forceReturn"` | `"regular"` | Controls only `createMany` and `updateMany`. See [Write strategy](#write-strategy). |
 
 ### Express
 
@@ -2783,7 +2837,9 @@ The `guard.resolveVariant` callback receives Hono's `Context`. Hooks are native 
 
 The Hono router does not auto-start the Query Builder. Set `queryBuilder: false` to make the playground route return 404, or run `prisma-query-builder-ui` manually for development.
 
-### Shared options
+### Shared route options
+
+These options are passed to the generated router at runtime. They are separate from schema-wide generator options such as `target` and `writeStrategy`.
 
 `customUrlPrefix` is normalized to ensure a leading slash and strip trailing slashes.
 

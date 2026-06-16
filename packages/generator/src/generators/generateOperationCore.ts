@@ -1,16 +1,43 @@
 import { DMMF } from '@prisma/generator-helper'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
+import { WriteStrategy } from '../constants'
 
 export interface ModelCoreOptions {
   model: DMMF.Model
   importStyle: ImportStyle
+  writeStrategy: WriteStrategy
+}
+
+type WriteOpDecision =
+  | { mode: 'normal'; method: string }
+  | { mode: 'redirect'; method: string }
+  | { mode: 'throw' }
+
+function decideWriteOp(
+  name: string,
+  defaultMethod: string,
+  strategy: WriteStrategy,
+): WriteOpDecision {
+  if (strategy === 'regular') {
+    return { mode: 'normal', method: defaultMethod }
+  }
+  if (strategy === 'throwOnNonReturning') {
+    if (name === 'createMany' || name === 'updateMany') {
+      return { mode: 'throw' }
+    }
+    return { mode: 'normal', method: defaultMethod }
+  }
+  if (name === 'createMany') return { mode: 'redirect', method: 'createManyAndReturn' }
+  if (name === 'updateMany') return { mode: 'redirect', method: 'updateManyAndReturn' }
+  return { mode: 'normal', method: defaultMethod }
 }
 
 export function generateModelCore(options: ModelCoreOptions): string {
   const ext = importExt(options.importStyle)
   const modelName = options.model.name
   const modelNameLower = modelName.charAt(0).toLowerCase() + modelName.slice(1)
+  const writeStrategy = options.writeStrategy
 
   const standardReadOps = [
     'findFirst', 'findUnique', 'findUniqueOrThrow', 'findFirstOrThrow',
@@ -44,7 +71,20 @@ export async function ${op}(ctx: OperationContext): Promise<unknown> {
   ]
 
   const writeHandlers = writeOps.map((op) => {
-    const validationLines = op.requiredFields.map((field) => `  requireBodyField(body, '${field}')`).join('\n')
+    const decision = decideWriteOp(op.name, op.method, writeStrategy)
+
+    if (decision.mode === 'throw') {
+      return `
+export async function ${op.name}(_ctx: OperationContext): Promise<unknown> {
+  throw new HttpError(501, '${op.name} is disabled by writeStrategy="${writeStrategy}"')
+}`
+    }
+
+    const method = decision.method
+    const validationLines = op.requiredFields
+      .map((field) => `  requireBodyField(body, '${field}')`)
+      .join('\n')
+
     return `
 export async function ${op.name}(ctx: OperationContext): Promise<unknown> {
   const body = validateBody(ctx.body)
@@ -53,9 +93,9 @@ ${validationLines}
   const delegate = getDelegate(extended, '${modelNameLower}')
   if (ctx.guardShape) {
     assertGuard(delegate)
-    return delegate.guard(ctx.guardShape, ctx.guardCaller).${op.method}(body)
+    return delegate.guard(ctx.guardShape, ctx.guardCaller).${method}(body)
   }
-  return delegate.${op.method}(body)
+  return delegate.${method}(body)
 }`
   }).join('\n')
 

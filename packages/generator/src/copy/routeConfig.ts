@@ -20,6 +20,8 @@ export interface OpenApiSecuritySchemeConfig {
   description?: string
 }
 
+export type WriteStrategy = 'regular' | 'throwOnNonReturning' | 'forceReturn'
+
 export type ProgressivePatch = {
   key: string
   value: unknown

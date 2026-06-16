@@ -2,17 +2,20 @@ import { DMMF } from '@prisma/generator-helper'
 import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
+import { WriteStrategy } from '../constants'
 
 export function generateFastifyRouterFunction({
   model,
   enums,
   guardShapesImport,
   importStyle,
+  writeStrategy,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
   guardShapesImport: string | null
   importStyle: ImportStyle
+  writeStrategy: WriteStrategy
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
@@ -64,7 +67,7 @@ import {
   ${modelName}Count,
   ${modelName}GroupBy,
 } from './${modelName}Handlers${ext}'
-import type { RouteConfig, FastifyHookHandler } from '../routeConfig.target${ext}'
+import type { RouteConfig, FastifyHookHandler, WriteStrategy } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
@@ -72,6 +75,8 @@ import { mapError, transformResult, HttpError, type OperationContext } from '../
 
 ${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, importStyle, 'fastify')}
 const _env = getEnv()
+
+const WRITE_STRATEGY: WriteStrategy = '${writeStrategy}'
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
 
@@ -203,7 +208,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
-        { format: 'json' },
+        { format: 'json', writeStrategy: WRITE_STRATEGY },
       )
   const openApiYamlSpec = openApiDisabled
     ? null
@@ -212,7 +217,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
-        { format: 'yaml' },
+        { format: 'yaml', writeStrategy: WRITE_STRATEGY },
       )
 
   const qbEnabled = isQueryBuilderEnabled(config)

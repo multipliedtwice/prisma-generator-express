@@ -25,7 +25,7 @@ import {
 import { writeFileSafely } from './utils/writeFileSafely'
 import { copyFiles } from './utils/copyFiles'
 import { resolveImportStyle, ImportStyle } from './utils/resolveImportStyle'
-import { GENERATOR_NAME, Target } from './constants'
+import { GENERATOR_NAME, Target, WriteStrategy } from './constants'
 
 const GENERATOR_OFF_RE = /\bgenerator off\b/
 
@@ -34,8 +34,25 @@ function getTarget(options: GeneratorOptions): Target {
     (options.generator.config as Record<string, unknown>).target ?? 'express',
   ).toLowerCase()
   if (raw === 'express' || raw === 'fastify' || raw === 'hono') return raw
+  throw new Error(`Invalid target "${raw}". Expected "express", "fastify", or "hono".`)
+}
+
+function getWriteStrategy(options: GeneratorOptions): WriteStrategy {
+  const raw = String(
+    (options.generator.config as Record<string, unknown>).writeStrategy ?? 'regular',
+  )
+  const lower = raw.toLowerCase()
+  if (lower === 'regular') return 'regular'
+  if (lower === 'throwonnonreturning') return 'throwOnNonReturning'
+  if (lower === 'throwonregular') {
+    console.warn(
+      '[prisma-generator-express] writeStrategy="throwOnRegular" is deprecated. Use "throwOnNonReturning" instead.',
+    )
+    return 'throwOnNonReturning'
+  }
+  if (lower === 'forcereturn') return 'forceReturn'
   throw new Error(
-    `Invalid target "${raw}". Expected "express", "fastify", or "hono".`,
+    `Invalid writeStrategy "${raw}". Expected "regular", "throwOnNonReturning", or "forceReturn".`,
   )
 }
 
@@ -54,6 +71,7 @@ generatorHandler({
 
   async onGenerate(options: GeneratorOptions) {
     const target = getTarget(options)
+    const writeStrategy = getWriteStrategy(options)
     const hasExplicitOutput =
       !!options.generator.output?.fromEnvVar ||
       (options.generator.config as Record<string, unknown>).output !== undefined
@@ -70,6 +88,7 @@ generatorHandler({
     console.log(`  Target: ${target}`)
     console.log(`  Output: ${options.generator.output?.value}`)
     console.log(`  Import style: ${importStyle}`)
+    console.log(`  Write strategy: ${writeStrategy}`)
 
     if (options.dmmf.datamodel.models.length > 0) {
       validateClientGeneratorPresent(options)
@@ -91,10 +110,7 @@ generatorHandler({
     const allModels = options.dmmf.datamodel.models as DMMF.Model[]
 
     for (const model of options.dmmf.datamodel.models) {
-      if (
-        model.documentation &&
-        GENERATOR_OFF_RE.test(model.documentation)
-      ) {
+      if (model.documentation && GENERATOR_OFF_RE.test(model.documentation)) {
         console.log(`  Skipping: ${model.name} (generator off)`)
         continue
       }
@@ -103,7 +119,7 @@ generatorHandler({
       const guardShapesImport = getGuardShapesImport(options, model.name)
 
       await writeFileSafely({
-        content: generateModelCore({ model: model as DMMF.Model, importStyle }),
+        content: generateModelCore({ model: model as DMMF.Model, importStyle, writeStrategy }),
         options,
         model: model as DMMF.Model,
         operation: 'Core',
@@ -123,6 +139,7 @@ generatorHandler({
               enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
               guardShapesImport,
               importStyle,
+              writeStrategy,
             })
           : target === 'hono'
             ? generateHonoRouterFunction({
@@ -130,12 +147,14 @@ generatorHandler({
                 enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
                 guardShapesImport,
                 importStyle,
+                writeStrategy,
               })
             : generateRouterFunction({
                 model: model as DMMF.Model,
                 enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
                 guardShapesImport,
                 importStyle,
+                writeStrategy,
               })
 
       await writeFileSafely({
@@ -151,6 +170,7 @@ generatorHandler({
           enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
           target,
           importStyle,
+          writeStrategy,
         }),
         options,
         model: model as DMMF.Model,

@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-import { Target } from '../constants'
+import { Target, WriteStrategy } from '../constants'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 
@@ -51,7 +51,7 @@ function generateExpressDocsExport(modelName: string): string {
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
-        { format: 'yaml' }
+        { format: 'yaml', writeStrategy: WRITE_STRATEGY }
       )
       return res.type('application/yaml').send(yaml as string)
     }
@@ -61,7 +61,7 @@ function generateExpressDocsExport(modelName: string): string {
       MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
       MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
       config,
-      { format: 'json' }
+      { format: 'json', writeStrategy: WRITE_STRATEGY }
     )
 
     if (ui === 'json') return res.json(spec)
@@ -72,7 +72,7 @@ function generateExpressDocsExport(modelName: string): string {
       return res.type('html').send(renderScalar('${modelName}', spec, pageTitle, config.scalarCdnUrl))
     }
 
-    const html = renderDocs('${modelName}', config, MODEL_CONTEXT)
+    const html = renderDocs('${modelName}', config, MODEL_CONTEXT, WRITE_STRATEGY)
     return res.type('html').send(html)
   }
 }`
@@ -102,7 +102,7 @@ function generateFastifyDocsExport(modelName: string): string {
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
-        { format: 'yaml' }
+        { format: 'yaml', writeStrategy: WRITE_STRATEGY }
       )
       reply.type('application/yaml').send(yaml as string); return
     }
@@ -112,7 +112,7 @@ function generateFastifyDocsExport(modelName: string): string {
       MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
       MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
       config,
-      { format: 'json' }
+      { format: 'json', writeStrategy: WRITE_STRATEGY }
     )
 
     if (ui === 'json') { reply.send(spec); return }
@@ -123,7 +123,7 @@ function generateFastifyDocsExport(modelName: string): string {
       reply.type('text/html').send(renderScalar('${modelName}', spec, pageTitle, config.scalarCdnUrl)); return
     }
 
-    const html = renderDocs('${modelName}', config, MODEL_CONTEXT)
+    const html = renderDocs('${modelName}', config, MODEL_CONTEXT, WRITE_STRATEGY)
     reply.type('text/html').send(html)
   }
 }`
@@ -152,7 +152,7 @@ function generateHonoDocsExport(modelName: string): string {
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config,
-        { format: 'yaml' }
+        { format: 'yaml', writeStrategy: WRITE_STRATEGY }
       ) as string
       return c.body(yaml, 200, { 'Content-Type': 'application/yaml' })
     }
@@ -162,7 +162,7 @@ function generateHonoDocsExport(modelName: string): string {
       MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
       MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
       config,
-      { format: 'json' }
+      { format: 'json', writeStrategy: WRITE_STRATEGY }
     )
 
     if (ui === 'json') return c.json(spec as Record<string, unknown>)
@@ -173,7 +173,7 @@ function generateHonoDocsExport(modelName: string): string {
       return c.html(renderScalar('${modelName}', spec, pageTitle, config.scalarCdnUrl))
     }
 
-    const html = renderDocs('${modelName}', config, MODEL_CONTEXT)
+    const html = renderDocs('${modelName}', config, MODEL_CONTEXT, WRITE_STRATEGY)
     return c.html(html)
   }
 }`
@@ -184,8 +184,9 @@ export function generateScalarUIHandler(options: {
   enums: DMMF.DatamodelEnum[]
   target?: Target
   importStyle: ImportStyle
+  writeStrategy: WriteStrategy
 }): string {
-  const { model, enums } = options
+  const { model, enums, writeStrategy } = options
   const target = options.target || 'express'
   const ext = importExt(options.importStyle)
   const modelName = model.name
@@ -260,6 +261,7 @@ export function generateScalarUIHandler(options: {
 
   return `${frameworkImport}
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
+import type { WriteStrategy } from '../routeConfig${ext}'
 import {
   renderDocs,
   renderScalar,
@@ -272,6 +274,8 @@ import {
   type DocsConfig,
   type DocsModelContext,
 } from '../docsRenderer${ext}'
+
+const WRITE_STRATEGY: WriteStrategy = '${writeStrategy}'
 
 export const MODEL_FIELDS: FieldMeta[] = ${JSON.stringify(fieldsMeta, null, 2)}
 

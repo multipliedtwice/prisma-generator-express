@@ -1,4 +1,4 @@
-import type { RouteConfig } from './routeConfig'
+import type { RouteConfig, WriteStrategy } from './routeConfig'
 import { OPERATION_DEFS, isOperationEnabled } from './operationDefinitions'
 import { normalizePrefix, removeTrailingSlash } from './misc'
 
@@ -51,6 +51,7 @@ type BuildOptions = {
   title?: string
   description?: string
   version?: string
+  writeStrategy?: WriteStrategy
 }
 
 const OP_MAP = new Map(OPERATION_DEFS.map((d) => [d.name, d]))
@@ -130,10 +131,7 @@ function scalarUpdateOperations(
   }
 
   return {
-    oneOf: [
-      baseSchema,
-      { type: 'object', properties: ops },
-    ],
+    oneOf: [baseSchema, { type: 'object', properties: ops }],
   }
 }
 
@@ -193,7 +191,10 @@ function countBodySchema(): SchemaObject {
       take: { type: 'integer', description: 'Limit results' },
       skip: { type: 'integer', description: 'Skip results' },
       cursor: { type: 'object', description: 'Cursor for pagination' },
-      select: { description: 'Count specific fields. When provided, returns per-field counts as an object instead of a single integer.' },
+      select: {
+        description:
+          'Count specific fields. When provided, returns per-field counts as an object instead of a single integer.',
+      },
     },
   }
 }
@@ -207,11 +208,25 @@ function aggregateBodySchema(): SchemaObject {
       cursor: { type: 'object', description: 'Cursor for pagination' },
       take: { type: 'integer', description: 'Limit results' },
       skip: { type: 'integer', description: 'Skip results' },
-      _count: { description: 'Count aggregate (true or field selection object)' },
-      _avg: { type: 'object', description: 'Average aggregate (field selection object)' },
-      _sum: { type: 'object', description: 'Sum aggregate (field selection object)' },
-      _min: { type: 'object', description: 'Min aggregate (field selection object)' },
-      _max: { type: 'object', description: 'Max aggregate (field selection object)' },
+      _count: {
+        description: 'Count aggregate (true or field selection object)',
+      },
+      _avg: {
+        type: 'object',
+        description: 'Average aggregate (field selection object)',
+      },
+      _sum: {
+        type: 'object',
+        description: 'Sum aggregate (field selection object)',
+      },
+      _min: {
+        type: 'object',
+        description: 'Min aggregate (field selection object)',
+      },
+      _max: {
+        type: 'object',
+        description: 'Max aggregate (field selection object)',
+      },
     },
   }
 }
@@ -220,17 +235,38 @@ function groupByBodySchema(): SchemaObject {
   return {
     type: 'object',
     properties: {
-      by: { type: 'array', items: { type: 'string' }, description: 'Fields to group by' },
+      by: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Fields to group by',
+      },
       where: { type: 'object', description: 'Filter conditions' },
       orderBy: { description: 'Sort order. Required when using skip or take.' },
-      having: { type: 'object', description: 'Having conditions (filter object)' },
+      having: {
+        type: 'object',
+        description: 'Having conditions (filter object)',
+      },
       take: { type: 'integer', description: 'Limit results' },
       skip: { type: 'integer', description: 'Skip results' },
-      _count: { description: 'Count aggregate (true or field selection object)' },
-      _avg: { type: 'object', description: 'Average aggregate (field selection object)' },
-      _sum: { type: 'object', description: 'Sum aggregate (field selection object)' },
-      _min: { type: 'object', description: 'Min aggregate (field selection object)' },
-      _max: { type: 'object', description: 'Max aggregate (field selection object)' },
+      _count: {
+        description: 'Count aggregate (true or field selection object)',
+      },
+      _avg: {
+        type: 'object',
+        description: 'Average aggregate (field selection object)',
+      },
+      _sum: {
+        type: 'object',
+        description: 'Sum aggregate (field selection object)',
+      },
+      _min: {
+        type: 'object',
+        description: 'Min aggregate (field selection object)',
+      },
+      _max: {
+        type: 'object',
+        description: 'Max aggregate (field selection object)',
+      },
     },
     required: ['by'],
   }
@@ -254,6 +290,82 @@ function getPostReadBodySchema(opName: string): SchemaObject {
       return groupByBodySchema()
     default:
       return findManyBodySchema()
+  }
+}
+
+function applyWriteStrategy(
+  spec: OpenApiSpec,
+  modelName: string,
+  basePath: string,
+  writeStrategy: WriteStrategy | undefined,
+): void {
+  if (!writeStrategy || writeStrategy === 'regular') return
+
+  const manyPath = basePath + '/many'
+  const node = spec.paths[manyPath]
+  if (!node) return
+
+  if (writeStrategy === 'throwOnNonReturning') {
+    delete node.post
+    delete node.put
+    if (Object.keys(node).length === 0) {
+      delete spec.paths[manyPath]
+    }
+    return
+  }
+
+  const responseRef: RefObject = {
+    $ref: '#/components/schemas/' + modelName + 'Response',
+  }
+
+  const injectProjectionAndArrayResponse = (
+    op: any,
+    successCode: '200' | '201',
+    summary: string,
+    description: string,
+  ): void => {
+    op.summary = summary
+    op.description = description
+    const r = op.responses?.[successCode]
+    if (r?.content?.['application/json']) {
+      r.content['application/json'].schema = {
+        type: 'array',
+        items: responseRef,
+      }
+    }
+    const reqSchema = op.requestBody?.content?.['application/json']?.schema
+    if (reqSchema && reqSchema.properties) {
+      reqSchema.properties.select = {
+        type: 'object',
+        description: 'Select fields to return',
+      }
+      reqSchema.properties.include = {
+        type: 'object',
+        description: 'Include relations to return',
+      }
+      reqSchema.properties.omit = {
+        type: 'object',
+        description: 'Omit fields from response',
+      }
+    }
+  }
+
+  if (node.post) {
+    injectProjectionAndArrayResponse(
+      node.post,
+      '201',
+      'Create many ' + modelName + ' (forceReturn)',
+      'writeStrategy="forceReturn": this endpoint silently invokes createManyAndReturn and returns the created records instead of { count }.',
+    )
+  }
+
+  if (node.put) {
+    injectProjectionAndArrayResponse(
+      node.put,
+      '200',
+      'Update many ' + modelName + ' (forceReturn)',
+      'writeStrategy="forceReturn": this endpoint silently invokes updateManyAndReturn and returns the updated records instead of { count }.',
+    )
   }
 }
 
@@ -320,6 +432,8 @@ export function buildModelOpenApi(
   generateOperationSchemas(spec, modelName, modelFields)
 
   generatePaths(spec, modelName, basePath, config, modelFields)
+
+  applyWriteStrategy(spec, modelName, basePath, options.writeStrategy)
 
   if (options.format === 'yaml') {
     return toYaml(spec)
@@ -644,7 +758,8 @@ function addPostReadOperation(
     tags: [modelName],
     summary: summary + ' (POST)',
     operationId: `${modelName}${opName.charAt(0).toUpperCase() + opName.slice(1)}Post`,
-    description: (description ? description + ' ' : '') +
+    description:
+      (description ? description + ' ' : '') +
       'POST alternative for requests with complex query parameters that may exceed URL length limits. Accepts the same arguments as the GET endpoint but as a JSON request body instead of query parameters.',
     requestBody: {
       required: true,
@@ -1291,8 +1406,14 @@ function generatePaths(
         `Count ${modelName}`,
         {
           oneOf: [
-            { type: 'integer', description: 'Total count when select is not provided' },
-            { type: 'object', description: 'Per-field count object when select is provided' },
+            {
+              type: 'integer',
+              description: 'Total count when select is not provided',
+            },
+            {
+              type: 'object',
+              description: 'Per-field count object when select is provided',
+            },
           ],
         },
         [400, 403, 500, 501, 503],
@@ -1730,7 +1851,7 @@ function mapFieldToWriteSchema(
         description: field.documentation,
       }
     } else if (!('$ref' in schema)) {
-      (schema as SchemaObject).description = field.documentation
+      ;(schema as SchemaObject).description = field.documentation
     }
   }
 

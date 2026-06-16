@@ -5,12 +5,14 @@ import type {
   QueryBuilderConfig,
   OpenApiServerConfig,
   OpenApiSecuritySchemeConfig,
+  WriteStrategy,
 } from './routeConfig'
 
 export type {
   QueryBuilderConfig,
   OpenApiServerConfig,
   OpenApiSecuritySchemeConfig,
+  WriteStrategy
 }
 
 export type HonoEnvBase = {
