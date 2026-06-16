@@ -1,3 +1,10 @@
+# [1.55.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.54.0...v1.55.0) (2026-06-16)
+
+
+### Features
+
+* introduce write strategy for batch operations in docs and router generation ([2653ce1](https://github.com/multipliedtwice/prisma-generator-express/commit/2653ce15a2bfedbd065bd444a419e75fe005e23c))
+
 # [1.54.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.53.0...v1.54.0) (2026-06-15)
 
 
