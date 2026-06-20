@@ -1,3 +1,10 @@
+## [1.56.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.56.2...v1.56.3) (2026-06-20)
+
+
+### Bug Fixes
+
+* remove unused dependencies and update package.json ([dba623b](https://github.com/multipliedtwice/prisma-generator-express/commit/dba623b56f6162cf880cbc1fd64bee7eb55d9711))
+
 ## [1.56.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.56.1...v1.56.2) (2026-06-16)
 
 
