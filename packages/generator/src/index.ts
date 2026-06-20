@@ -25,7 +25,12 @@ import {
 import { writeFileSafely } from './utils/writeFileSafely'
 import { copyFiles } from './utils/copyFiles'
 import { resolveImportStyle, ImportStyle } from './utils/resolveImportStyle'
-import { GENERATOR_NAME, Target, WriteStrategy, FindManyPaginatedMode } from './constants'
+import {
+  GENERATOR_NAME,
+  Target,
+  WriteStrategy,
+  FindManyPaginatedMode,
+} from './constants'
 
 const GENERATOR_OFF_RE = /\bgenerator off\b/
 
@@ -34,12 +39,15 @@ function getTarget(options: GeneratorOptions): Target {
     (options.generator.config as Record<string, unknown>).target ?? 'express',
   ).toLowerCase()
   if (raw === 'express' || raw === 'fastify' || raw === 'hono') return raw
-  throw new Error(`Invalid target "${raw}". Expected "express", "fastify", or "hono".`)
+  throw new Error(
+    `Invalid target "${raw}". Expected "express", "fastify", or "hono".`,
+  )
 }
 
 function getWriteStrategy(options: GeneratorOptions): WriteStrategy {
   const raw = String(
-    (options.generator.config as Record<string, unknown>).writeStrategy ?? 'regular',
+    (options.generator.config as Record<string, unknown>).writeStrategy ??
+      'regular',
   )
   const lower = raw.toLowerCase()
   if (lower === 'regular') return 'regular'
@@ -56,9 +64,12 @@ function getWriteStrategy(options: GeneratorOptions): WriteStrategy {
   )
 }
 
-function getFindManyPaginatedMode(options: GeneratorOptions): FindManyPaginatedMode {
+function getFindManyPaginatedMode(
+  options: GeneratorOptions,
+): FindManyPaginatedMode {
   const raw = String(
-    (options.generator.config as Record<string, unknown>).findManyPaginatedMode ?? 'promiseAll',
+    (options.generator.config as Record<string, unknown>)
+      .findManyPaginatedMode ?? 'promiseAll',
   )
   const lower = raw.toLowerCase()
   if (lower === 'transaction') return 'transaction'
@@ -69,7 +80,10 @@ function getFindManyPaginatedMode(options: GeneratorOptions): FindManyPaginatedM
 }
 
 function validateClientGeneratorPresent(options: GeneratorOptions): void {
-  getRelativeClientPath(options, options.dmmf.datamodel.models[0]?.name ?? 'Model')
+  getRelativeClientPath(
+    options,
+    options.dmmf.datamodel.models[0]?.name ?? 'Model',
+  )
 }
 
 generatorHandler({
@@ -85,11 +99,18 @@ generatorHandler({
     const target = getTarget(options)
     const writeStrategy = getWriteStrategy(options)
     const findManyPaginatedMode = getFindManyPaginatedMode(options)
-    const hasExplicitOutput =
-      !!options.generator.output?.fromEnvVar ||
-      (options.generator.config as Record<string, unknown>).output !== undefined
 
-    if (!hasExplicitOutput) {
+    const manifestDefaultAbs = path.resolve(
+      __dirname,
+      '..',
+      'generated',
+      target,
+    )
+    const currentOutput = options.generator.output?.value
+    const isUnsetOrManifestDefault =
+      !currentOutput || path.resolve(currentOutput) === manifestDefaultAbs
+
+    if (isUnsetOrManifestDefault) {
       const schemaDir = path.dirname(options.schemaPath)
       const outputPath = path.join(schemaDir, 'generated', target)
       options.generator.output = { value: outputPath, fromEnvVar: null }

@@ -57,8 +57,7 @@
     "pino-pretty": "^13.0.0",
     "prisma": "7.5.0",
     "semantic-release": "^24.2.9",
-    "typescript": "5.9.3",
-    "vitest-mock-extended": "^3.1.0"
+    "typescript": "5.9.3"
   },
   "homepage": "https://github.com/multipliedtwice/prisma-generator-express",
   "repository": {
