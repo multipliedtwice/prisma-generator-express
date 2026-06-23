@@ -1,3 +1,10 @@
+## [1.56.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.56.3...v1.56.4) (2026-06-23)
+
+
+### Bug Fixes
+
+* refactor updateEach to use transaction support for atomic updates ([6e82dd0](https://github.com/multipliedtwice/prisma-generator-express/commit/6e82dd0f37c3e90380b845a31bda104135566d7a))
+
 ## [1.56.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.56.2...v1.56.3) (2026-06-20)
 
 
