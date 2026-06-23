@@ -199,19 +199,21 @@ export async function updateEach(
   }
   const items = body as Record<string, unknown>[]
   const client = ctx.prisma as PrismaClientLike
-  const delegate = getDelegate(client, '${modelNameLower}')
 
   if (atomic) {
     if (typeof client.$transaction !== 'function') {
       throw new HttpError(500, 'Atomic updateEach requires transaction support on the Prisma client')
     }
-    const ops = items.map((item) => delegate.update(item))
-    const runArray = client.$transaction as unknown as (
-      promises: unknown[],
-    ) => Promise<unknown[]>
-    return runArray(ops)
+    const runInteractive = client.$transaction as unknown as <T>(
+      fn: (tx: unknown) => Promise<T>,
+    ) => Promise<T>
+    return runInteractive(async (tx) => {
+      const txDelegate = getDelegate(tx, '${modelNameLower}')
+      return Promise.all(items.map((item) => txDelegate.update(item)))
+    })
   }
 
+  const delegate = getDelegate(client, '${modelNameLower}')
   const settled = await Promise.allSettled(
     items.map((item) => delegate.update(item)),
   )
