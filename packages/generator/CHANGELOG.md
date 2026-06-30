@@ -1,3 +1,10 @@
+# [1.57.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.56.4...v1.57.0) (2026-06-30)
+
+
+### Features
+
+* add global guard drop for E2E SQLite and enhance router configurations ([41b9603](https://github.com/multipliedtwice/prisma-generator-express/commit/41b9603ae256166240bc161c4b73bf558a1d6cda))
+
 ## [1.56.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.56.3...v1.56.4) (2026-06-23)
 
 
