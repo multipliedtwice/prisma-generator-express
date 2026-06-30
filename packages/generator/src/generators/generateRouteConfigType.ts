@@ -4,18 +4,38 @@ import type { Target } from '../constants'
 import { capitalize } from '../utils/strings'
 
 const ROUTER_OPERATIONS = [
-  'findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow',
-  'findMany', 'findManyPaginated', 'count', 'aggregate', 'groupBy',
-  'create', 'createMany', 'createManyAndReturn',
-  'update', 'updateMany', 'updateManyAndReturn',
-  'upsert', 'delete', 'deleteMany',
+  'findUnique',
+  'findUniqueOrThrow',
+  'findFirst',
+  'findFirstOrThrow',
+  'findMany',
+  'findManyPaginated',
+  'count',
+  'aggregate',
+  'groupBy',
+  'create',
+  'createMany',
+  'createManyAndReturn',
+  'update',
+  'updateMany',
+  'updateManyAndReturn',
+  'upsert',
+  'delete',
+  'deleteMany',
 ] as const
 
 type RouterOperation = (typeof ROUTER_OPERATIONS)[number]
 
 const READ_OPERATIONS: ReadonlySet<RouterOperation> = new Set<RouterOperation>([
-  'findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow',
-  'findMany', 'findManyPaginated', 'count', 'aggregate', 'groupBy',
+  'findUnique',
+  'findUniqueOrThrow',
+  'findFirst',
+  'findFirstOrThrow',
+  'findMany',
+  'findManyPaginated',
+  'count',
+  'aggregate',
+  'groupBy',
 ])
 
 const ROUTER_OP_TO_SHAPE_OP: Record<RouterOperation, string> = {
@@ -88,11 +108,18 @@ export function generateRouteConfigType(
     : ''
 
   if (!guardShapesImport) {
-    return progressiveTypeImport + `export type ${m}RouteConfig${generics} = ${baseConfig}\n`
+    return (
+      progressiveTypeImport +
+      `export type ${m}RouteConfig${generics} = ${baseConfig}\n`
+    )
   }
 
-  const shapeOps = Object.values(ROUTER_OP_TO_SHAPE_OP).filter((v, i, a) => a.indexOf(v) === i)
-  const opShapeImports = shapeOps.map((op) => `${m}${capitalize(op)}ShapeInput`).join(',\n  ')
+  const shapeOps = Object.values(ROUTER_OP_TO_SHAPE_OP).filter(
+    (v, i, a) => a.indexOf(v) === i,
+  )
+  const opShapeImports = shapeOps
+    .map((op) => `${m}${capitalize(op)}ShapeInput`)
+    .join(',\n  ')
 
   const overrides = ROUTER_OPERATIONS.map((routerOp) => {
     const shapeOp = ROUTER_OP_TO_SHAPE_OP[routerOp]
@@ -103,10 +130,13 @@ export function generateRouteConfigType(
       `    after?: ${hookRef}[]`,
       `    shape?: ${m}${c}ShapeInput<TCtx>`,
       `    pagination?: Partial<PaginationConfig>`,
+      `    dropGuard?: boolean`,
     ]
     if (isRead && supportsProgressive) {
       lines.push(`    progressive?: Record<string, ProgressiveVariantConfig>`)
-      lines.push(`    progressiveStages?: Record<string, ProgressiveStage<TCtx, TPrisma>>`)
+      lines.push(
+        `    progressiveStages?: Record<string, ProgressiveStage<TCtx, TPrisma>>`,
+      )
     }
     return `  ${routerOp}?: {\n${lines.join('\n')}\n  }`
   }).join('\n')

@@ -1,4 +1,5 @@
 import { GeneratorOptions } from '@prisma/generator-helper'
+import * as fs from 'fs'
 import path from 'path'
 
 function findClientGenerator(options: GeneratorOptions) {
@@ -73,6 +74,9 @@ export function getGuardShapesImport(
 
   const outputValue = options.generator.output?.value
   if (!outputValue) return null
+
+  const shapesFilePath = path.join(guard.output.value, 'shapes.ts')
+  if (!fs.existsSync(shapesFilePath)) return null
 
   const fromDir = path.join(outputValue, modelName)
   const shapesPath = path.join(guard.output.value, 'shapes')

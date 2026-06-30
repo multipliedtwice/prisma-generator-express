@@ -2991,6 +2991,181 @@ UserRouter({
 })
 ```
 
+## Global guard drop for E2E SQLite
+
+Generated routers can globally skip Prisma guard in E2E mode.
+
+This is used when the production Prisma schema and SQLite E2E schema intentionally differ. Example: production stores `normalized_skills` as `String[]`, while SQLite stores it as `Json?`. Guard shapes generated from the SQLite schema would reject scalar-list filters such as:
+
+```ts
+{
+  normalized_skills: {
+    hasSome: ['typescript', 'react']
+  }
+}
+```
+
+In E2E, the generated router should skip guard and let the E2E Prisma extension rewrite supported scalar-list filters before the SQL extension runs.
+
+### Behavior
+
+Generated routers use this effective guard-drop flag:
+
+```ts
+const DROP_GUARD = GENERATOR_DROP_GUARD || process.env.E2E === 'true'
+```
+
+When `DROP_GUARD` is true:
+
+```ts
+delegate.findMany(args)
+```
+
+is used instead of:
+
+```ts
+delegate.guard(shape, caller).findMany(args)
+```
+
+This is global for generated routers. No per-router config is required.
+
+### Production safety
+
+Production must keep:
+
+```env
+E2E=false
+```
+
+or leave `E2E` unset.
+
+Do not set generator config `dropGuard = true` for normal production generation unless guard should be disabled everywhere.
+
+Recommended setup:
+
+```prisma
+generator express {
+  provider = "prisma-generator-express"
+  target   = "express"
+}
+```
+
+Then generated routers drop guard only when runtime env has:
+
+```env
+E2E=true
+```
+
+### E2E scalar-list support
+
+E2E SQLite scalar-list support is intentionally narrow in phase 1.
+
+Supported:
+
+```ts
+{
+  normalized_skills: {
+    hasSome: ['typescript', 'react']
+  }
+}
+```
+
+The E2E Prisma extension pre-resolves matching row IDs using SQLite `json_each`, then rewrites the query to:
+
+```ts
+{
+  id: {
+    in: [...]
+  }
+}
+```
+
+This happens before the SQL extension compiles the Prisma query.
+
+### Extension chain
+
+E2E Prisma client chain:
+
+```ts
+basePrisma
+  .$extends(normalizedSkillsExtension())
+  .$extends(guardExtension)
+  .$extends(e2eListOpsExtension())
+  .$extends(speed)
+```
+
+Guard extension remains in the chain, but generated routers do not pass guard shapes when `E2E=true`.
+
+### Phase 1 scope
+
+Supported:
+
+```text
+hasSome only
+allowlisted JSON-backed scalar-list fields only
+top-level where
+AND / OR / NOT recursion
+findMany / findFirst / count / aggregate / groupBy / updateMany / deleteMany
+```
+
+Out of scope:
+
+```text
+has
+hasEvery
+isEmpty
+equals
+nested relation where
+include/select nested where
+_count.where
+findUnique
+update
+delete
+upsert
+null values inside hasSome input
+```
+
+Unsupported cases should fail loudly instead of being partially rewritten.
+
+### Why not regenerate guard from SQLite schema
+
+Do not depend on SQLite-generated guard output for this path.
+
+The SQLite schema is a derived test schema. It may intentionally erase Postgres-only field information such as scalar-list types. Guard correctness belongs to the production schema, not the SQLite test schema.
+
+For phase 1, global E2E guard drop is simpler:
+
+```text
+production keeps guard
+E2E skips guard
+E2E list-op extension handles hasSome
+SQL extension receives normal id filters
+```
+
+### Required implementation notes
+
+Generated router code should compute:
+
+```ts
+const DROP_GUARD = ${dropGuard} || process.env.E2E === 'true'
+```
+
+Then only assign guard shape when guard is not dropped:
+
+```ts
+if (opConfig.shape && !DROP_GUARD) {
+  locals.guardShape = opConfig.shape
+}
+```
+
+The same behavior should apply to all generated targets:
+
+```text
+Express
+Fastify
+Hono
+```
+
 ## Environment variables
 
 | Variable          | Default | Description                         |

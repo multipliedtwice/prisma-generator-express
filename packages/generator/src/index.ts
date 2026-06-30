@@ -79,6 +79,17 @@ function getFindManyPaginatedMode(
   )
 }
 
+function getDropGuard(options: GeneratorOptions): boolean {
+  const raw = (options.generator.config as Record<string, unknown>).dropGuard
+  if (raw === undefined || raw === null || raw === '') return false
+  const lower = String(raw).toLowerCase()
+  if (lower === 'true' || lower === '1') return true
+  if (lower === 'false' || lower === '0') return false
+  throw new Error(
+    `Invalid dropGuard "${raw}". Expected "true" or "false".`,
+  )
+}
+
 function validateClientGeneratorPresent(options: GeneratorOptions): void {
   getRelativeClientPath(
     options,
@@ -99,6 +110,7 @@ generatorHandler({
     const target = getTarget(options)
     const writeStrategy = getWriteStrategy(options)
     const findManyPaginatedMode = getFindManyPaginatedMode(options)
+    const dropGuard = getDropGuard(options)
 
     const manifestDefaultAbs = path.resolve(
       __dirname,
@@ -124,6 +136,7 @@ generatorHandler({
     console.log(`  Import style: ${importStyle}`)
     console.log(`  Write strategy: ${writeStrategy}`)
     console.log(`  findManyPaginated mode: ${findManyPaginatedMode}`)
+    console.log(`  Drop guard: ${dropGuard}`)
 
     if (options.dmmf.datamodel.models.length > 0) {
       validateClientGeneratorPresent(options)
@@ -151,7 +164,9 @@ generatorHandler({
       }
       modelNames.push(model.name)
 
-      const guardShapesImport = getGuardShapesImport(options, model.name)
+      const guardShapesImport = dropGuard
+        ? null
+        : getGuardShapesImport(options, model.name)
 
       await writeFileSafely({
         content: generateModelCore({
@@ -181,6 +196,7 @@ generatorHandler({
               importStyle,
               writeStrategy,
               findManyPaginatedMode,
+              dropGuard,
             })
           : target === 'hono'
             ? generateHonoRouterFunction({
@@ -190,6 +206,7 @@ generatorHandler({
                 importStyle,
                 writeStrategy,
                 findManyPaginatedMode,
+                dropGuard,
               })
             : generateRouterFunction({
                 model: model as DMMF.Model,
@@ -198,6 +215,7 @@ generatorHandler({
                 importStyle,
                 writeStrategy,
                 findManyPaginatedMode,
+                dropGuard,
               })
 
       await writeFileSafely({

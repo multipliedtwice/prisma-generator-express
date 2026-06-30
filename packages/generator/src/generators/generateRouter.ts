@@ -11,6 +11,7 @@ export function generateRouterFunction({
   importStyle,
   writeStrategy,
   findManyPaginatedMode,
+  dropGuard,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
@@ -18,6 +19,7 @@ export function generateRouterFunction({
   importStyle: ImportStyle
   writeStrategy: WriteStrategy
   findManyPaginatedMode: FindManyPaginatedMode
+  dropGuard: boolean
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
@@ -102,6 +104,7 @@ const _env = getEnv()
 
 const WRITE_STRATEGY: WriteStrategy = '${writeStrategy}'
 const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode}'
+const DROP_GUARD = ${dropGuard} || _env.E2E === 'true'
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
 const MODEL_ENUMS = ${JSON.stringify(enumsMeta, null, 2)} as const
@@ -238,7 +241,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
       const headerValue = req.get(headerName)
       const caller = config.guard?.resolveVariant?.(req) ?? headerValue ?? undefined
       if (caller) locals.guardCaller = caller
-      if (opConfig.shape) locals.guardShape = opConfig.shape
+      if (opConfig.shape && !DROP_GUARD) locals.guardShape = opConfig.shape
       next()
     }
   }

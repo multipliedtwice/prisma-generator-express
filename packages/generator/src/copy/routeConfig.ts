@@ -91,6 +91,7 @@ export interface BaseOperationConfig<HookHandler, TShape = Record<string, unknow
   before?: HookHandler[]
   after?: HookHandler[]
   shape?: TShape
+  dropGuard?: boolean
   pagination?: Partial<PaginationConfig>
 }
 
@@ -105,6 +106,7 @@ export interface BaseRouteConfig<
   customUrlPrefix?: string
   specBasePath?: string
   disableOpenApi?: boolean
+  dropGuard?: boolean
   disablePostReads?: boolean
   scalarCdnUrl?: string
   openApiTitle?: string

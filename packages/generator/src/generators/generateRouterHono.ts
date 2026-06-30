@@ -11,6 +11,7 @@ export function generateHonoRouterFunction({
   importStyle,
   writeStrategy,
   findManyPaginatedMode,
+  dropGuard,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
@@ -18,6 +19,7 @@ export function generateHonoRouterFunction({
   importStyle: ImportStyle
   writeStrategy: WriteStrategy
   findManyPaginatedMode: FindManyPaginatedMode
+  dropGuard: boolean
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
@@ -97,6 +99,7 @@ const _env = getEnv()
 
 const WRITE_STRATEGY: WriteStrategy = '${writeStrategy}'
 const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode}'
+const DROP_GUARD = ${dropGuard} || _env.E2E === 'true'
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
 
@@ -176,7 +179,7 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
     const headerValue = c.req.header(headerName)
     const caller = config.guard?.resolveVariant?.(c) ?? headerValue ?? undefined
     if (caller) c.set('guardCaller', caller)
-    if (opConfig.shape) {
+    if (opConfig.shape && !DROP_GUARD) {
       c.set('guardShape', opConfig.shape)
     }
   }
