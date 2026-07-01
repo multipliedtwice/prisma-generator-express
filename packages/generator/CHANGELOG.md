@@ -1,3 +1,10 @@
+## [1.58.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.58.3...v1.58.4) (2026-07-01)
+
+
+### Bug Fixes
+
+* **generator:** add logging for options in getDropGuard function ([cac7387](https://github.com/multipliedtwice/prisma-generator-express/commit/cac7387407602aec569c2cc3b0a2365193c176f7))
+
 ## [1.58.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.58.2...v1.58.3) (2026-07-01)
 
 
