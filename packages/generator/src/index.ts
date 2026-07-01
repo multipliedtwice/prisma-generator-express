@@ -80,17 +80,9 @@ function getFindManyPaginatedMode(
 }
 
 function getDropGuard(options: GeneratorOptions): boolean {
-  const raw = (options.generator.config as Record<string, unknown>).dropGuard
-  if (raw === undefined || raw === null || raw === '') return false
-  const lower = String(raw).toLowerCase()
-  if (lower === 'true' || lower === '1') return true
-  if (lower === 'false' || lower === '0') return false
-  console.warn(
-    `[prisma-generator-express] dropGuard="${raw}" is not a recognized boolean value. ` +
-      `Treating as false. Expected "true", "false", "1", "0", or "" (unset). ` +
-      `If you used env("VAR_NAME"), set VAR_NAME to "true" or "false".`,
+  return Boolean(
+    (options.generator.config as Record<string, unknown>).dropGuard,
   )
-  return false
 }
 
 function validateClientGeneratorPresent(options: GeneratorOptions): void {
@@ -139,9 +131,14 @@ generatorHandler({
     console.log(`  Import style: ${importStyle}`)
     console.log(`  Write strategy: ${writeStrategy}`)
     console.log(`  findManyPaginated mode: ${findManyPaginatedMode}`)
-    console.log(
-      `  Drop guard (generator): ${dropGuard}${dropGuard ? '' : ' (runtime E2E=true will also drop guard)'}`,
-    )
+    
+    if (dropGuard) {
+      console.log('')
+      console.log('  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+      console.log('  !!!!! GUARD IS DROPPED (generator config) !!!!!')
+      console.log('  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+      console.log('')
+    }
 
     if (options.dmmf.datamodel.models.length > 0) {
       validateClientGeneratorPresent(options)
