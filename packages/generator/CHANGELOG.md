@@ -1,3 +1,10 @@
+## [1.58.5](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.58.4...v1.58.5) (2026-07-01)
+
+
+### Bug Fixes
+
+* **generator:** enhance getDropGuard function to handle various input types ([01ad7cc](https://github.com/multipliedtwice/prisma-generator-express/commit/01ad7cc6833f4cb7badec77726bb796643fb8379))
+
 ## [1.58.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.58.3...v1.58.4) (2026-07-01)
 
 
