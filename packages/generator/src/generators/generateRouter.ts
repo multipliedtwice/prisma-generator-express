@@ -84,6 +84,7 @@ import type {
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
+import { validateCountSourceWhere } from '../routeConfig${ext}'
 import type { OperationContext } from '../operationRuntime${ext}'
 import {
   transformResult,
@@ -155,7 +156,15 @@ function readLocals(res: Response): LocalsBag {
 }
 
 export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${modelName}RouteConfig<TCtx, TPrisma> = {}) {
+  validateCountSourceWhere(config.pagination?.countSource, '${modelName} pagination')
+  validateCountSourceWhere(
+    (config.findManyPaginated && typeof config.findManyPaginated === 'object' ? config.findManyPaginated : undefined)?.pagination?.countSource,
+    '${modelName} findManyPaginated pagination',
+  )
+
   const router = express.Router()
+
+  const isEnabled = (value: unknown): boolean => value !== false && !!(config.enableAll || value)
 
   const customPrefix = normalizePrefix(config.customUrlPrefix || '')
   const modelPrefix = config.addModelPrefix !== false ? '/${modelNameLower}' : ''
@@ -166,24 +175,32 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
 
   const postReadsEnabled = !config.disablePostReads
 
-  const openApiJsonSpec = openApiDisabled
-    ? null
-    : buildModelOpenApi(
+  let _openApiJsonCache: unknown = undefined
+  const getOpenApiJson = (): unknown => {
+    if (_openApiJsonCache === undefined) {
+      _openApiJsonCache = buildModelOpenApi(
         '${modelName}',
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config as unknown as Parameters<typeof buildModelOpenApi>[3],
         { format: 'json', writeStrategy: WRITE_STRATEGY },
       )
-  const openApiYamlSpec = openApiDisabled
-    ? null
-    : buildModelOpenApi(
+    }
+    return _openApiJsonCache
+  }
+  let _openApiYamlCache: string | undefined = undefined
+  const getOpenApiYaml = (): string => {
+    if (_openApiYamlCache === undefined) {
+      _openApiYamlCache = buildModelOpenApi(
         '${modelName}',
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config as unknown as Parameters<typeof buildModelOpenApi>[3],
         { format: 'yaml', writeStrategy: WRITE_STRATEGY },
-      )
+      ) as string
+    }
+    return _openApiYamlCache
+  }
 
   const qbEnabled = isQueryBuilderEnabled(config)
   if (qbEnabled) {
@@ -224,7 +241,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
 
   const parseBodyAsQuery: RequestHandler = (req, res, next) => {
     if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
-      return next({ status: 400, message: 'Request body must be a JSON object' })
+      return next(new HttpError(400, 'Request body must be a JSON object'))
     }
     readLocals(res).parsedQuery = sanitizeKeys(req.body as Record<string, unknown>)
     next()
@@ -328,11 +345,13 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
           (name: string) => typeof stageRegistry[name] !== 'function',
         )
         if (missingStage) {
-          return next({ status: 500, message: 'Missing progressive stage: ' + missingStage })
+          emitTerminalSSEError(res, 'Missing progressive stage: ' + missingStage)
+          return
         }
 
         if (typeof config.resolveContext !== 'function') {
-          return next({ status: 500, message: 'Progressive endpoint requires config.resolveContext' })
+          emitTerminalSSEError(res, 'Progressive endpoint requires config.resolveContext')
+          return
         }
 
         const ctx = await config.resolveContext(req)
@@ -347,8 +366,8 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
         })
       } catch (err) {
         console.error('[progressive] dispatch error:', err)
-        if (!res.headersSent) {
-          return next({ status: 500, message: 'Internal server error' })
+        if (!res.headersSent && !res.writableEnded) {
+          emitTerminalSSEError(res, 'Internal server error')
         }
       }
     }
@@ -370,70 +389,70 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
     const openapiJsonPath = basePath ? \`\${basePath}/openapi.json\` : '/openapi.json'
     const openapiYamlPath = basePath ? \`\${basePath}/openapi.yaml\` : '/openapi.yaml'
     router.get(openapiJsonPath, (_req, res) => {
-      res.json(openApiJsonSpec)
+      res.json(getOpenApiJson())
     })
     router.get(openapiYamlPath, (_req, res) => {
-      res.type('application/yaml').send(openApiYamlSpec as string)
+      res.type('application/yaml').send(getOpenApiYaml())
     })
   }
 
-  if (config.enableAll || config.findFirst) {
+  if (isEnabled(config.findFirst)) {
     const opConfig: OperationConfigLike = (config.findFirst as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/first\` : '/first'
     router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findFirst, 'findFirst'), ${modelName}FindFirst as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}FindFirst as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.findFirstOrThrow) {
+  if (isEnabled(config.findFirstOrThrow)) {
     const opConfig: OperationConfigLike = (config.findFirstOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/first/strict\` : '/first/strict'
     router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findFirstOrThrow, 'findFirstOrThrow'), ${modelName}FindFirstOrThrow as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}FindFirstOrThrow as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.findManyPaginated) {
+  if (isEnabled(config.findManyPaginated)) {
     const opConfig: OperationConfigLike = (config.findManyPaginated as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/paginated\` : '/paginated'
     router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findManyPaginated, 'findManyPaginated'), ${modelName}FindManyPaginated as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}FindManyPaginated as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.aggregate) {
+  if (isEnabled(config.aggregate)) {
     const opConfig: OperationConfigLike = (config.aggregate as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/aggregate\` : '/aggregate'
     router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.aggregate, 'aggregate'), ${modelName}Aggregate as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}Aggregate as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.count) {
+  if (isEnabled(config.count)) {
     const opConfig: OperationConfigLike = (config.count as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/count\` : '/count'
     router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.count, 'count'), ${modelName}Count as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}Count as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.groupBy) {
+  if (isEnabled(config.groupBy)) {
     const opConfig: OperationConfigLike = (config.groupBy as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/groupby\` : '/groupby'
     router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.groupBy, 'groupBy'), ${modelName}GroupBy as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}GroupBy as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.findUniqueOrThrow) {
+  if (isEnabled(config.findUniqueOrThrow)) {
     const opConfig: OperationConfigLike = (config.findUniqueOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/unique/strict\` : '/unique/strict'
     router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findUniqueOrThrow, 'findUniqueOrThrow'), ${modelName}FindUniqueOrThrow as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}FindUniqueOrThrow as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.findUnique) {
+  if (isEnabled(config.findUnique)) {
     const opConfig: OperationConfigLike = (config.findUnique as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/unique\` : '/unique'
     router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findUnique, 'findUnique'), ${modelName}FindUnique as RequestHandler, ...after, respond)
     if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}FindUnique as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.findMany) {
+  if (isEnabled(config.findMany)) {
     const opConfig: OperationConfigLike = (config.findMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
@@ -444,55 +463,55 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
     }
   }
 
-  if (config.enableAll || config.createManyAndReturn) {
+  if (isEnabled(config.createManyAndReturn)) {
     const opConfig: OperationConfigLike = (config.createManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
     router.post(path, setShape(opConfig), ...before, ${modelName}CreateManyAndReturn as RequestHandler, ...after, respondCreated)
   }
-  if (config.enableAll || config.createMany) {
+  if (isEnabled(config.createMany)) {
     const opConfig: OperationConfigLike = (config.createMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
     router.post(path, setShape(opConfig), ...before, ${modelName}CreateMany as RequestHandler, ...after, respondCreated)
   }
-  if (config.enableAll || config.create) {
+  if (isEnabled(config.create)) {
     const opConfig: OperationConfigLike = (config.create as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
     router.post(path, setShape(opConfig), ...before, ${modelName}Create as RequestHandler, ...after, respondCreated)
   }
-  if (config.enableAll || config.updateManyAndReturn) {
+  if (isEnabled(config.updateManyAndReturn)) {
     const opConfig: OperationConfigLike = (config.updateManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
     router.put(path, setShape(opConfig), ...before, ${modelName}UpdateManyAndReturn as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.updateMany) {
+  if (isEnabled(config.updateMany)) {
     const opConfig: OperationConfigLike = (config.updateMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
     router.put(path, setShape(opConfig), ...before, ${modelName}UpdateMany as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.update) {
+  if (isEnabled(config.update)) {
     const opConfig: OperationConfigLike = (config.update as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
     router.put(path, setShape(opConfig), ...before, ${modelName}Update as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.upsert) {
+  if (isEnabled(config.upsert)) {
     const opConfig: OperationConfigLike = (config.upsert as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
     router.patch(path, setShape(opConfig), ...before, ${modelName}Upsert as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.deleteMany) {
+  if (isEnabled(config.deleteMany)) {
     const opConfig: OperationConfigLike = (config.deleteMany as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/many\` : '/many'
     router.delete(path, setShape(opConfig), ...before, ${modelName}DeleteMany as RequestHandler, ...after, respond)
   }
-  if (config.enableAll || config.delete) {
+  if (isEnabled(config.delete)) {
     const opConfig: OperationConfigLike = (config.delete as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = basePath || '/'
@@ -500,6 +519,12 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
   }
   if (config.updateEach) {
     const opConfig: OperationConfigLike = (config.updateEach as OperationConfigLike | undefined) ?? defaultOpConfig
+    if ((!opConfig.before || opConfig.before.length === 0) && _env.NODE_ENV !== 'production') {
+      console.warn(
+        '[${modelName}Router] updateEach is enabled without a before hook. ' +
+        'This endpoint bypasses guard shapes and should be protected by authentication middleware.',
+      )
+    }
     const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/each\` : '/each'
     router.post(

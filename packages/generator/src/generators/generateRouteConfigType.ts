@@ -82,8 +82,13 @@ function routeConfigBaseFor(target: Target): string {
   return `RouteConfig<Record<string, unknown>, TCtx>`
 }
 
-function hookHandlerTypeRef(target: Target, hookHandlerType: string): string {
-  if (target === 'hono') return `${hookHandlerType}<TEnv>`
+function beforeHookRef(target: Target, hookHandlerType: string): string {
+  if (target === 'hono') return `HonoBeforeHook<TEnv>`
+  return hookHandlerType
+}
+
+function afterHookRef(target: Target, hookHandlerType: string): string {
+  if (target === 'hono') return `HonoAfterHook<TEnv>`
   return hookHandlerType
 }
 
@@ -100,7 +105,8 @@ export function generateRouteConfigType(
 
   const generics = configGenericsFor(target)
   const baseConfig = routeConfigBaseFor(target)
-  const hookRef = hookHandlerTypeRef(target, hookHandlerType)
+  const beforeRef = beforeHookRef(target, hookHandlerType)
+  const afterRef = afterHookRef(target, hookHandlerType)
   const requestType = requestTypeFor(target)
 
   const progressiveTypeImport = supportsProgressive
@@ -126,11 +132,10 @@ export function generateRouteConfigType(
     const c = capitalize(shapeOp)
     const isRead = READ_OPERATIONS.has(routerOp)
     const lines = [
-      `    before?: ${hookRef}[]`,
-      `    after?: ${hookRef}[]`,
+      `    before?: ${beforeRef}[]`,
+      `    after?: ${afterRef}[]`,
       `    shape?: ${m}${c}ShapeInput<TCtx>`,
       `    pagination?: Partial<PaginationConfig>`,
-      `    dropGuard?: boolean`,
     ]
     if (isRead && supportsProgressive) {
       lines.push(`    progressive?: Record<string, ProgressiveVariantConfig>`)
@@ -138,7 +143,7 @@ export function generateRouteConfigType(
         `    progressiveStages?: Record<string, ProgressiveStage<TCtx, TPrisma>>`,
       )
     }
-    return `  ${routerOp}?: {\n${lines.join('\n')}\n  }`
+    return `  ${routerOp}?: {\n${lines.join('\n')}\n  } | false`
   }).join('\n')
 
   const omitKeys = ROUTER_OPERATIONS.map((k) => `'${k}'`).join('\n  | ')

@@ -48,6 +48,8 @@ type MaterializedRouterOptions = {
 
 const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
+export const forbidden = (message: string): HttpError => new HttpError(403, message)
+
 const quoteIdent = (name: string): string => {
   if (!IDENT_RE.test(name))
     throw new HttpError(400, 'invalid identifier: ' + name)
@@ -144,9 +146,46 @@ const enforceAllowlist = (orderBy: OrderByDef, allowed?: string[]): void => {
   }
 }
 
+const validateViewIdentifier = (
+  viewName: string,
+  fieldName: string,
+  value: string,
+): void => {
+  if (!IDENT_RE.test(value)) {
+    throw new Error(
+      'materializedViewsRouter: invalid ' + fieldName + ' identifier for view "' +
+      viewName + '": ' + value,
+    )
+  }
+}
+
+const validateViewConfig = (viewName: string, def: ViewDef): void => {
+  validateViewIdentifier(viewName, 'relation', def.relation)
+  if (def.schema) validateViewIdentifier(viewName, 'schema', def.schema)
+  const ob = def.orderBy
+  if (typeof ob === 'string') validateViewIdentifier(viewName, 'orderBy', ob)
+  else if (ob) validateViewIdentifier(viewName, 'orderBy.field', ob.field)
+  if (def.allowedOrderBy) {
+    for (const field of def.allowedOrderBy) {
+      validateViewIdentifier(viewName, 'allowedOrderBy[]', field)
+    }
+  }
+  if (!def.allowedOrderBy && !def.orderBy) {
+    console.warn(
+      '[materializedViewsRouter] view "' + viewName +
+      '" has neither `orderBy` nor `allowedOrderBy` set. ' +
+      'Clients can sort by any valid identifier, which may cause full table scans.',
+    )
+  }
+}
+
 export const materializedViewsRouter = (
   opts: MaterializedRouterOptions,
 ): Router => {
+  for (const [name, def] of Object.entries(opts.views)) {
+    validateViewConfig(name, def)
+  }
+
   const router = express.Router()
   const basePath = normalizeBasePath(opts.basePath)
   const defaultLimit = opts.defaultLimit ?? 50

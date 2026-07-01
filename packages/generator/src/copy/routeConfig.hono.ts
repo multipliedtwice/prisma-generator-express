@@ -1,4 +1,4 @@
-import type { Context, Next } from 'hono'
+import type { Context } from 'hono'
 import type {
   BaseOperationConfig,
   BaseRouteConfig,
@@ -44,18 +44,76 @@ export type GeneratedHonoEnv<TEnv extends HonoEnvBase = HonoEnvBase> = {
   Bindings: TEnv['Bindings']
 }
 
-export type HonoHookHandler<TEnv extends HonoEnvBase = HonoEnvBase> = (
+export type HonoBeforeHook<TEnv extends HonoEnvBase = HonoEnvBase> = (
   c: Context<GeneratedHonoEnv<TEnv>>,
-  next: Next,
 ) => Promise<Response | void> | Response | void
+
+export type HonoAfterHook<TEnv extends HonoEnvBase = HonoEnvBase> = (
+  c: Context<GeneratedHonoEnv<TEnv>>,
+) => Promise<Response | void> | Response | void
+
+/** @deprecated use HonoBeforeHook or HonoAfterHook */
+export type HonoHookHandler<TEnv extends HonoEnvBase = HonoEnvBase> = HonoBeforeHook<TEnv>
 
 export type OperationConfig<
   TShape = Record<string, unknown>,
   TEnv extends HonoEnvBase = HonoEnvBase,
-> = BaseOperationConfig<HonoHookHandler<TEnv>, TShape>
+> = Omit<BaseOperationConfig<HonoBeforeHook<TEnv>, TShape>, 'before' | 'after'> & {
+  before?: HonoBeforeHook<TEnv>[]
+  after?: HonoAfterHook<TEnv>[]
+}
+
+export type UpdateEachConfig<TEnv extends HonoEnvBase = HonoEnvBase> = {
+  before?: HonoBeforeHook<TEnv>[]
+  after?: HonoAfterHook<TEnv>[]
+}
+
+type HonoOpKeys =
+  | 'findUnique'
+  | 'findUniqueOrThrow'
+  | 'findFirst'
+  | 'findFirstOrThrow'
+  | 'findMany'
+  | 'findManyPaginated'
+  | 'create'
+  | 'createMany'
+  | 'createManyAndReturn'
+  | 'update'
+  | 'updateMany'
+  | 'updateManyAndReturn'
+  | 'upsert'
+  | 'delete'
+  | 'deleteMany'
+  | 'aggregate'
+  | 'count'
+  | 'groupBy'
+  | 'updateEach'
 
 export type RouteConfig<
   TShape = Record<string, unknown>,
   TCtx = unknown,
   TEnv extends HonoEnvBase = HonoEnvBase,
-> = BaseRouteConfig<HonoHookHandler<TEnv>, Context<GeneratedHonoEnv<TEnv>>, TShape, TCtx>
+> = Omit<
+  BaseRouteConfig<HonoBeforeHook<TEnv>, Context<GeneratedHonoEnv<TEnv>>, TShape, TCtx>,
+  HonoOpKeys
+> & {
+  findUnique?: OperationConfig<TShape, TEnv> | false
+  findUniqueOrThrow?: OperationConfig<TShape, TEnv> | false
+  findFirst?: OperationConfig<TShape, TEnv> | false
+  findFirstOrThrow?: OperationConfig<TShape, TEnv> | false
+  findMany?: OperationConfig<TShape, TEnv> | false
+  findManyPaginated?: OperationConfig<TShape, TEnv> | false
+  create?: OperationConfig<TShape, TEnv> | false
+  createMany?: OperationConfig<TShape, TEnv> | false
+  createManyAndReturn?: OperationConfig<TShape, TEnv> | false
+  update?: OperationConfig<TShape, TEnv> | false
+  updateMany?: OperationConfig<TShape, TEnv> | false
+  updateManyAndReturn?: OperationConfig<TShape, TEnv> | false
+  upsert?: OperationConfig<TShape, TEnv> | false
+  delete?: OperationConfig<TShape, TEnv> | false
+  deleteMany?: OperationConfig<TShape, TEnv> | false
+  aggregate?: OperationConfig<TShape, TEnv> | false
+  count?: OperationConfig<TShape, TEnv> | false
+  groupBy?: OperationConfig<TShape, TEnv> | false
+  updateEach?: UpdateEachConfig<TEnv>
+}

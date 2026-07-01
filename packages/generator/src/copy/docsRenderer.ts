@@ -1,5 +1,9 @@
 import type { RouteConfig, WriteStrategy } from './routeConfig'
-import { OPERATION_DEFS, isOperationEnabled, READ_OPERATION_NAMES } from './operationDefinitions'
+import {
+  OPERATION_DEFS,
+  isOperationEnabled,
+  READ_OPERATION_NAMES,
+} from './operationDefinitions'
 import { getEnv, normalizePrefix } from './misc'
 
 const _env = getEnv()
@@ -53,13 +57,24 @@ interface OpDetail {
 const DEFAULT_SCALAR_CDN = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference'
 const PRISM_CSS = 'https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css'
 const PRISM_JS = 'https://cdn.jsdelivr.net/npm/prismjs@1/prism.min.js'
-const PRISM_JSON = 'https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-json.min.js'
+const PRISM_JSON =
+  'https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-json.min.js'
 
 const OP_DETAIL_MAP: Record<string, OpDetail> = {
   findMany: {
     transport: 'GET query params',
     required: [],
-    optional: ['where', 'select', 'include', 'omit', 'orderBy', 'cursor', 'take', 'skip', 'distinct'],
+    optional: [
+      'where',
+      'select',
+      'include',
+      'omit',
+      'orderBy',
+      'cursor',
+      'take',
+      'skip',
+      'distinct',
+    ],
     responseDesc: 'Array of records',
     errors: [400, 403, 500, 501, 503],
     supportsSelect: true,
@@ -92,7 +107,17 @@ const OP_DETAIL_MAP: Record<string, OpDetail> = {
   findFirst: {
     transport: 'GET query params',
     required: [],
-    optional: ['where', 'select', 'include', 'omit', 'orderBy', 'cursor', 'take', 'skip', 'distinct'],
+    optional: [
+      'where',
+      'select',
+      'include',
+      'omit',
+      'orderBy',
+      'cursor',
+      'take',
+      'skip',
+      'distinct',
+    ],
     responseDesc: 'Single record or null',
     errors: [400, 403, 500, 501, 503],
     supportsSelect: true,
@@ -103,7 +128,17 @@ const OP_DETAIL_MAP: Record<string, OpDetail> = {
   findFirstOrThrow: {
     transport: 'GET query params',
     required: [],
-    optional: ['where', 'select', 'include', 'omit', 'orderBy', 'cursor', 'take', 'skip', 'distinct'],
+    optional: [
+      'where',
+      'select',
+      'include',
+      'omit',
+      'orderBy',
+      'cursor',
+      'take',
+      'skip',
+      'distinct',
+    ],
     responseDesc: 'Single record',
     errors: [400, 403, 404, 500, 501, 503],
     supportsSelect: true,
@@ -114,13 +149,24 @@ const OP_DETAIL_MAP: Record<string, OpDetail> = {
   findManyPaginated: {
     transport: 'GET query params',
     required: [],
-    optional: ['where', 'select', 'include', 'omit', 'orderBy', 'cursor', 'take', 'skip', 'distinct'],
+    optional: [
+      'where',
+      'select',
+      'include',
+      'omit',
+      'orderBy',
+      'cursor',
+      'take',
+      'skip',
+      'distinct',
+    ],
     responseDesc: '{ data: Record[], total: number, hasMore: boolean }',
     errors: [400, 403, 409, 500, 501, 503],
     supportsSelect: true,
     supportsInclude: true,
     supportsOmit: true,
-    notes: 'Wraps findMany with total count. hasMore is reliable for forward offset pagination (skip + take) only. Distinct count over 100k falls back to approximate total. 409 possible on transaction conflict.',
+    notes:
+      'Wraps findMany with total count. hasMore is reliable for forward offset pagination (skip + take) only. Distinct count over 100k falls back to approximate total. 409 possible on transaction conflict.',
   },
   create: {
     transport: 'POST JSON body',
@@ -142,7 +188,8 @@ const OP_DETAIL_MAP: Record<string, OpDetail> = {
     supportsSelect: false,
     supportsInclude: false,
     supportsOmit: false,
-    notes: 'data is an array of scalar-only inputs. Nested relation writes are not supported. skipDuplicates silently ignores conflicts (not supported on all providers).',
+    notes:
+      'data is an array of scalar-only inputs. Nested relation writes are not supported. skipDuplicates silently ignores conflicts (not supported on all providers).',
   },
   createManyAndReturn: {
     transport: 'POST JSON body',
@@ -153,7 +200,8 @@ const OP_DETAIL_MAP: Record<string, OpDetail> = {
     supportsSelect: true,
     supportsInclude: true,
     supportsOmit: true,
-    notes: 'Like createMany but returns created records. data items are scalar-only. Requires Prisma 5.14.0+, PostgreSQL/CockroachDB/SQLite only. The order of returned records is not guaranteed.',
+    notes:
+      'Like createMany but returns created records. data items are scalar-only. Requires Prisma 5.14.0+, PostgreSQL/CockroachDB/SQLite only. The order of returned records is not guaranteed.',
   },
   update: {
     transport: 'PUT JSON body',
@@ -164,7 +212,21 @@ const OP_DETAIL_MAP: Record<string, OpDetail> = {
     supportsSelect: true,
     supportsInclude: true,
     supportsOmit: true,
-    notes: '404 when the record to update is not found. 409 on unique constraint violation or transaction conflict.',
+    notes:
+      '404 when the record to update is not found. 409 on unique constraint violation or transaction conflict.',
+  },
+  updateEach: {
+    transport: 'POST JSON body (array)',
+    required: ['array of { where, data }'],
+    optional: [],
+    responseDesc:
+      'Non-atomic: per-row { status, data } / { status, error } array. Atomic: array of records.',
+    errors: [400, 403, 409, 500, 501, 503],
+    supportsSelect: false,
+    supportsInclude: false,
+    supportsOmit: false,
+    notes:
+      'Internal batch endpoint. Bypasses guard shapes. Not enabled by enableAll. Non-atomic max 1000 items, atomic max 100 items. Header x-batch-atomic:true switches to transactional mode.',
   },
   updateMany: {
     transport: 'PUT JSON body',
@@ -175,7 +237,8 @@ const OP_DETAIL_MAP: Record<string, OpDetail> = {
     supportsSelect: false,
     supportsInclude: false,
     supportsOmit: false,
-    notes: 'Updates all matching records with scalar-only data. Nested relation writes are not supported. Returns count, not records. 409 on unique constraint violation.',
+    notes:
+      'Updates all matching records with scalar-only data. Nested relation writes are not supported. Returns count, not records. 409 on unique constraint violation.',
   },
   updateManyAndReturn: {
     transport: 'PUT JSON body',
@@ -186,7 +249,8 @@ const OP_DETAIL_MAP: Record<string, OpDetail> = {
     supportsSelect: true,
     supportsInclude: true,
     supportsOmit: true,
-    notes: 'Like updateMany but returns updated records. data is scalar-only. Requires Prisma 6.2.0+, PostgreSQL/CockroachDB/SQLite only. 409 on unique constraint violation.',
+    notes:
+      'Like updateMany but returns updated records. data is scalar-only. Requires Prisma 6.2.0+, PostgreSQL/CockroachDB/SQLite only. 409 on unique constraint violation.',
   },
   upsert: {
     transport: 'PATCH JSON body',
@@ -230,13 +294,26 @@ const OP_DETAIL_MAP: Record<string, OpDetail> = {
     supportsSelect: false,
     supportsInclude: false,
     supportsOmit: false,
-    notes: 'select here means count-specific field selection, not record field selection.',
+    notes:
+      'select here means count-specific field selection, not record field selection.',
   },
   aggregate: {
     transport: 'GET query params',
     required: [],
-    optional: ['where', 'orderBy', 'cursor', 'take', 'skip', '_count', '_avg', '_sum', '_min', '_max'],
-    responseDesc: 'Object with requested aggregate fields (_count, _avg, _sum, _min, _max)',
+    optional: [
+      'where',
+      'orderBy',
+      'cursor',
+      'take',
+      'skip',
+      '_count',
+      '_avg',
+      '_sum',
+      '_min',
+      '_max',
+    ],
+    responseDesc:
+      'Object with requested aggregate fields (_count, _avg, _sum, _min, _max)',
     errors: [400, 403, 500, 501, 503],
     supportsSelect: false,
     supportsInclude: false,
@@ -246,13 +323,26 @@ const OP_DETAIL_MAP: Record<string, OpDetail> = {
   groupBy: {
     transport: 'GET query params',
     required: ['by'],
-    optional: ['where', 'orderBy', 'having', 'take', 'skip', '_count', '_avg', '_sum', '_min', '_max'],
-    responseDesc: 'Array of objects, each with grouped field values and requested aggregates',
+    optional: [
+      'where',
+      'orderBy',
+      'having',
+      'take',
+      'skip',
+      '_count',
+      '_avg',
+      '_sum',
+      '_min',
+      '_max',
+    ],
+    responseDesc:
+      'Array of objects, each with grouped field values and requested aggregates',
     errors: [400, 403, 500, 501, 503],
     supportsSelect: false,
     supportsInclude: false,
     supportsOmit: false,
-    notes: 'by is a JSON-encoded array of scalar field names. orderBy is required when using skip or take. Response contains only the by-fields plus requested aggregates.',
+    notes:
+      'by is a JSON-encoded array of scalar field names. orderBy is required when using skip or take. Response contains only the by-fields plus requested aggregates.',
   },
 }
 
@@ -268,7 +358,8 @@ function detailForOp(opName: string, writeStrategy?: WriteStrategy): OpDetail {
         supportsSelect: true,
         supportsInclude: true,
         supportsOmit: true,
-        notes: 'writeStrategy="forceReturn": silently invokes createManyAndReturn and returns the created records instead of { count }.',
+        notes:
+          'writeStrategy="forceReturn": silently invokes createManyAndReturn and returns the created records instead of { count }.',
       }
     }
     if (opName === 'updateMany') {
@@ -279,14 +370,18 @@ function detailForOp(opName: string, writeStrategy?: WriteStrategy): OpDetail {
         supportsSelect: true,
         supportsInclude: true,
         supportsOmit: true,
-        notes: 'writeStrategy="forceReturn": silently invokes updateManyAndReturn and returns the updated records instead of { count }.',
+        notes:
+          'writeStrategy="forceReturn": silently invokes updateManyAndReturn and returns the updated records instead of { count }.',
       }
     }
   }
   return base
 }
 
-function isOpHiddenByStrategy(opName: string, writeStrategy?: WriteStrategy): boolean {
+function isOpHiddenByStrategy(
+  opName: string,
+  writeStrategy?: WriteStrategy,
+): boolean {
   if (writeStrategy !== 'throwOnNonReturning') return false
   return opName === 'createMany' || opName === 'updateMany'
 }
@@ -295,7 +390,9 @@ function exampleValue(ctx: DocsModelContext, fieldName: string): unknown {
   return ctx.exampleValues[fieldName] ?? 'example'
 }
 
-function compoundWhereExample(ctx: DocsModelContext): Record<string, any> | null {
+function compoundWhereExample(
+  ctx: DocsModelContext,
+): Record<string, any> | null {
   if (ctx.compoundId) {
     const keyName = ctx.compoundId.fields.join('_')
     const val: Record<string, unknown> = {}
@@ -320,7 +417,11 @@ export function isOpenApiDisabled(disableOpenApi?: boolean): boolean {
 
 export function isPlaygroundAvailable(config: DocsConfig): boolean {
   if (config.queryBuilder === false) return false
-  if (typeof config.queryBuilder === 'object' && config.queryBuilder.enabled === false) return false
+  if (
+    typeof config.queryBuilder === 'object' &&
+    config.queryBuilder.enabled === false
+  )
+    return false
   if (_env.NODE_ENV === 'production') return false
   return true
 }
@@ -338,7 +439,12 @@ function safeJsonForHtml(obj: unknown): string {
   return JSON.stringify(obj).replace(/</g, '\\u003c')
 }
 
-export function renderScalar(_modelName: string, spec: unknown, title: string, cdnUrl?: string): string {
+export function renderScalar(
+  _modelName: string,
+  spec: unknown,
+  title: string,
+  cdnUrl?: string,
+): string {
   const scalarSrc = cdnUrl || DEFAULT_SCALAR_CDN
   return `<!DOCTYPE html>
 <html lang="en">
@@ -354,8 +460,14 @@ export function renderScalar(_modelName: string, spec: unknown, title: string, c
 </html>`
 }
 
-export function renderPlayground(modelName: string, config: DocsConfig): string {
-  const qbConfig = (typeof config.queryBuilder === 'object' && config.queryBuilder) ? config.queryBuilder : {}
+export function renderPlayground(
+  modelName: string,
+  config: DocsConfig,
+): string {
+  const qbConfig =
+    typeof config.queryBuilder === 'object' && config.queryBuilder
+      ? config.queryBuilder
+      : {}
   const host = qbConfig.host || 'localhost'
   const port = qbConfig.port || 5173
   const baseUrl = `http://${host}:${port}`
@@ -444,16 +556,33 @@ function isEnumField(f: FieldMeta): boolean {
 function scalarFilterOperators(scalarType: string): string[] {
   if (scalarType === 'String') {
     return [
-      'equals', 'in', 'notIn', 'lt', 'lte', 'gt', 'gte',
-      'contains', 'startsWith', 'endsWith', 'mode', 'not',
+      'equals',
+      'in',
+      'notIn',
+      'lt',
+      'lte',
+      'gt',
+      'gte',
+      'contains',
+      'startsWith',
+      'endsWith',
+      'mode',
+      'not',
     ]
   }
-  if (scalarType === 'Int' || scalarType === 'BigInt' || scalarType === 'Float' || scalarType === 'Decimal') {
+  if (
+    scalarType === 'Int' ||
+    scalarType === 'BigInt' ||
+    scalarType === 'Float' ||
+    scalarType === 'Decimal'
+  ) {
     return ['equals', 'in', 'notIn', 'lt', 'lte', 'gt', 'gte', 'not']
   }
-  if (scalarType === 'DateTime') return ['equals', 'in', 'notIn', 'lt', 'lte', 'gt', 'gte', 'not']
+  if (scalarType === 'DateTime')
+    return ['equals', 'in', 'notIn', 'lt', 'lte', 'gt', 'gte', 'not']
   if (scalarType === 'Boolean') return ['equals', 'not']
-  if (scalarType === 'Json') return ['equals', 'path', 'string_contains', 'array_contains', 'not']
+  if (scalarType === 'Json')
+    return ['equals', 'path', 'string_contains', 'array_contains', 'not']
   if (scalarType === 'Bytes') return ['equals', 'in', 'notIn', 'not']
   return ['equals', 'in', 'notIn', 'not']
 }
@@ -471,8 +600,10 @@ function whereFieldKind(f: FieldMeta): string {
 
 function whereFieldShape(f: FieldMeta): string {
   const kind = whereFieldKind(f)
-  if (kind === 'relation-list') return '{ some?: RelatedWhere, every?: RelatedWhere, none?: RelatedWhere }'
-  if (kind === 'relation-single') return '{ is?: RelatedWhere, isNot?: RelatedWhere }'
+  if (kind === 'relation-list')
+    return '{ some?: RelatedWhere, every?: RelatedWhere, none?: RelatedWhere }'
+  if (kind === 'relation-single')
+    return '{ is?: RelatedWhere, isNot?: RelatedWhere }'
   if (kind === 'scalar-list') return '{ has?, hasEvery?, hasSome?, isEmpty? }'
   if (kind === 'scalar') return 'scalar value OR filter object'
   if (kind === 'enum') return 'enum value OR enum filter'
@@ -493,11 +624,19 @@ function describeFieldType(f: FieldMeta): string {
 }
 
 function jsonBlock(v: unknown): string {
-  return '<pre class="my-2 rounded-xl !p-3 overflow-auto text-xs"><code class="language-json">' + escapeHtml(JSON.stringify(v, null, 2)) + '</code></pre>'
+  return (
+    '<pre class="my-2 rounded-xl !p-3 overflow-auto text-xs"><code class="language-json">' +
+    escapeHtml(JSON.stringify(v, null, 2)) +
+    '</code></pre>'
+  )
 }
 
 function codeBlock(text: string): string {
-  return '<pre class="my-2 rounded-xl !p-3 overflow-auto text-xs"><code class="language-javascript">' + escapeHtml(text) + '</code></pre>'
+  return (
+    '<pre class="my-2 rounded-xl !p-3 overflow-auto text-xs"><code class="language-javascript">' +
+    escapeHtml(text) +
+    '</code></pre>'
+  )
 }
 
 function anchors(): { id: string; label: string }[] {
@@ -521,7 +660,8 @@ function anchors(): { id: string; label: string }[] {
 function buildExampleBasePath(modelName: string, config: DocsConfig): string {
   const prefixSource = config.specBasePath ?? config.customUrlPrefix ?? ''
   const prefix = normalizePrefix(prefixSource)
-  const modelPrefix = config.addModelPrefix !== false ? '/' + modelName.toLowerCase() : ''
+  const modelPrefix =
+    config.addModelPrefix !== false ? '/' + modelName.toLowerCase() : ''
   return prefix + modelPrefix
 }
 
@@ -544,16 +684,21 @@ export function renderDocs(
 
   const postReadsEnabled = !config.disablePostReads
 
-  const scalarFields = ctx.fields.filter((f) => isScalarField(f) || isEnumField(f))
+  const scalarFields = ctx.fields.filter(
+    (f) => isScalarField(f) || isEnumField(f),
+  )
   const relationFields = ctx.fields.filter((f) => isRelationField(f))
 
   const uniqueFields = ctx.fields.filter((f) => f.isId || f.isUnique)
-  const requiredCreateFields = scalarFields.filter((sf) => sf.isRequired && !sf.hasDefaultValue && !sf.isUpdatedAt)
+  const requiredCreateFields = scalarFields.filter(
+    (sf) => sf.isRequired && !sf.hasDefaultValue && !sf.isUpdatedAt,
+  )
   const listRelations = relationFields.filter((f) => f.isList)
   const singleRelations = relationFields.filter((f) => !f.isList)
 
-  const getOps = OPERATION_DEFS
-    .filter((d) => isOperationEnabled(config as Record<string, any>, d))
+  const getOps = OPERATION_DEFS.filter((d) =>
+    isOperationEnabled(config as Record<string, any>, d),
+  )
     .filter((d) => !isOpHiddenByStrategy(d.name, writeStrategy))
     .map((d) => {
       const detail = detailForOp(d.name, writeStrategy)
@@ -561,7 +706,11 @@ export function renderDocs(
         op: d.name,
         method: d.method.toUpperCase(),
         path: buildFullPath(exampleBasePath, d.pathSuffix),
-        transport: detail ? detail.transport : d.method === 'get' ? 'GET query params' : 'JSON body',
+        transport: detail
+          ? detail.transport
+          : d.method === 'get'
+            ? 'GET query params'
+            : 'JSON body',
         responseDesc: detail ? detail.responseDesc : '',
         errors: detail ? detail.errors.join(', ') : '',
         required: detail ? detail.required : [],
@@ -574,34 +723,40 @@ export function renderDocs(
     })
 
   const postReadOps = postReadsEnabled
-    ? OPERATION_DEFS
-        .filter((d) => READ_OPERATION_NAMES.has(d.name) && isOperationEnabled(config as Record<string, any>, d))
-        .map((d) => {
-          const detail = OP_DETAIL_MAP[d.name]
-          const postPath = d.name === 'findMany'
+    ? OPERATION_DEFS.filter(
+        (d) =>
+          READ_OPERATION_NAMES.has(d.name) &&
+          isOperationEnabled(config as Record<string, any>, d),
+      ).map((d) => {
+        const detail = OP_DETAIL_MAP[d.name]
+        const postPath =
+          d.name === 'findMany'
             ? buildFullPath(exampleBasePath, '/read')
             : buildFullPath(exampleBasePath, d.pathSuffix)
-          return {
-            op: d.name + ' (POST)',
-            method: 'POST',
-            path: postPath,
-            transport: 'POST JSON body',
-            responseDesc: detail ? detail.responseDesc : '',
-            errors: detail ? detail.errors.join(', ') : '',
-            required: detail ? detail.required : [],
-            optional: detail ? detail.optional : [],
-            supportsSelect: detail ? detail.supportsSelect : false,
-            supportsInclude: detail ? detail.supportsInclude : false,
-            supportsOmit: detail ? detail.supportsOmit : false,
-            notes: 'POST alternative for complex queries exceeding URL length limits. Same args as GET but in request body.',
-          }
-        })
+        return {
+          op: d.name + ' (POST)',
+          method: 'POST',
+          path: postPath,
+          transport: 'POST JSON body',
+          responseDesc: detail ? detail.responseDesc : '',
+          errors: detail ? detail.errors.join(', ') : '',
+          required: detail ? detail.required : [],
+          optional: detail ? detail.optional : [],
+          supportsSelect: detail ? detail.supportsSelect : false,
+          supportsInclude: detail ? detail.supportsInclude : false,
+          supportsOmit: detail ? detail.supportsOmit : false,
+          notes:
+            'POST alternative for complex queries exceeding URL length limits. Same args as GET but in request body.',
+        }
+      })
     : []
 
   const ops = [...getOps, ...postReadOps]
 
   const firstUnique = uniqueFields[0]
-  const firstUniqueExample = firstUnique ? exampleValue(ctx, firstUnique.name) : null
+  const firstUniqueExample = firstUnique
+    ? exampleValue(ctx, firstUnique.name)
+    : null
   const compoundWhere = !firstUnique ? compoundWhereExample(ctx) : null
   const uniqueWhereExample = firstUnique
     ? { [firstUnique.name]: firstUniqueExample }
@@ -609,8 +764,8 @@ export function renderDocs(
 
   const firstFilterFieldName = firstUnique
     ? firstUnique.name
-    : (ctx.compoundId ? ctx.compoundId.fields[0] : null)
-      || (ctx.compoundUniques.length > 0 ? ctx.compoundUniques[0].fields[0] : null)
+    : (ctx.compoundId ? ctx.compoundId.fields[0] : null) ||
+      (ctx.compoundUniques.length > 0 ? ctx.compoundUniques[0].fields[0] : null)
 
   const firstStringField = scalarFields.find((f) => f.type === 'String')
   const firstBooleanField = scalarFields.find((f) => f.type === 'Boolean')
@@ -618,13 +773,20 @@ export function renderDocs(
   const whereExample: Record<string, any> = {}
   const andClauses: Record<string, any>[] = []
   if (firstFilterFieldName) {
-    andClauses.push({ [firstFilterFieldName]: { equals: exampleValue(ctx, firstFilterFieldName) } })
+    andClauses.push({
+      [firstFilterFieldName]: {
+        equals: exampleValue(ctx, firstFilterFieldName),
+      },
+    })
   }
   if (firstStringField) {
-    andClauses.push({ [firstStringField.name]: { contains: 'example', mode: 'insensitive' } })
+    andClauses.push({
+      [firstStringField.name]: { contains: 'example', mode: 'insensitive' },
+    })
   }
   if (andClauses.length > 0) whereExample.AND = andClauses
-  if (firstBooleanField) whereExample.OR = [{ [firstBooleanField.name]: { equals: true } }]
+  if (firstBooleanField)
+    whereExample.OR = [{ [firstBooleanField.name]: { equals: true } }]
 
   const selectExample: any = {}
   for (const f of scalarFields.slice(0, 10)) selectExample[f.name] = true
@@ -649,24 +811,38 @@ export function renderDocs(
 
   const findManyFetchExample =
     'import { encodeQueryParams } from "./client/encodeQueryParams"\n\n' +
-    'const params = encodeQueryParams(' + JSON.stringify(findManyQueryArgs, null, 2) + ')\n\n' +
-    'const res = await fetch(BASE_URL + "' + exampleBasePath + '?" + params)\n' +
+    'const params = encodeQueryParams(' +
+    JSON.stringify(findManyQueryArgs, null, 2) +
+    ')\n\n' +
+    'const res = await fetch(BASE_URL + "' +
+    exampleBasePath +
+    '?" + params)\n' +
     'const data = await res.json()'
 
   const findManyPostFetchExample =
-    'const res = await fetch(BASE_URL + "' + exampleBasePath + '/read", {\n' +
+    'const res = await fetch(BASE_URL + "' +
+    exampleBasePath +
+    '/read", {\n' +
     '  method: "POST",\n' +
     '  headers: { "Content-Type": "application/json" },\n' +
-    '  body: JSON.stringify(' + JSON.stringify(findManyQueryArgs, null, 2) + ')\n' +
+    '  body: JSON.stringify(' +
+    JSON.stringify(findManyQueryArgs, null, 2) +
+    ')\n' +
     '})\n' +
     'const data = await res.json()'
 
   const findUniqueFetchExample = uniqueWhereExample
     ? 'const params = encodeQueryParams({\n' +
-      '  where: ' + JSON.stringify(uniqueWhereExample) + ',\n' +
-      '  include: ' + JSON.stringify(includeExample) + '\n' +
+      '  where: ' +
+      JSON.stringify(uniqueWhereExample) +
+      ',\n' +
+      '  include: ' +
+      JSON.stringify(includeExample) +
+      '\n' +
       '})\n\n' +
-      'const res = await fetch(BASE_URL + "' + exampleBasePath + '/unique?" + params)\n' +
+      'const res = await fetch(BASE_URL + "' +
+      exampleBasePath +
+      '/unique?" + params)\n' +
       'const data = await res.json()'
     : null
 
@@ -676,10 +852,14 @@ export function renderDocs(
   }
 
   const createFetchExample =
-    'const res = await fetch(BASE_URL + "' + exampleBasePath + '", {\n' +
+    'const res = await fetch(BASE_URL + "' +
+    exampleBasePath +
+    '", {\n' +
     '  method: "POST",\n' +
     '  headers: { "Content-Type": "application/json" },\n' +
-    '  body: JSON.stringify(' + JSON.stringify(createBodyExample, null, 2) + ')\n' +
+    '  body: JSON.stringify(' +
+    JSON.stringify(createBodyExample, null, 2) +
+    ')\n' +
     '})\n' +
     'const created = await res.json()'
 
@@ -687,25 +867,36 @@ export function renderDocs(
     ? { where: uniqueWhereExample, data: {} }
     : null
   if (updateBodyExample) {
-    const firstEditableString = scalarFields.find((sf) => sf.type === 'String' && !sf.isId)
-    if (firstEditableString) updateBodyExample.data[firstEditableString.name] = 'updated'
+    const firstEditableString = scalarFields.find(
+      (sf) => sf.type === 'String' && !sf.isId,
+    )
+    if (firstEditableString)
+      updateBodyExample.data[firstEditableString.name] = 'updated'
   }
 
   const updateFetchExample = updateBodyExample
-    ? 'const res = await fetch(BASE_URL + "' + exampleBasePath + '", {\n' +
+    ? 'const res = await fetch(BASE_URL + "' +
+      exampleBasePath +
+      '", {\n' +
       '  method: "PUT",\n' +
       '  headers: { "Content-Type": "application/json" },\n' +
-      '  body: JSON.stringify(' + JSON.stringify(updateBodyExample, null, 2) + ')\n' +
+      '  body: JSON.stringify(' +
+      JSON.stringify(updateBodyExample, null, 2) +
+      ')\n' +
       '})\n' +
       'const updated = await res.json()'
     : null
 
   const deleteFetchExample = uniqueWhereExample
-    ? 'const res = await fetch(BASE_URL + "' + exampleBasePath + '", {\n' +
+    ? 'const res = await fetch(BASE_URL + "' +
+      exampleBasePath +
+      '", {\n' +
       '  method: "DELETE",\n' +
       '  headers: { "Content-Type": "application/json" },\n' +
       '  body: JSON.stringify({\n' +
-      '    where: ' + JSON.stringify(uniqueWhereExample) + '\n' +
+      '    where: ' +
+      JSON.stringify(uniqueWhereExample) +
+      '\n' +
       '  })\n' +
       '})\n' +
       'const deleted = await res.json()'
@@ -715,10 +906,16 @@ export function renderDocs(
 
   const guardFetchExample = uniqueWhereExample
     ? 'const params = encodeQueryParams({\n' +
-      '  where: ' + JSON.stringify(uniqueWhereExample) + '\n' +
+      '  where: ' +
+      JSON.stringify(uniqueWhereExample) +
+      '\n' +
       '})\n\n' +
-      'const res = await fetch(BASE_URL + "' + exampleBasePath + '/unique?" + params, {\n' +
-      '  headers: { "' + guardVariantHeader + '": "admin" }\n' +
+      'const res = await fetch(BASE_URL + "' +
+      exampleBasePath +
+      '/unique?" + params, {\n' +
+      '  headers: { "' +
+      guardVariantHeader +
+      '": "admin" }\n' +
       '})\n' +
       'const data = await res.json()'
     : null
@@ -726,7 +923,9 @@ export function renderDocs(
   const writeFieldRows = ctx.fields.map((f) => {
     let writeContract = ''
     if (isRelationField(f)) {
-      writeContract = f.isList ? 'Nested list write object' : 'Nested single write object'
+      writeContract = f.isList
+        ? 'Nested list write object'
+        : 'Nested single write object'
     } else if (f.hasDefaultValue || f.isUpdatedAt) {
       writeContract = 'Optional on create (has default)'
     } else if (f.isRequired) {
@@ -789,7 +988,8 @@ export function renderDocs(
     groupBy: {
       by: 'ScalarFieldEnum[] (required)',
       where: 'WhereInput',
-      orderBy: 'OrderByWithAggregationInput | OrderByWithAggregationInput[] (required when using skip or take)',
+      orderBy:
+        'OrderByWithAggregationInput | OrderByWithAggregationInput[] (required when using skip or take)',
       having: 'ScalarWhereWithAggregatesInput',
       take: 'number',
       skip: 'number',
@@ -899,64 +1099,176 @@ export function renderDocs(
   ]
 
   const errorRows = [
-    { status: '400', description: 'Bad request', causes: 'Invalid JSON body, invalid query parameters, query validation failure, guard shape rejection, field value out of range, non-object request body.' },
-    { status: '403', description: 'Forbidden', causes: 'Guard policy rejected the operation.' },
-    { status: '404', description: 'Not found', causes: 'Record not found. Only from OrThrow operations, update, and delete.' },
-    { status: '409', description: 'Conflict', causes: 'Unique constraint violation on create/update/upsert, or transaction conflict (e.g. in findManyPaginated).' },
-    { status: '500', description: 'Internal server error', causes: 'Database error, table/column missing, raw query failure, unhandled error, or findManyPaginatedMode="transaction" without transaction support on the Prisma client.' },
-    { status: '501', description: 'Not implemented', causes: 'Database provider does not support the requested feature, or writeStrategy disabled the endpoint.' },
-    { status: '503', description: 'Service unavailable', causes: 'Database connection pool timeout.' },
+    {
+      status: '400',
+      description: 'Bad request',
+      causes:
+        'Invalid JSON body, invalid query parameters, query validation failure, guard shape rejection, field value out of range, non-object request body.',
+    },
+    {
+      status: '403',
+      description: 'Forbidden',
+      causes: 'Guard policy rejected the operation.',
+    },
+    {
+      status: '404',
+      description: 'Not found',
+      causes:
+        'Record not found. Only from OrThrow operations, update, and delete.',
+    },
+    {
+      status: '409',
+      description: 'Conflict',
+      causes:
+        'Unique constraint violation on create/update/upsert, or transaction conflict (e.g. in findManyPaginated).',
+    },
+    {
+      status: '500',
+      description: 'Internal server error',
+      causes:
+        'Database error, table/column missing, raw query failure, unhandled error, or findManyPaginatedMode="transaction" without transaction support on the Prisma client.',
+    },
+    {
+      status: '501',
+      description: 'Not implemented',
+      causes:
+        'Database provider does not support the requested feature, or writeStrategy disabled the endpoint.',
+    },
+    {
+      status: '503',
+      description: 'Service unavailable',
+      causes: 'Database connection pool timeout.',
+    },
   ]
 
   const hasPlayground = isPlaygroundAvailable(config)
 
-  const chipClass = 'inline-block border border-gray-200 bg-gray-50 rounded-full py-[5px] px-2.5 text-xs no-underline text-inherit hover:border-gray-400'
+  const chipClass =
+    'inline-block border border-gray-200 bg-gray-50 rounded-full py-[5px] px-2.5 text-xs no-underline text-inherit hover:border-gray-400'
 
   const openApiLinks =
-    '<a class="' + chipClass + ' !bg-gray-900 !text-white !border-gray-900" href="?ui=docs">Docs</a>' +
-    '<a class="' + chipClass + '" href="?ui=scalar">Scalar</a>' +
-    '<a class="' + chipClass + '" href="?ui=json">JSON</a>' +
-    '<a class="' + chipClass + '" href="?ui=yaml">YAML</a>' +
-    (hasPlayground ? '<a class="' + chipClass + '" href="?ui=playground">Playground</a>' : '')
+    '<a class="' +
+    chipClass +
+    ' !bg-gray-900 !text-white !border-gray-900" href="?ui=docs">Docs</a>' +
+    '<a class="' +
+    chipClass +
+    '" href="?ui=scalar">Scalar</a>' +
+    '<a class="' +
+    chipClass +
+    '" href="?ui=json">JSON</a>' +
+    '<a class="' +
+    chipClass +
+    '" href="?ui=yaml">YAML</a>' +
+    (hasPlayground
+      ? '<a class="' + chipClass + '" href="?ui=playground">Playground</a>'
+      : '')
 
-  const writeStrategyBanner = !writeStrategy || writeStrategy === 'regular'
-    ? ''
-    : '<div class="mt-3 p-3 rounded-xl border border-amber-300 bg-amber-50 text-xs">' +
-      '<strong>writeStrategy = ' + escapeHtml(writeStrategy) + '.</strong> ' +
-      (writeStrategy === 'throwOnNonReturning'
-        ? 'POST /many (createMany) and PUT /many (updateMany) are disabled and respond with 501. Use the /many/return variants.'
-        : 'POST /many silently invokes createManyAndReturn; PUT /many silently invokes updateManyAndReturn. Both return arrays of records instead of { count } and accept select/include/omit.') +
-      '</div>'
+  const writeStrategyBanner =
+    !writeStrategy || writeStrategy === 'regular'
+      ? ''
+      : '<div class="mt-3 p-3 rounded-xl border border-amber-300 bg-amber-50 text-xs">' +
+        '<strong>writeStrategy = ' +
+        escapeHtml(writeStrategy) +
+        '.</strong> ' +
+        (writeStrategy === 'throwOnNonReturning'
+          ? 'POST /many (createMany) and PUT /many (updateMany) are disabled and respond with 501. Use the /many/return variants.'
+          : 'POST /many silently invokes createManyAndReturn; PUT /many silently invokes updateManyAndReturn. Both return arrays of records instead of { count } and accept select/include/omit.') +
+        '</div>'
 
-  const tocHtml = '<ol class="m-0 pl-[18px]">' + anchors().map((a) => '<li class="my-1.5"><a href="#' + escapeHtml(a.id) + '" class="text-inherit">' + escapeHtml(a.label) + '</a></li>').join('') + '</ol>'
+  const tocHtml =
+    '<ol class="m-0 pl-[18px]">' +
+    anchors()
+      .map(
+        (a) =>
+          '<li class="my-1.5"><a href="#' +
+          escapeHtml(a.id) +
+          '" class="text-inherit">' +
+          escapeHtml(a.label) +
+          '</a></li>',
+      )
+      .join('') +
+    '</ol>'
 
-  const whereRows = ctx.fields.map((f) => {
-    const kind = whereFieldKind(f)
-    const shape = whereFieldShape(f)
-    const filterOps =
-      kind === 'scalar'
-        ? scalarFilterOperators(String(f.type)).map((x) => '<span class="inline-block border border-gray-200 bg-gray-50 rounded-full py-0.5 px-2 text-[11px] mr-1.5 mb-0.5 font-mono">' + escapeHtml(x) + '</span>').join(' ')
-        : kind === 'enum'
-          ? ['equals', 'in', 'notIn', 'not'].map((x) => '<span class="inline-block border border-gray-200 bg-gray-50 rounded-full py-0.5 px-2 text-[11px] mr-1.5 mb-0.5 font-mono">' + escapeHtml(x) + '</span>').join(' ')
-          : kind === 'scalar-list'
-            ? listFilterOperators().map((x) => '<span class="inline-block border border-gray-200 bg-gray-50 rounded-full py-0.5 px-2 text-[11px] mr-1.5 mb-0.5 font-mono">' + escapeHtml(x) + '</span>').join(' ')
-            : kind === 'relation-single'
-              ? ['is', 'isNot'].map((x) => '<span class="inline-block border border-gray-200 bg-gray-50 rounded-full py-0.5 px-2 text-[11px] mr-1.5 mb-0.5 font-mono">' + escapeHtml(x) + '</span>').join(' ')
-              : kind === 'relation-list'
-                ? ['some', 'every', 'none'].map((x) => '<span class="inline-block border border-gray-200 bg-gray-50 rounded-full py-0.5 px-2 text-[11px] mr-1.5 mb-0.5 font-mono">' + escapeHtml(x) + '</span>').join(' ')
-                : '<span class="text-gray-500">n/a</span>'
+  const whereRows = ctx.fields
+    .map((f) => {
+      const kind = whereFieldKind(f)
+      const shape = whereFieldShape(f)
+      const filterOps =
+        kind === 'scalar'
+          ? scalarFilterOperators(String(f.type))
+              .map(
+                (x) =>
+                  '<span class="inline-block border border-gray-200 bg-gray-50 rounded-full py-0.5 px-2 text-[11px] mr-1.5 mb-0.5 font-mono">' +
+                  escapeHtml(x) +
+                  '</span>',
+              )
+              .join(' ')
+          : kind === 'enum'
+            ? ['equals', 'in', 'notIn', 'not']
+                .map(
+                  (x) =>
+                    '<span class="inline-block border border-gray-200 bg-gray-50 rounded-full py-0.5 px-2 text-[11px] mr-1.5 mb-0.5 font-mono">' +
+                    escapeHtml(x) +
+                    '</span>',
+                )
+                .join(' ')
+            : kind === 'scalar-list'
+              ? listFilterOperators()
+                  .map(
+                    (x) =>
+                      '<span class="inline-block border border-gray-200 bg-gray-50 rounded-full py-0.5 px-2 text-[11px] mr-1.5 mb-0.5 font-mono">' +
+                      escapeHtml(x) +
+                      '</span>',
+                  )
+                  .join(' ')
+              : kind === 'relation-single'
+                ? ['is', 'isNot']
+                    .map(
+                      (x) =>
+                        '<span class="inline-block border border-gray-200 bg-gray-50 rounded-full py-0.5 px-2 text-[11px] mr-1.5 mb-0.5 font-mono">' +
+                        escapeHtml(x) +
+                        '</span>',
+                    )
+                    .join(' ')
+                : kind === 'relation-list'
+                  ? ['some', 'every', 'none']
+                      .map(
+                        (x) =>
+                          '<span class="inline-block border border-gray-200 bg-gray-50 rounded-full py-0.5 px-2 text-[11px] mr-1.5 mb-0.5 font-mono">' +
+                          escapeHtml(x) +
+                          '</span>',
+                      )
+                      .join(' ')
+                  : '<span class="text-gray-500">n/a</span>'
 
-    const doc = f.documentation ? '<div class="text-gray-500 mt-1.5">' + escapeHtml(String(f.documentation)) + '</div>' : ''
+      const doc = f.documentation
+        ? '<div class="text-gray-500 mt-1.5">' +
+          escapeHtml(String(f.documentation)) +
+          '</div>'
+        : ''
 
-    return (
-      '<tr>' +
-      '<td class="text-left p-2 border-b border-gray-200 align-top font-mono">' + escapeHtml(f.name) + '</td>' +
-      '<td class="text-left p-2 border-b border-gray-200 align-top font-mono">' + escapeHtml(kind) + '</td>' +
-      '<td class="text-left p-2 border-b border-gray-200 align-top font-mono">' + escapeHtml(describeFieldType(f)) + '</td>' +
-      '<td class="text-left p-2 border-b border-gray-200 align-top"><div class="text-gray-500 font-mono">' + escapeHtml(shape) + '</div><div class="mt-2">' + filterOps + '</div>' + doc + '</td>' +
-      '</tr>'
-    )
-  }).join('')
+      return (
+        '<tr>' +
+        '<td class="text-left p-2 border-b border-gray-200 align-top font-mono">' +
+        escapeHtml(f.name) +
+        '</td>' +
+        '<td class="text-left p-2 border-b border-gray-200 align-top font-mono">' +
+        escapeHtml(kind) +
+        '</td>' +
+        '<td class="text-left p-2 border-b border-gray-200 align-top font-mono">' +
+        escapeHtml(describeFieldType(f)) +
+        '</td>' +
+        '<td class="text-left p-2 border-b border-gray-200 align-top"><div class="text-gray-500 font-mono">' +
+        escapeHtml(shape) +
+        '</div><div class="mt-2">' +
+        filterOps +
+        '</div>' +
+        doc +
+        '</td>' +
+        '</tr>'
+      )
+    })
+    .join('')
 
   const whereCoreShapes = {
     where: {
@@ -993,40 +1305,92 @@ export function renderDocs(
   ]
 
   const nestedWriteListOps = [
-    { key: 'create', desc: 'Create new related records inline. Accepts a single object or array.' },
-    { key: 'connect', desc: 'Connect existing records by unique identifier. Accepts a single object or array.' },
-    { key: 'connectOrCreate', desc: 'Connect if exists, create if not. Each item: { where, create }.' },
-    { key: 'createMany', desc: 'Bulk create related records. Shape: { data: [...], skipDuplicates?: boolean }.' },
-    { key: 'set', desc: 'Replace all connections. Provide an array of unique identifiers.' },
-    { key: 'disconnect', desc: 'Disconnect related records without deleting them.' },
+    {
+      key: 'create',
+      desc: 'Create new related records inline. Accepts a single object or array.',
+    },
+    {
+      key: 'connect',
+      desc: 'Connect existing records by unique identifier. Accepts a single object or array.',
+    },
+    {
+      key: 'connectOrCreate',
+      desc: 'Connect if exists, create if not. Each item: { where, create }.',
+    },
+    {
+      key: 'createMany',
+      desc: 'Bulk create related records. Shape: { data: [...], skipDuplicates?: boolean }.',
+    },
+    {
+      key: 'set',
+      desc: 'Replace all connections. Provide an array of unique identifiers.',
+    },
+    {
+      key: 'disconnect',
+      desc: 'Disconnect related records without deleting them.',
+    },
     { key: 'delete', desc: 'Delete related records by unique identifier.' },
-    { key: 'update', desc: 'Update related records. Each item: { where, data }.' },
-    { key: 'updateMany', desc: 'Bulk update related records matching a filter. Each item: { where, data }.' },
-    { key: 'deleteMany', desc: 'Bulk delete related records matching a filter.' },
-    { key: 'upsert', desc: 'Create or update related records. Each item: { where, create, update }.' },
+    {
+      key: 'update',
+      desc: 'Update related records. Each item: { where, data }.',
+    },
+    {
+      key: 'updateMany',
+      desc: 'Bulk update related records matching a filter. Each item: { where, data }.',
+    },
+    {
+      key: 'deleteMany',
+      desc: 'Bulk delete related records matching a filter.',
+    },
+    {
+      key: 'upsert',
+      desc: 'Create or update related records. Each item: { where, create, update }.',
+    },
   ]
 
   const nestedWriteSingleOps = [
     { key: 'create', desc: 'Create a new related record inline.' },
-    { key: 'connect', desc: 'Connect an existing record by unique identifier.' },
-    { key: 'connectOrCreate', desc: 'Connect if exists, create if not. Shape: { where, create }.' },
-    { key: 'disconnect', desc: 'Disconnect the related record (set relation to null). Pass true.' },
+    {
+      key: 'connect',
+      desc: 'Connect an existing record by unique identifier.',
+    },
+    {
+      key: 'connectOrCreate',
+      desc: 'Connect if exists, create if not. Shape: { where, create }.',
+    },
+    {
+      key: 'disconnect',
+      desc: 'Disconnect the related record (set relation to null). Pass true.',
+    },
     { key: 'delete', desc: 'Delete the related record. Pass true.' },
-    { key: 'update', desc: 'Update the related record inline with update input.' },
-    { key: 'upsert', desc: 'Create the related record if it does not exist, update if it does. Shape: { create, update }.' },
+    {
+      key: 'update',
+      desc: 'Update the related record inline with update input.',
+    },
+    {
+      key: 'upsert',
+      desc: 'Create the related record if it does not exist, update if it does. Shape: { create, update }.',
+    },
   ]
 
   const guardShapeInfo = [
     'When a guard shape is configured on an operation, prisma-guard validates and enforces allowed query patterns before the query reaches the database.',
-    'Named shapes route to different guard configs based on a caller value resolved from the <span class="font-mono">' + escapeHtml(guardVariantHeader) + '</span> header or a custom resolver function.',
+    'Named shapes route to different guard configs based on a caller value resolved from the <span class="font-mono">' +
+      escapeHtml(guardVariantHeader) +
+      '</span> header or a custom resolver function.',
     'Forced values (literals instead of true) are injected server-side and cannot be overridden by the client.',
   ]
 
-  const writeStrategyNotes = !writeStrategy || writeStrategy === 'regular'
-    ? []
-    : writeStrategy === 'throwOnNonReturning'
-      ? ['<strong>writeStrategy="throwOnNonReturning":</strong> the createMany (POST /many) and updateMany (PUT /many) endpoints are disabled and return 501. Use the corresponding <span class="font-mono">/many/return</span> endpoints instead.']
-      : ['<strong>writeStrategy="forceReturn":</strong> the createMany (POST /many) and updateMany (PUT /many) endpoints silently invoke createManyAndReturn and updateManyAndReturn respectively. They return arrays of records instead of <span class="font-mono">{ count }</span>, and their request bodies accept <span class="font-mono">select</span>, <span class="font-mono">include</span>, and <span class="font-mono">omit</span>.']
+  const writeStrategyNotes =
+    !writeStrategy || writeStrategy === 'regular'
+      ? []
+      : writeStrategy === 'throwOnNonReturning'
+        ? [
+            '<strong>writeStrategy="throwOnNonReturning":</strong> the createMany (POST /many) and updateMany (PUT /many) endpoints are disabled and return 501. Use the corresponding <span class="font-mono">/many/return</span> endpoints instead.',
+          ]
+        : [
+            '<strong>writeStrategy="forceReturn":</strong> the createMany (POST /many) and updateMany (PUT /many) endpoints silently invoke createManyAndReturn and updateManyAndReturn respectively. They return arrays of records instead of <span class="font-mono">{ count }</span>, and their request bodies accept <span class="font-mono">select</span>, <span class="font-mono">include</span>, and <span class="font-mono">omit</span>.',
+          ]
 
   const runtimeNotes = [
     '<strong>Query parameter parsing:</strong> GET query values are parsed server-side. Strings starting with <span class="font-mono">{</span>, <span class="font-mono">[</span>, or <span class="font-mono">"</span> are JSON-parsed. The strings <span class="font-mono">true</span>, <span class="font-mono">false</span>, <span class="font-mono">null</span> are converted to their JS equivalents. Numeric conversion only applies to <span class="font-mono">take</span> and <span class="font-mono">skip</span>. Use <span class="font-mono">encodeQueryParams</span> to avoid encoding issues.',
@@ -1046,7 +1410,8 @@ export function renderDocs(
     ...writeStrategyNotes,
   ]
 
-  const noUniqueFieldNote = '<div class="bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs text-gray-500">This model has no unique or id fields suitable for a generated example. Use the unique constraint from your schema.</div>'
+  const noUniqueFieldNote =
+    '<div class="bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs text-gray-500">This model has no unique or id fields suitable for a generated example. Use the unique constraint from your schema.</div>'
 
   const thClass = 'text-left p-2 border-b border-gray-200 align-top font-black'
   const tdClass = 'text-left p-2 border-b border-gray-200 align-top'
@@ -1101,7 +1466,9 @@ export function renderDocs(
         </tr>
       </thead>
       <tbody>
-        ${ops.map((o) => `
+        ${ops
+          .map(
+            (o) => `
           <tr>
             <td class="${tdClass} font-mono">${escapeHtml(o.op)}</td>
             <td class="${tdClass} font-mono">${escapeHtml(o.method)}</td>
@@ -1112,7 +1479,9 @@ export function renderDocs(
             <td class="${tdClass} font-mono">${escapeHtml(o.errors)}</td>
             <td class="${tdClass} text-gray-500">${escapeHtml(o.notes)}</td>
           </tr>
-        `).join('')}
+        `,
+          )
+          .join('')}
       </tbody>
     </table>
     </div>
@@ -1167,13 +1536,17 @@ export function renderDocs(
             </tr>
           </thead>
           <tbody>
-            ${writeFieldRows.map((r) => `
+            ${writeFieldRows
+              .map(
+                (r) => `
               <tr>
                 <td class="${tdClass} font-mono">${escapeHtml(r.name)}</td>
                 <td class="${tdClass} font-mono">${escapeHtml(r.type)}</td>
                 <td class="${tdClass}">${escapeHtml(r.writeContract)}</td>
               </tr>
-            `).join('')}
+            `,
+              )
+              .join('')}
           </tbody>
         </table>
         </div>
@@ -1237,9 +1610,22 @@ export function renderDocs(
       <div>
         <h3 class="mt-3.5 mb-2 text-sm">7.1 List relation operations</h3>
         <div class="${calloutClass}">
-          ${listRelations.length > 0
-            ? '<div class="text-xs text-gray-500 mb-2">Relations: ' + listRelations.map((f) => '<span class="font-mono">' + escapeHtml(f.name) + '</span> (' + escapeHtml(String(f.type)) + '[])').join(', ') + '</div>'
-            : '<div class="text-xs text-gray-500 mb-2">This model has no list relations.</div>'}
+          ${
+            listRelations.length > 0
+              ? '<div class="text-xs text-gray-500 mb-2">Relations: ' +
+                listRelations
+                  .map(
+                    (f) =>
+                      '<span class="font-mono">' +
+                      escapeHtml(f.name) +
+                      '</span> (' +
+                      escapeHtml(String(f.type)) +
+                      '[])',
+                  )
+                  .join(', ') +
+                '</div>'
+              : '<div class="text-xs text-gray-500 mb-2">This model has no list relations.</div>'
+          }
           <table class="w-full border-collapse text-xs">
             <tbody>
               ${nestedWriteListOps.map((op) => '<tr><td class="py-1.5 pr-2 align-top font-mono border-b border-gray-200">' + escapeHtml(op.key) + '</td><td class="py-1.5 border-b border-gray-200">' + escapeHtml(op.desc) + '</td></tr>').join('')}
@@ -1251,9 +1637,22 @@ export function renderDocs(
       <div>
         <h3 class="mt-3.5 mb-2 text-sm">7.2 Single relation operations</h3>
         <div class="${calloutClass}">
-          ${singleRelations.length > 0
-            ? '<div class="text-xs text-gray-500 mb-2">Relations: ' + singleRelations.map((f) => '<span class="font-mono">' + escapeHtml(f.name) + '</span> (' + escapeHtml(String(f.type)) + ')').join(', ') + '</div>'
-            : '<div class="text-xs text-gray-500 mb-2">This model has no single relations.</div>'}
+          ${
+            singleRelations.length > 0
+              ? '<div class="text-xs text-gray-500 mb-2">Relations: ' +
+                singleRelations
+                  .map(
+                    (f) =>
+                      '<span class="font-mono">' +
+                      escapeHtml(f.name) +
+                      '</span> (' +
+                      escapeHtml(String(f.type)) +
+                      ')',
+                  )
+                  .join(', ') +
+                '</div>'
+              : '<div class="text-xs text-gray-500 mb-2">This model has no single relations.</div>'
+          }
           <table class="w-full border-collapse text-xs">
             <tbody>
               ${nestedWriteSingleOps.map((op) => '<tr><td class="py-1.5 pr-2 align-top font-mono border-b border-gray-200">' + escapeHtml(op.key) + '</td><td class="py-1.5 border-b border-gray-200">' + escapeHtml(op.desc) + '</td></tr>').join('')}
@@ -1287,13 +1686,17 @@ export function renderDocs(
         </tr>
       </thead>
       <tbody>
-        ${errorRows.map((r) => `
+        ${errorRows
+          .map(
+            (r) => `
           <tr>
             <td class="${tdClass} font-mono">${escapeHtml(r.status)}</td>
             <td class="${tdClass}">${escapeHtml(r.description)}</td>
             <td class="${tdClass} text-gray-500">${escapeHtml(r.causes)}</td>
           </tr>
-        `).join('')}
+        `,
+          )
+          .join('')}
       </tbody>
     </table>
 

@@ -17,15 +17,32 @@ export function isSafeKey(key: string): boolean {
 
 export function sanitizeKeys<T>(value: T): T {
   if (Array.isArray(value)) {
-    return value.map(sanitizeKeys) as T
+    let mutated = false
+    const out: unknown[] = new Array(value.length)
+    for (let i = 0; i < value.length; i++) {
+      const sanitized = sanitizeKeys(value[i])
+      if (sanitized !== value[i]) mutated = true
+      out[i] = sanitized
+    }
+    return (mutated ? out : value) as T
   }
   if (isPlainObject(value)) {
-    const result: Record<string, unknown> = {}
-    for (const key of Object.keys(value)) {
-      if (!isSafeKey(key)) continue
-      result[key] = sanitizeKeys((value as Record<string, unknown>)[key])
+    const keys = Object.keys(value)
+    let hasUnsafe = false
+    let childrenMutated = false
+    const sanitizedChildren: Record<string, unknown> = {}
+    for (const key of keys) {
+      if (!isSafeKey(key)) {
+        hasUnsafe = true
+        continue
+      }
+      const original = (value as Record<string, unknown>)[key]
+      const sanitized = sanitizeKeys(original)
+      if (sanitized !== original) childrenMutated = true
+      sanitizedChildren[key] = sanitized
     }
-    return result as T
+    if (!hasUnsafe && !childrenMutated) return value
+    return sanitizedChildren as T
   }
   return value
 }

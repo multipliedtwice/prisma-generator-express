@@ -104,6 +104,7 @@ const PRISMA_ERROR_MAP: Record<string, { status: number; message: string }> = {
   P2024: { status: 503, message: 'Connection pool timeout' },
   P2025: { status: 404, message: 'Record not found' },
   P2026: { status: 501, message: 'Feature not supported by the current database provider' },
+  P2027: { status: 400, message: 'Multiple errors occurred during transaction execution' },
   P2028: { status: 500, message: 'Transaction API error' },
   P2030: { status: 400, message: 'Cannot find a fulltext index for the search' },
   P2033: { status: 400, message: 'Number out of range for the field type' },
@@ -122,9 +123,15 @@ function asErrorShape(error: unknown): ErrorShape {
   return {}
 }
 
+function isProduction(): boolean {
+  return typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production'
+}
+
 export function mapError(error: unknown): HttpError {
   if (error instanceof HttpError) return error
   const e = asErrorShape(error)
+  const isProd = isProduction()
+
   if (e.name === 'ShapeError') return new HttpError(400, e.message || 'Shape validation failed')
   if (e.name === 'CallerError') return new HttpError(400, e.message || 'Caller validation failed')
   if (e.name === 'PolicyError') return new HttpError(403, e.message || 'Policy denied')
@@ -139,24 +146,34 @@ export function mapError(error: unknown): HttpError {
     const mapped = PRISMA_ERROR_MAP[e.code]
     if (mapped) {
       const detail = e.message
-      return new HttpError(mapped.status, detail ? mapped.message + ': ' + detail : mapped.message)
+      const shouldStripDetail = isProd && mapped.status >= 500
+      return new HttpError(
+        mapped.status,
+        !shouldStripDetail && detail ? mapped.message + ': ' + detail : mapped.message,
+      )
     }
     if (e.code.startsWith('P')) {
       const msg = e.message || 'Database operation failed'
       console.warn('[prisma-generator-express] Unmapped Prisma error code:', e.code, msg)
-      return new HttpError(500, msg)
+      return new HttpError(500, isProd ? 'Internal server error' : msg)
     }
   }
   if (typeof e.name === 'string') {
     if (e.name === 'PrismaClientValidationError') return new HttpError(400, e.message || 'Invalid query parameters')
     if (e.name === 'PrismaClientKnownRequestError') return new HttpError(400, e.message || 'Database request error')
-    if (e.name === 'PrismaClientInitializationError') return new HttpError(503, e.message || 'Database connection failed')
-    if (e.name === 'PrismaClientRustPanicError') return new HttpError(500, e.message || 'Internal database engine error')
-    if (e.name === 'PrismaClientUnknownRequestError') return new HttpError(500, e.message || 'Unknown database error')
+    if (e.name === 'PrismaClientInitializationError') {
+      return new HttpError(503, isProd ? 'Service unavailable' : (e.message || 'Database connection failed'))
+    }
+    if (e.name === 'PrismaClientRustPanicError') {
+      return new HttpError(500, isProd ? 'Internal server error' : (e.message || 'Internal database engine error'))
+    }
+    if (e.name === 'PrismaClientUnknownRequestError') {
+      return new HttpError(500, isProd ? 'Internal server error' : (e.message || 'Unknown database error'))
+    }
   }
   const msg = error instanceof Error ? error.message : String(error)
   console.error('[prisma-generator-express] Unhandled error:', error)
-  return new HttpError(500, msg || 'Internal server error')
+  return new HttpError(500, isProd ? 'Internal server error' : (msg || 'Internal server error'))
 }
 
 type SpeedExtensionFactory = (opts: { postgres?: unknown; sqlite?: unknown; debug?: boolean }) => unknown
@@ -248,14 +265,16 @@ export function applyPaginationLimits(
   config?: PaginationConfig,
   hasGuardShape?: boolean,
 ): Record<string, unknown> {
-  if (!config || hasGuardShape) return query
+  if (!config) return query
   const result: Record<string, unknown> = { ...query }
-  if (result.take === undefined && config.defaultLimit !== undefined) {
+  if (!hasGuardShape && result.take === undefined && config.defaultLimit !== undefined) {
     result.take = config.defaultLimit
   }
   if (config.maxLimit !== undefined && result.take !== undefined) {
     const takeNum = Number(result.take)
-    if (Math.abs(takeNum) > config.maxLimit) {
+    if (!Number.isFinite(takeNum)) {
+      result.take = config.maxLimit
+    } else if (Math.abs(takeNum) > config.maxLimit) {
       result.take = takeNum < 0 ? -config.maxLimit : config.maxLimit
     }
   }

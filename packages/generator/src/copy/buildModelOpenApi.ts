@@ -562,6 +562,53 @@ function generateOperationSchemas(
     required: ['count'],
   }
 
+  spec.components.schemas[`${modelName}UpdateEachItemInput`] = {
+    type: 'object',
+    properties: {
+      where: { type: 'object', description: 'Prisma unique or where filter' },
+      data: { $ref: `#/components/schemas/${modelName}UpdateInput` },
+    },
+    required: ['where', 'data'],
+  }
+
+  spec.components.schemas[`${modelName}UpdateEachRowOk`] = {
+    type: 'object',
+    properties: {
+      status: { type: 'string', enum: ['ok'] },
+      data: { $ref: `#/components/schemas/${modelName}Response` },
+    },
+    required: ['status', 'data'],
+  }
+
+  spec.components.schemas[`${modelName}UpdateEachRowError`] = {
+    type: 'object',
+    properties: {
+      status: { type: 'string', enum: ['error'] },
+      error: { type: 'string' },
+    },
+    required: ['status', 'error'],
+  }
+
+  spec.components.schemas[`${modelName}UpdateEachResponse`] = {
+    description:
+      'Non-atomic mode returns per-row status objects; atomic mode (header x-batch-atomic: true) returns an array of updated records.',
+    oneOf: [
+      {
+        type: 'array',
+        items: {
+          oneOf: [
+            { $ref: `#/components/schemas/${modelName}UpdateEachRowOk` },
+            { $ref: `#/components/schemas/${modelName}UpdateEachRowError` },
+          ],
+        },
+      },
+      {
+        type: 'array',
+        items: { $ref: `#/components/schemas/${modelName}Response` },
+      },
+    ],
+  }
+
   const numericFields = fields.filter(
     (f) => f.kind === 'scalar' && NUMERIC_SCALAR_TYPES.has(f.type),
   )
@@ -814,6 +861,12 @@ function generatePaths(
   }
   const groupByItemRef = {
     $ref: `#/components/schemas/${modelName}GroupByItem`,
+  }
+  const updateEachItemRef = {
+    $ref: `#/components/schemas/${modelName}UpdateEachItemInput`,
+  }
+  const updateEachResponseRef = {
+    $ref: `#/components/schemas/${modelName}UpdateEachResponse`,
   }
 
   if (opEnabled(config, 'findMany')) {
@@ -1484,6 +1537,49 @@ function generatePaths(
         'Groups records by the specified fields and returns aggregates.',
       )
     }
+  }
+
+  if (opEnabled(config, 'updateEach')) {
+    const op: any = {
+      tags: [modelName],
+      summary: `Update each ${modelName} (batch)`,
+      operationId: `${modelName}UpdateEach`,
+      description:
+        'Internal batch endpoint. Not enabled by enableAll — must be opted into explicitly. ' +
+        'Bypasses guard shapes; protect with before hooks. ' +
+        'Non-atomic mode (default): up to 1000 items, per-row status results. ' +
+        'Atomic mode (header x-batch-atomic: true): up to 100 items, single transaction, any row failure rolls back the whole batch.',
+      parameters: [
+        {
+          name: 'x-batch-atomic',
+          in: 'header',
+          required: false,
+          schema: { type: 'string', enum: ['true', 'false'] },
+          description:
+            'Set to "true" to run all rows in a single interactive transaction (max 100 items).',
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'array',
+              maxItems: 1000,
+              items: updateEachItemRef,
+            },
+          },
+        },
+      },
+      responses: {
+        '200': {
+          description: 'Success',
+          content: { 'application/json': { schema: updateEachResponseRef } },
+        },
+      },
+    }
+    addErrorResponses(op, [400, 403, 409, 500, 501, 503])
+    addPath(spec, opPath(basePath, 'updateEach'), 'post', op)
   }
 }
 

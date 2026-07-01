@@ -32,7 +32,7 @@ import {
   FindManyPaginatedMode,
 } from './constants'
 
-const GENERATOR_OFF_RE = /\bgenerator off\b/
+const GENERATOR_OFF_RE = /^\s*generator off\s*$/m
 
 function getTarget(options: GeneratorOptions): Target {
   const raw = String(
@@ -101,7 +101,7 @@ generatorHandler({
   onManifest() {
     return {
       version: require('../package.json').version,
-      defaultOutput: '../generated/express',
+      defaultOutput: '../generated/output',
       prettyName: GENERATOR_NAME,
     }
   },
@@ -116,7 +116,7 @@ generatorHandler({
       __dirname,
       '..',
       'generated',
-      target,
+      'output',
     )
     const currentOutput = options.generator.output?.value
     const isUnsetOrManifestDefault =
@@ -136,7 +136,9 @@ generatorHandler({
     console.log(`  Import style: ${importStyle}`)
     console.log(`  Write strategy: ${writeStrategy}`)
     console.log(`  findManyPaginated mode: ${findManyPaginatedMode}`)
-    console.log(`  Drop guard: ${dropGuard}`)
+    console.log(
+      `  Drop guard (generator): ${dropGuard}${dropGuard ? '' : ' (runtime E2E=true will also drop guard)'}`,
+    )
 
     if (options.dmmf.datamodel.models.length > 0) {
       validateClientGeneratorPresent(options)

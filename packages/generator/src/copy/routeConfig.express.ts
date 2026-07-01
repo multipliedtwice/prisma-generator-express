@@ -47,15 +47,15 @@ export type ReadOperationConfig<
 }
 
 type ReadOperationOverrides<TShape, TCtx, TPrisma> = {
-  findFirst?: ReadOperationConfig<TShape, TCtx, TPrisma>
-  findFirstOrThrow?: ReadOperationConfig<TShape, TCtx, TPrisma>
-  findUnique?: ReadOperationConfig<TShape, TCtx, TPrisma>
-  findUniqueOrThrow?: ReadOperationConfig<TShape, TCtx, TPrisma>
-  findMany?: ReadOperationConfig<TShape, TCtx, TPrisma>
-  findManyPaginated?: ReadOperationConfig<TShape, TCtx, TPrisma>
-  count?: ReadOperationConfig<TShape, TCtx, TPrisma>
-  aggregate?: ReadOperationConfig<TShape, TCtx, TPrisma>
-  groupBy?: ReadOperationConfig<TShape, TCtx, TPrisma>
+  findFirst?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
+  findFirstOrThrow?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
+  findUnique?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
+  findUniqueOrThrow?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
+  findMany?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
+  findManyPaginated?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
+  count?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
+  aggregate?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
+  groupBy?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
 }
 
 export type RouteConfig<

@@ -75,6 +75,17 @@ export async function ${exportName}(
 }`
   }).join('\n')
 
+  const updateEachExportName = `${modelName}UpdateEach`
+  const updateEachHandler = `
+export async function ${updateEachExportName}(
+  request: FastifyRequest,
+  _reply: FastifyReply,
+): Promise<void> {
+  const atomic = request.headers['x-batch-atomic'] === 'true'
+  const data = await core.updateEach(buildContext(request), atomic)
+  ;(request as FastifyExtended).resultData = data
+}`
+
   return `import type { FastifyRequest, FastifyReply } from 'fastify'
 import * as core from './${modelName}Core${ext}'
 import type { OperationContext, FindManyPaginatedMode } from '../operationRuntime${ext}'
@@ -108,5 +119,6 @@ function buildContext(request: FastifyRequest): OperationContext {
 }
 ${readHandlers}
 ${writeHandlers}
+${updateEachHandler}
 `
 }

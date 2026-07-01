@@ -184,7 +184,7 @@ ${paginatedBody}
   const skip = (typeof query.skip === 'number' ? query.skip : 0)
   const takeRaw = (typeof query.take === 'number' ? query.take : items.length)
   const absTake = Math.abs(takeRaw)
-  const hasMore = items.length >= absTake && skip + items.length < total
+  const hasMore = absTake > 0 && items.length >= absTake && skip + items.length < total
 
   return { data: items, total, hasMore }
 }
@@ -193,35 +193,76 @@ export async function updateEach(
   ctx: OperationContext,
   atomic: boolean,
 ): Promise<unknown> {
-  const body = ctx.body
-  if (!Array.isArray(body)) {
+  const rawBody = ctx.body
+  if (!Array.isArray(rawBody)) {
     throw new HttpError(400, 'updateEach body must be an array of { where, data } items')
   }
-  const items = body as Record<string, unknown>[]
-  const client = ctx.prisma as PrismaClientLike
+
+  const MAX_ITEMS_NON_ATOMIC = 1000
+  const MAX_ITEMS_ATOMIC = 100
+
+  if (atomic && rawBody.length > MAX_ITEMS_ATOMIC) {
+    throw new HttpError(
+      400,
+      'atomic updateEach body exceeds max size of ' + MAX_ITEMS_ATOMIC + ' items',
+    )
+  }
+  if (!atomic && rawBody.length > MAX_ITEMS_NON_ATOMIC) {
+    throw new HttpError(
+      400,
+      'updateEach body exceeds max size of ' + MAX_ITEMS_NON_ATOMIC + ' items',
+    )
+  }
+
+  const items = rawBody.map((item, index) => {
+    const sanitized = validateBody(item)
+    if (!('where' in sanitized) || sanitized.where === undefined) {
+      throw new HttpError(400, 'updateEach item at index ' + index + ' is missing "where"')
+    }
+    if (!('data' in sanitized) || sanitized.data === undefined) {
+      throw new HttpError(400, 'updateEach item at index ' + index + ' is missing "data"')
+    }
+    return sanitized
+  })
+  const extended = await getExtendedClient(ctx)
 
   if (atomic) {
-    if (typeof client.$transaction !== 'function') {
+    const txClient = extended as PrismaClientLike
+    if (typeof txClient.$transaction !== 'function') {
       throw new HttpError(500, 'Atomic updateEach requires transaction support on the Prisma client')
     }
-    const runInteractive = client.$transaction as unknown as <T>(
+    const runInteractive = txClient.$transaction as unknown as <T>(
       fn: (tx: unknown) => Promise<T>,
     ) => Promise<T>
     return runInteractive(async (tx) => {
       const txDelegate = getDelegate(tx, '${modelNameLower}')
-      return Promise.all(items.map((item) => txDelegate.update(item)))
+      const out: unknown[] = new Array(items.length)
+      for (let i = 0; i < items.length; i++) {
+        out[i] = await txDelegate.update(items[i])
+      }
+      return out
     })
   }
 
-  const delegate = getDelegate(client, '${modelNameLower}')
-  const settled = await Promise.allSettled(
-    items.map((item) => delegate.update(item)),
-  )
-  return settled.map((result) =>
-    result.status === 'fulfilled'
-      ? { status: 'ok', data: result.value }
-      : { status: 'error', error: mapError(result.reason).message },
-  )
+  const delegate = getDelegate(extended, '${modelNameLower}')
+  const CONCURRENCY = 8
+  const results: Array<{ status: 'ok'; data: unknown } | { status: 'error'; error: string }> =
+    new Array(items.length)
+  let cursor = 0
+  const workerCount = Math.min(CONCURRENCY, items.length)
+  const workers = Array.from({ length: workerCount }, async () => {
+    for (;;) {
+      const i = cursor++
+      if (i >= items.length) return
+      try {
+        results[i] = { status: 'ok', data: await delegate.update(items[i]) }
+      } catch (err) {
+        results[i] = { status: 'error', error: mapError(err).message }
+      }
+    }
+  })
+  await Promise.all(workers)
+  return results
 }
 `
 }

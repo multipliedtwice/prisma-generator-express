@@ -41,6 +41,7 @@ Supports **Express**, **Fastify**, and **Hono** targets via the `target` configu
 - [POST read endpoints](#post-read-endpoints)
 - [Materialized views router (Express)](#materialized-views-router-express)
 - [Progressive Endpoint Composition (Express SSE)](#progressive-endpoint-composition-express-sse)
+- [updateEach (Express, Fastify, Hono, internal batch)](#updateeach-express-fastify-hono-internal-batch)
 - [Response shaping: select, include, omit](#response-shaping-select-include-omit)
 - [BigInt and Decimal handling](#bigint-and-decimal-handling)
 - [Pagination](#pagination)
@@ -349,15 +350,14 @@ PrismaClient is injected via `c.set('prisma', prismaInstance)` in middleware tha
 
 ### Hooks (Hono)
 
-Hono hooks are native Hono middleware functions:
+Hono route hooks are generated pre/post handler hooks, not native Hono middleware chains. A hook continues by returning `void`. It short-circuits by returning a `Response`, and errors by throwing, including `HTTPException`.
 
 ```ts
-import type { HonoHookHandler } from './generated/routeConfig.target'
+import type { HonoBeforeHook } from './generated/routeConfig.target'
 
-const auth: HonoHookHandler = async (c, next) => {
+const auth: HonoBeforeHook = async (c) => {
   const token = c.req.header('authorization')
   if (!token) return c.json({ message: 'Unauthorized' }, 401)
-  await next()
 }
 
 const userConfig = {
@@ -367,7 +367,7 @@ const userConfig = {
 }
 ```
 
-Call `await next()` to continue the chain. Return a `Response` to short-circuit — subsequent hooks, the main handler, and the response middleware will not run.
+`before` hooks run before the generated handler. `after` hooks run after the generated handler. Do not use `await next()` in generated Hono route hooks. Use normal `app.use()` middleware outside the generated router when you need native Hono downstream/after-`next()` behavior.
 
 ### HTTPException normalization
 
@@ -375,13 +375,13 @@ Throwing Hono's `HTTPException` from a hook short-circuits to a JSON error respo
 
 ```ts
 import { HTTPException } from 'hono/http-exception'
+import type { HonoBeforeHook } from './generated/routeConfig.target'
 
-const auth: HonoHookHandler = async (c, next) => {
+const auth: HonoBeforeHook = async (c) => {
   const token = c.req.header('authorization')
   if (!token) {
     throw new HTTPException(401, { message: 'Unauthorized' })
   }
-  await next()
 }
 ```
 
@@ -423,7 +423,7 @@ Both `Bindings` (what the runtime injects) and `Variables` (what your middleware
 
 ### Query Builder
 
-The Query Builder playground is Node-only and **not auto-started** by the Hono target. The generated `?ui=playground` route can render the playground iframe, but the Hono router does not start the Query Builder server. Start `prisma-query-builder-ui` manually in a separate process and point the config to that server when needed.
+The Query Builder playground is Node-only and **not auto-started** by the Hono target. The generated `?ui=playground` route can render the playground iframe, but the Hono router never starts the Query Builder server, even when query builder config is present. Start `prisma-query-builder-ui` manually in a separate process and point the config to that server when needed.
 
 ### Query string differences
 
@@ -437,8 +437,8 @@ The `encodeQueryParams` client utility does not emit duplicate keys, so this onl
 | ------ | ------- | ------- | ---- |
 | Generated function | `ModelRouter(config)` returns `express.Router` | `ModelRoutes(fastify, config)` registers on instance | `ModelRouter(config)` returns `Hono` instance |
 | Mounting | `app.use('/', ModelRouter(config))` | `fastify.register(async (i) => { await ModelRoutes(i, config) })` | `app.route('/', ModelRouter(config))` |
-| Hook types | `RequestHandler[]` | `FastifyHookHandler[]` | `HonoHookHandler[]` (native middleware) |
-| Hook signature | `(req, res, next)` | `(request, reply)` | `(c, next)` |
+| Hook types | `RequestHandler[]` | `FastifyHookHandler[]` | `HonoBeforeHook[]` / `HonoAfterHook[]` |
+| Hook signature | `(req, res, next)` | `(request, reply)` | `(c) => Response \| void` |
 | Guard resolveVariant | `express.Request` | `FastifyRequest` | Hono `Context` |
 | PrismaClient injection | `req.prisma = prisma` | `request.prisma = prisma` | `c.set('prisma', prisma)` |
 | Error handling | Express error middleware | `setErrorHandler` | `app.onError` |
@@ -487,10 +487,13 @@ Fastify hooks receive `(request: FastifyRequest, reply: FastifyReply)`. If a hoo
 ```ts
 const userConfig = {
   findMany: {
-    before: [async (c, next) => { /* auth check */ await next() }],
+    before: [async (c) => {
+      const token = c.req.header('authorization')
+      if (!token) return c.json({ message: 'Unauthorized' }, 401)
+    }],
   },
   create: {
-    before: [async (c, next) => { /* auth + validation */ await next() }],
+    before: [async (c) => { /* auth + validation */ }],
   },
   findUnique: {},
 }
@@ -498,7 +501,7 @@ const userConfig = {
 app.route('/', UserRouter(userConfig))
 ```
 
-Hono hooks are native middleware functions. Call `await next()` to continue the chain. Return a `Response` (e.g. `c.json({...}, 403)`) or throw `HTTPException` to short-circuit — subsequent hooks and the handler will not run.
+Hono route hooks return `void` to continue. Return a `Response` (e.g. `c.json({...}, 403)`) or throw `HTTPException` to short-circuit — subsequent hooks and the handler will not run.
 
 Only operations listed in the config (or all when `enableAll: true`) are registered. Operations not listed produce no routes.
 
@@ -1300,7 +1303,7 @@ All write operations accept the full Prisma args object as the JSON request body
 
 Write operations that return records (`create`, `update`, `delete`, `upsert`, `createManyAndReturn`, `updateManyAndReturn`) support `select`, `include`, and `omit` in the request body to control the response shape. When `writeStrategy = "forceReturn"`, the generated `createMany` and `updateMany` endpoints are rewritten to returning methods and also support `select`, `include`, and `omit`.
 
-For Express, mount `express.json()` before the router so request bodies are parsed. For Hono, malformed JSON bodies are rejected with 400 (`{ "message": "Invalid JSON in request body" }`) before reaching the handler.
+For Express, mount `express.json()` before the router so request bodies are parsed. For Hono, malformed JSON bodies and non-object bodies are rejected with 400 (`{ "message": "Request body must be a JSON object" }`) before reaching the handler.
 
 ### Bulk operations
 
@@ -1472,7 +1475,8 @@ Supported view options:
 | `schema` | `string` | Optional schema name |
 | `defaultLimit` | `number` | Default page size for this view |
 | `maxLimit` | `number` | Maximum page size for this view |
-| `orderBy` | `string \| object` | Deterministic sort column |
+| `orderBy` | `string \| object` | Deterministic default sort column |
+| `allowedOrderBy` | `string[]` | Optional allowlist for client-provided `orderBy` query fields |
 | `authorize` | `function` | Optional per-view authorization hook |
 
 `orderBy` can be a string:
@@ -1562,7 +1566,9 @@ GET /materialized/jobAdStats?take=100&skip=200
 
 `take` is clamped to the configured max limit. `skip` is clamped to zero or greater.
 
-When `skip > 0`, the view must define `orderBy`. This prevents unstable offset pagination.
+Clients may provide an `orderBy` query parameter. If `allowedOrderBy` is set, client-provided `orderBy` must be one of those fields. If `allowedOrderBy` is omitted, any valid SQL identifier is accepted and quoted.
+
+When `skip > 0`, the view must define `orderBy` or receive a valid client `orderBy`. This prevents unstable offset pagination.
 
 ```ts
 views: {
@@ -1578,7 +1584,7 @@ views: {
 
 ### Identifier safety
 
-Only registered view names can be queried. Database identifiers such as `schema`, `relation`, and `orderBy.field` must match this pattern:
+Only registered view names can be queried. Database identifiers such as `schema`, `relation`, `orderBy.field`, and `allowedOrderBy` entries must match this pattern:
 
 ```txt
 ^[A-Za-z_][A-Za-z0-9_]*$
@@ -2141,6 +2147,8 @@ Example deep event sequence:
 
 Auto-include is designed for supported Prisma `include` and relation `select` trees on reads.
 
+When `findManyPaginatedMode = "transaction"`, the root `findMany` and the total count run inside one interactive transaction, so `data` and `total` are mutually consistent. Relation stages, however, load **after** the transaction commits and are not part of it — relation batches can reflect writes committed between the root transaction and the stage queries.
+
 Supported root operations:
 
 - `findUnique`
@@ -2330,6 +2338,67 @@ The server sends keepalive comments periodically:
 
 If compression middleware is used, configure it to skip `text/event-stream`, or ensure `res.flush()` is available so events are flushed promptly.
 
+## updateEach (Express, Fastify, Hono, internal batch)
+
+`updateEach` applies many independent per-row updates in one request. Each item is passed to Prisma `update`.
+
+```http
+POST /{modelname}/each
+```
+
+Request body is a JSON array of Prisma `update` args. Each item should contain `{ where, data }`:
+
+```json
+[
+  { "where": { "id": "a" }, "data": { "status": "done" } },
+  { "where": { "id": "b" }, "data": { "status": "failed" } }
+]
+```
+
+By default each row runs independently and the response is a per-row result array:
+
+```json
+[
+  { "status": "ok", "data": { "id": "a", "status": "done" } },
+  { "status": "error", "error": "Record not found" }
+]
+```
+
+Send header `x-batch-atomic: true` to run all rows inside a single interactive transaction instead. In atomic mode any failing row rolls back the whole batch and the request errors; the endpoint requires a Prisma client with transaction support.
+
+Batch size is capped to protect the database connection pool:
+
+| Mode | Maximum items | Execution |
+| ---- | ------------- | --------- |
+| Non-atomic | 1000 | Bounded worker pool |
+| Atomic | 100 | Sequential updates inside one transaction |
+
+Requests above the limit return 400.
+
+### Enabling
+
+`updateEach` is **opt-in only** on Express, Fastify, and Hono. It is **not** enabled by `enableAll: true`. Add it explicitly:
+
+```ts
+app.use('/', UserRouter({
+  updateEach: {
+    before: [requireInternalAuth],
+  },
+}))
+```
+
+Only `before` and `after` hooks are configurable. It has no `shape`, `pagination`, or progressive config. In development, enabling `updateEach` without a `before` hook may print a warning because this route bypasses guard shapes and should be protected explicitly.
+
+When enabled, `updateEach` is included in generated OpenAPI output as `POST /{modelname}/each`. It remains excluded from `enableAll: true`.
+
+### Guard and security
+
+`updateEach` does **not** apply prisma-guard shapes on any target, by design. It is intended as a trusted internal batch path, for example worker-to-backend bulk updates, not a public endpoint. Because it bypasses guard, it can write any field the underlying `update` allows.
+
+Caller resolution still runs before hooks on all three targets, so a `before` hook can read the resolved caller for its own authorization logic. This is separate from guard shapes and does not enable guard enforcement for `updateEach`.
+
+Protect it yourself with route middleware (`before`) enforcing authentication or network-level restrictions. A guard `variantHeader` such as `x-api-variant` is **not** a security boundary — it only selects a caller value for hooks to read and is trivially spoofable. Do not expose `/each` to untrusted callers.
+
 ## Response shaping: select, include, omit
 
 Read and single-record write operations support three response shaping parameters:
@@ -2354,7 +2423,7 @@ On the client side, `encodeQueryParams` handles BigInt serialization automatical
 
 `findManyPaginated` returns `{ data, total, hasMore }`. Execution is controlled by the schema-wide `findManyPaginatedMode` generator option. The default is `"promiseAll"`, which runs `findMany` and `count` concurrently with `Promise.all`. This is faster but not atomic under concurrent writes. `"transaction"` runs both queries inside an interactive transaction and returns `500` if transaction support is missing.
 
-The `hasMore` field is reliable for forward offset pagination (`skip` + `take`) only. When using cursor-based pagination or negative `take` (backward pagination), `hasMore` may be inaccurate.
+The `hasMore` field is reliable for forward offset pagination (`skip` + positive `take`) only. When `take` is `0`, `hasMore` is `false`. When using cursor-based pagination or negative `take` (backward pagination), `hasMore` may be inaccurate.
 
 When `distinct` is used with `findManyPaginated`, the total count is determined by executing a distinct query up to the configured limit (default: 100,000 rows). If the number of distinct values exceeds this limit, the total falls back to an approximate non-distinct count. When a guard shape is configured together with `distinct`, the total falls back to a guarded non-distinct count so the internal count query does not need to reuse the public read projection.
 
@@ -2371,7 +2440,7 @@ UserRouter({
 })
 ```
 
-`pagination.defaultLimit` is applied when the client omits `take`. `pagination.maxLimit` caps `take` by absolute value. `pagination.distinctCountLimit` overrides the default 100,000 row threshold for distinct count estimation. All settings apply to `findMany` and `findManyPaginated`.
+`pagination.defaultLimit` is applied when the client omits `take`. It is not applied when a guard shape controls pagination. `pagination.maxLimit` caps `take` by absolute value even when a guard shape is present. `pagination.distinctCountLimit` overrides the default 100,000 row threshold for distinct count estimation. All settings apply to `findMany` and `findManyPaginated`.
 
 ### Materialized count source
 
@@ -2416,7 +2485,7 @@ UserRouter({
 
 The materialized-view count source is used only when the request has no dynamic `where`, no `distinct`, and no guard shape. If any of those are present, the handler falls back to the normal delegate count so `total` stays consistent with the filtered data.
 
-The materialized count query uses PostgreSQL-style `$N` placeholders and `LIMIT 1`, so it is intended for PostgreSQL and CockroachDB-style clients. The optional `countSource.where` supports flat equality and `null` only. Operators and nested objects are not supported.
+The materialized count query uses PostgreSQL-style `$N` placeholders and `LIMIT 1`, so it is intended for PostgreSQL and CockroachDB-style clients. The optional `countSource.where` supports flat equality and `null` only. Operators, arrays, and nested objects are rejected at router construction.
 
 Example with a static filter on the count view:
 
@@ -2443,7 +2512,7 @@ All errors are returned as JSON with a `message` field:
 { "message": "Unique constraint violation" }
 ```
 
-Each generated router installs error handling (Express middleware, Fastify `setErrorHandler`, or Hono `app.onError`) that normalizes errors. Prisma error codes are mapped to appropriate HTTP status codes. Guard errors are mapped as follows: `ShapeError` and `CallerError` → 400, `PolicyError` → 403.
+Each generated router installs error handling (Express middleware, Fastify `setErrorHandler`, or Hono `app.onError`) that normalizes errors. Prisma error codes are mapped to appropriate HTTP status codes. Guard errors are mapped as follows: `ShapeError` and `CallerError` → 400, `PolicyError` → 403. In production, unmapped/internal 500-level errors return a generic `Internal server error` message. Client-error details such as validation or conflict messages may still be included.
 
 For the Hono target, thrown `HTTPException` instances are caught by `app.onError` and converted to `{ "message": err.message }` with the exception's status code. Custom response bodies attached to `HTTPException` are not preserved — see [HTTPException normalization](#httpexception-normalization).
 
@@ -2581,7 +2650,7 @@ type Env = {
 const prisma = new PrismaClient()
 
 const userConfig = {
-  findMany: { before: [async (c, next) => { /* auth */ await next() }] },
+  findMany: { before: [async (c) => { /* auth */ }] },
   create: {},
   findUnique: {},
 }
@@ -2623,7 +2692,7 @@ app.get('/docs', generateCombinedDocs({
 | `/docs/{modelname}?ui=yaml`       | Raw YAML                |
 | `/docs/{modelname}?ui=playground` | Query playground        |
 
-The `?ui=playground` endpoint requires `prisma-query-builder-ui`. For Express and Fastify, the builder is auto-started in development. For Hono, the builder must be started manually in a separate process (see [Query Builder](#query-builder)).
+The `?ui=playground` endpoint requires `prisma-query-builder-ui`. For Express and Fastify, the builder is auto-started in development. For Hono, the router never starts the builder; start it manually in a separate process (see [Query Builder](#query-builder)).
 
 Disable in production via `NODE_ENV=production` or `DISABLE_OPENAPI=true`. Override with `disableOpenApi: false` in config to force-enable.
 
@@ -2745,7 +2814,7 @@ For the Express target, GET read endpoints can also stream SSE events when the r
 
 ## Skipping models
 
-Add `/// generator off` to a model's documentation to skip generation:
+Add `/// generator off` to a model's documentation to skip generation. The marker must be on its own documentation line:
 
 ```prisma
 /// generator off
@@ -2766,6 +2835,7 @@ generator express {
   target                = "express"
   writeStrategy         = "regular"
   findManyPaginatedMode = "promiseAll"
+  dropGuard             = false
 }
 ```
 
@@ -2774,6 +2844,9 @@ generator express {
 | `target` | `"express"`, `"fastify"`, `"hono"` | `"express"` | Selects the generated router target. |
 | `writeStrategy` | `"regular"`, `"throwOnNonReturning"`, `"forceReturn"` | `"regular"` | Controls only `createMany` and `updateMany`. See [Write strategy](#write-strategy). |
 | `findManyPaginatedMode` | `"promiseAll"`, `"transaction"` | `"promiseAll"` | Controls whether generated `findManyPaginated` handlers run data and count with `Promise.all` or inside an interactive transaction. See [findManyPaginated execution mode](#findmanypaginated-execution-mode). |
+| `dropGuard` | `true`, `false` | `false` | When `true`, generated routers never pass guard shapes to Prisma. Runtime `E2E=true` also disables guard in emitted routers, even when generator `dropGuard` is `false`. Route-level and operation-level `dropGuard` config fields do not exist. |
+
+> Route-level and operation-level `dropGuard` config fields were removed because they were never read at runtime. Use generator `dropGuard = true` or `E2E === 'true'`.
 
 ### Express
 
@@ -2843,6 +2916,7 @@ interface RouteConfig<TCtx = unknown> {
   upsert?: OperationConfig
   delete?: OperationConfig
   deleteMany?: OperationConfig
+  updateEach?: UpdateEachConfig
 }
 
 interface OperationConfig {
@@ -2855,6 +2929,11 @@ interface OperationConfig {
 interface ReadOperationConfig<TCtx = unknown> extends OperationConfig {
   progressive?: Record<string, ProgressiveVariantConfig>
   progressiveStages?: Record<string, ProgressiveStage<TCtx>>
+}
+
+interface UpdateEachConfig {
+  before?: RequestHandler[]
+  after?: RequestHandler[]
 }
 
 type ManualProgressiveVariantConfig = {
@@ -2938,19 +3017,22 @@ The Hono config is identical except for hook and resolver types:
 
 ```ts
 interface OperationConfig {
-  before?: HonoHookHandler[]
-  after?: HonoHookHandler[]
+  before?: HonoBeforeHook[]
+  after?: HonoAfterHook[]
   shape?: Record<string, any>
   pagination?: Partial<PaginationConfig>
 }
 
-type HonoHookHandler<Env extends { Variables: any } = any> = (
+type HonoBeforeHook<Env extends { Variables: any } = any> = (
   c: Context<Env>,
-  next: Next,
+) => Promise<Response | void> | Response | void
+
+type HonoAfterHook<Env extends { Variables: any } = any> = (
+  c: Context<Env>,
 ) => Promise<Response | void> | Response | void
 ```
 
-The `guard.resolveVariant` callback receives Hono's `Context`. Hooks are native Hono middleware — call `await next()` to continue the chain, return a `Response` (or throw `HTTPException`) to short-circuit.
+The `guard.resolveVariant` callback receives Hono's `Context`. Hono route hooks return `void` to continue, return a `Response` to short-circuit, or throw `HTTPException` to error. They do not receive `next`. Use normal Hono `app.use()` middleware outside the generated router when native middleware `next()` semantics are required.
 
 The Hono router does not auto-start the Query Builder. Set `queryBuilder: false` to make the playground route return 404, or run `prisma-query-builder-ui` manually for development.
 

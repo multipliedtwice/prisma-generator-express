@@ -5,6 +5,7 @@ export interface OperationDef {
   method: HttpMethod
   pathSuffix: string
   configKey: string
+  excludeFromEnableAll?: boolean
 }
 
 export const OPERATION_DEFS: OperationDef[] = [
@@ -86,6 +87,13 @@ export const OPERATION_DEFS: OperationDef[] = [
     pathSuffix: '/groupby',
     configKey: 'groupBy',
   },
+  {
+    name: 'updateEach',
+    method: 'post',
+    pathSuffix: '/each',
+    configKey: 'updateEach',
+    excludeFromEnableAll: true,
+  },
 ]
 
 export const READ_OPERATION_NAMES = new Set([
@@ -110,5 +118,7 @@ export function isOperationEnabled(
   config: Record<string, any>,
   def: OperationDef,
 ): boolean {
+  if (config[def.configKey] === false) return false
+  if (def.excludeFromEnableAll) return !!config[def.configKey]
   return !!(config.enableAll || config[def.configKey])
 }

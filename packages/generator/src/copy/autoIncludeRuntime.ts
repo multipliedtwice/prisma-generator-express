@@ -393,11 +393,13 @@ async function runAutoIncludeSingle(
     const publicState: Record<string, unknown> = { ...publicRoot }
     for (const [k, v] of Object.entries(publicRoot)) {
       if (isClientGone()) return
-      sendSSEField(res, k, v)
+      const okField = sendSSEField(res, k, v)
+      if (!okField) return
     }
 
     if (isClientGone()) return
-    sendSSEProgress(res, 'root', 0, plan.stages.length)
+    const okStart = sendSSEProgress(res, 'root', 0, plan.stages.length)
+    if (!okStart) return
 
     const groups = groupStagesByDepth(plan.stages)
     let completed = 0
@@ -433,7 +435,8 @@ async function runAutoIncludeSingle(
         }
         if (isAborted()) return
         completed++
-        sendSSEProgress(res, stage.relationPath, completed, plan.stages.length)
+        const ok = sendSSEProgress(res, stage.relationPath, completed, plan.stages.length)
+        if (!ok) return
       })
     }
 
@@ -699,7 +702,8 @@ async function processFindManyStages(args: {
       }
       if (isAborted()) return
       completed++
-      sendSSEProgress(res, stage.relationPath, completed, plan.stages.length)
+      const ok = sendSSEProgress(res, stage.relationPath, completed, plan.stages.length)
+      if (!ok) return
     })
   }
   return stageErrorMessage
@@ -875,7 +879,7 @@ async function runAutoIncludePaginated(
     const skip = typeof rootArgs.skip === 'number' ? rootArgs.skip : 0
     const takeRaw = typeof rootArgs.take === 'number' ? rootArgs.take : rootRows.length
     const absTake = Math.abs(takeRaw)
-    const hasMore = rootRows.length >= absTake && skip + rootRows.length < total
+    const hasMore = absTake > 0 && rootRows.length >= absTake && skip + rootRows.length < total
 
     const { publicRows, rootPairs } = buildRootPairs(rootRows, plan.internalFieldPaths)
 

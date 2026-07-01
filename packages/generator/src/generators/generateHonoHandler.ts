@@ -50,7 +50,7 @@ export function generateHonoHandler(options: {
   const readHandlers = READ_OPS.map((op) => {
     const exportName = `${modelName}${op.charAt(0).toUpperCase() + op.slice(1)}`
     return `
-export async function ${exportName}(c: Context<HonoEnv>): Promise<void> {
+export async function ${exportName}(c: HandlerContext): Promise<void> {
   const data = await core.${coreFnName(op)}(buildContext(c))
   c.set('resultData', data)
 }`
@@ -61,34 +61,29 @@ export async function ${exportName}(c: Context<HonoEnv>): Promise<void> {
     const statusCode = CREATED_OPS.has(op) ? 201 : 200
 
     return `
-export async function ${exportName}(c: Context<HonoEnv>): Promise<void> {
+export async function ${exportName}(c: HandlerContext): Promise<void> {
   const data = await core.${coreFnName(op)}(buildContext(c))
   c.set('resultData', data)
   c.set('resultStatus', ${statusCode})
 }`
   }).join('\n')
 
+  const updateEachExportName = `${modelName}UpdateEach`
+  const updateEachHandler = `
+export async function ${updateEachExportName}(c: HandlerContext): Promise<void> {
+  const atomic = c.req.header('x-batch-atomic') === 'true'
+  const data = await core.updateEach(buildContext(c), atomic)
+  c.set('resultData', data)
+}`
+
   return `import type { Context } from 'hono'
 import * as core from './${modelName}Core${ext}'
-import type { OperationContext, FindManyPaginatedMode } from '../operationRuntime${ext}'
+import type { OperationContext } from '../operationRuntime${ext}'
+import type { HonoInternalVariables } from '../routeConfig.target${ext}'
 
-type HonoVariables = {
-  prisma: unknown
-  postgres?: unknown
-  sqlite?: unknown
-  parsedQuery?: Record<string, unknown>
-  body?: unknown
-  routeConfig?: { pagination?: OperationContext['paginationConfig'] }
-  guardShape?: Record<string, unknown>
-  guardCaller?: string
-  findManyPaginatedMode?: FindManyPaginatedMode
-  resultData?: unknown
-  resultStatus?: number
-}
+type HandlerContext = Context<{ Variables: HonoInternalVariables }>
 
-type HonoEnv = { Variables: HonoVariables }
-
-function buildContext(c: Context<HonoEnv>): OperationContext {
+function buildContext(c: HandlerContext): OperationContext {
   return {
     prisma: c.get('prisma'),
     postgres: c.get('postgres'),
@@ -98,10 +93,10 @@ function buildContext(c: Context<HonoEnv>): OperationContext {
     guardShape: c.get('guardShape'),
     guardCaller: c.get('guardCaller'),
     paginationConfig: c.get('routeConfig')?.pagination,
-    findManyPaginatedMode: c.get('findManyPaginatedMode'),
   }
 }
 ${readHandlers}
 ${writeHandlers}
+${updateEachHandler}
 `
 }
