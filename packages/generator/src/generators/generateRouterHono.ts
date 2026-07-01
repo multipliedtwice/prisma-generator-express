@@ -2,7 +2,7 @@ import { DMMF } from '@prisma/generator-helper'
 import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
-import { WriteStrategy, FindManyPaginatedMode } from '../constants'
+import { WriteStrategy } from '../constants'
 
 export function generateHonoRouterFunction({
   model,
@@ -10,7 +10,6 @@ export function generateHonoRouterFunction({
   guardShapesImport,
   importStyle,
   writeStrategy,
-  findManyPaginatedMode,
   dropGuard,
 }: {
   model: DMMF.Model
@@ -18,7 +17,6 @@ export function generateHonoRouterFunction({
   guardShapesImport: string | null
   importStyle: ImportStyle
   writeStrategy: WriteStrategy
-  findManyPaginatedMode: FindManyPaginatedMode
   dropGuard: boolean
 }): string {
   const ext = importExt(importStyle)
@@ -99,6 +97,14 @@ const _env = getEnv()
 
 const WRITE_STRATEGY: WriteStrategy = '${writeStrategy}'
 const DROP_GUARD = ${dropGuard} || _env.E2E === 'true'
+
+type JsonLike =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonLike[]
+  | { [k: string]: JsonLike }
 
 const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
 
@@ -211,7 +217,7 @@ function sendResult(c: HandlerContext): Response {
   if (data === undefined) {
     throw new HTTPException(500, { message: 'No data set by handler' })
   }
-  return c.json(transformResult(data) as Record<string, unknown>, status as ContentfulStatusCode)
+  return c.json(transformResult(data) as JsonLike, status as ContentfulStatusCode)
 }
 
 function sendError(c: HandlerContext, error: unknown): Response {
@@ -286,7 +292,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
   if (!openApiDisabled) {
     const openapiJsonPath = basePath ? \`\${basePath}/openapi.json\` : '/openapi.json'
     const openapiYamlPath = basePath ? \`\${basePath}/openapi.yaml\` : '/openapi.yaml'
-    app.get(openapiJsonPath, (c) => c.json(getOpenApiJson() as Record<string, unknown>))
+    app.get(openapiJsonPath, (c) => c.json(getOpenApiJson() as JsonLike))
     app.get(openapiYamlPath, (c) => {
       c.header('Content-Type', 'application/yaml')
       return c.body(getOpenApiYaml())

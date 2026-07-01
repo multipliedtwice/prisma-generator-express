@@ -85,9 +85,12 @@ function getDropGuard(options: GeneratorOptions): boolean {
   const lower = String(raw).toLowerCase()
   if (lower === 'true' || lower === '1') return true
   if (lower === 'false' || lower === '0') return false
-  throw new Error(
-    `Invalid dropGuard "${raw}". Expected "true" or "false".`,
+  console.warn(
+    `[prisma-generator-express] dropGuard="${raw}" is not a recognized boolean value. ` +
+      `Treating as false. Expected "true", "false", "1", "0", or "" (unset). ` +
+      `If you used env("VAR_NAME"), set VAR_NAME to "true" or "false".`,
   )
+  return false
 }
 
 function validateClientGeneratorPresent(options: GeneratorOptions): void {
@@ -207,7 +210,6 @@ generatorHandler({
                 guardShapesImport,
                 importStyle,
                 writeStrategy,
-                findManyPaginatedMode,
                 dropGuard,
               })
             : generateRouterFunction({
