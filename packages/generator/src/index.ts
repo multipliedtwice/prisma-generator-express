@@ -80,11 +80,23 @@ function getFindManyPaginatedMode(
 }
 
 function getDropGuard(options: GeneratorOptions): boolean {
-  console.log('options.generator.config :>> ', options.generator.config, typeof (options.generator.config as Record<string, unknown>).dropGuard);
-  console.log('options :>> ', options);
-  return Boolean(
-    (options.generator.config as Record<string, unknown>).dropGuard,
-  )
+  const raw = (options.generator.config as Record<string, unknown>).dropGuard
+  if (raw === undefined || raw === null) return false
+
+  if (typeof raw === 'boolean') return raw
+
+  if (typeof raw === 'string') {
+    const s = raw.trim()
+    const lower = s.toLowerCase()
+    if (lower === 'true' || lower === '1' || lower === 'yes') return true
+    if (lower === 'false' || lower === '0' || lower === 'no' || s === '') return false
+    const envVal = process.env[s]
+    if (envVal === undefined) return false
+    const el = envVal.trim().toLowerCase()
+    return el === 'true' || el === '1' || el === 'yes'
+  }
+
+  return false
 }
 
 function validateClientGeneratorPresent(options: GeneratorOptions): void {
