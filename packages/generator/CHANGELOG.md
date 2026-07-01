@@ -1,3 +1,10 @@
+## [1.58.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.58.1...v1.58.2) (2026-07-01)
+
+
+### Bug Fixes
+
+* **generator:** simplify dropGuard handling and improve logging for dropped guard ([6a78704](https://github.com/multipliedtwice/prisma-generator-express/commit/6a78704cb01c569009813e21c98b9899783b7d85))
+
 ## [1.58.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.58.0...v1.58.1) (2026-07-01)
 
 
