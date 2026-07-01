@@ -81,6 +81,7 @@ function getFindManyPaginatedMode(
 
 function getDropGuard(options: GeneratorOptions): boolean {
   console.log('options.generator.config :>> ', options.generator.config, typeof (options.generator.config as Record<string, unknown>).dropGuard);
+  console.log('options :>> ', options);
   return Boolean(
     (options.generator.config as Record<string, unknown>).dropGuard,
   )
