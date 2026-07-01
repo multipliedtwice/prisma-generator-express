@@ -80,6 +80,7 @@ function getFindManyPaginatedMode(
 }
 
 function getDropGuard(options: GeneratorOptions): boolean {
+  console.log('options.generator.config :>> ', options.generator.config, typeof (options.generator.config as Record<string, unknown>).dropGuard);
   return Boolean(
     (options.generator.config as Record<string, unknown>).dropGuard,
   )
@@ -131,7 +132,7 @@ generatorHandler({
     console.log(`  Import style: ${importStyle}`)
     console.log(`  Write strategy: ${writeStrategy}`)
     console.log(`  findManyPaginated mode: ${findManyPaginatedMode}`)
-    
+
     if (dropGuard) {
       console.log('')
       console.log('  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
@@ -166,9 +167,7 @@ generatorHandler({
       }
       modelNames.push(model.name)
 
-      const guardShapesImport = dropGuard
-        ? null
-        : getGuardShapesImport(options, model.name)
+      const guardShapesImport = getGuardShapesImport(options, model.name)
 
       await writeFileSafely({
         content: generateModelCore({
