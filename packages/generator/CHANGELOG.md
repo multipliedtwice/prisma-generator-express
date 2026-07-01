@@ -1,3 +1,10 @@
+## [1.58.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.58.0...v1.58.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* **generator:** remove unused findManyPaginatedMode and improve dropGuard error handling ([6217bb6](https://github.com/multipliedtwice/prisma-generator-express/commit/6217bb6c61c5fa19d238f65bf9dba5aca30f8c6c))
+
 # [1.58.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.57.0...v1.58.0) (2026-07-01)
 
 
