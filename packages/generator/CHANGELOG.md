@@ -1,3 +1,10 @@
+# [1.58.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.57.0...v1.58.0) (2026-07-01)
+
+
+### Features
+
+* **generator:** enhance router generation with updateEach functionality and improve OpenAPI handling ([532b361](https://github.com/multipliedtwice/prisma-generator-express/commit/532b361a86f624c55f70b321532d104b86c521a9))
+
 # [1.57.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.56.4...v1.57.0) (2026-06-30)
 
 
