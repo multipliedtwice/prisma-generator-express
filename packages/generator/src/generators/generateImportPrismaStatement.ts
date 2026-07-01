@@ -75,18 +75,6 @@ export function getGuardShapesImport(
   const outputValue = options.generator.output?.value
   if (!outputValue) return null
 
-  const shapesFilePath = path.join(guard.output.value, 'shapes.ts')
-  if (!fs.existsSync(shapesFilePath)) {
-    console.warn(
-      '[prisma-generator-express] prisma-guard generator detected but "' +
-        shapesFilePath +
-        '" was not found. Guard shapes will not be imported for model "' +
-        modelName +
-        '". Declare the "guard" generator before "express" in schema.prisma and re-run prisma generate.',
-    )
-    return null
-  }
-
   const fromDir = path.join(outputValue, modelName)
   const shapesPath = path.join(guard.output.value, 'shapes')
   return getRelativeImportPath(fromDir, shapesPath)
