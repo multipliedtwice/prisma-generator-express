@@ -2,24 +2,32 @@
   "name": "demo",
   "private": true,
   "version": "1.0.0",
-  "main": "src/app.js",
+  "main": "src/index.ts",
   "license": "MIT",
   "scripts": {
-    "build": "npx tsc --project tsconfig.json",
-    "dev": "tsx watch src/index.ts"
+    "build": "tsc --project tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "generate": "prisma generate",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "docker compose down -v && docker compose up -d --wait && prisma db push && tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "7.5.0",
-    "lodash": "^4.17.23"
+    "@prisma/client": "^6.16.0",
+    "dotenv": "^17.3.1",
+    "express": "^5.0.0",
+    "postgres": "^3.4.4",
+    "prisma-guard": "workspace:*",
+    "prisma-query-builder-ui": "workspace:*",
+    "prisma-sql": "workspace:*",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@types/lodash": "^4.17.24",
+    "@types/express": "^5.0.0",
     "@types/node": "25.5.0",
-    "dotenv": "^17.3.1",
-    "jest": "^30.3.0",
-    "prisma": "7.5.0",
-    "ts-jest": "^29.4.6",
+    "prisma": "^6.16.0",
     "tsx": "^4.21.0",
     "typescript": "5.9.3"
   }

@@ -1,53 +1,132 @@
-generator generator_express {
-  provider = "node ../generator"
-  output   = "./generated/express"
-}
-
 generator client {
   provider = "prisma-client-js"
   output   = "./generated/client"
 }
 
+generator guard {
+  provider          = "prisma-guard"
+  output            = "./generated/guard"
+  enforceProjection = "true"
+}
+
+generator generator_express {
+  provider              = "node ../generator"
+  output                = "./generated/express"
+  target                = "express"
+  writeStrategy         = "forceReturn"
+  findManyPaginatedMode = "promiseAll"
+}
+
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  CANCELLED
+}
+
+enum ProductCategory {
+  APPAREL
+  HARDWARE
+  DIGITAL
+}
+
+/// @scope-root
+model Shop {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  createdAt DateTime   @default(now())
+  users     User[]
+  customers Customer[]
+  products  Product[]
+  orders    Order[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id])
+  email        String
+  passwordHash String
+  role         UserRole @default(MEMBER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@unique([shopId, email])
+  @@index([shopId])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id])
+  email     String
+  fullName  String
+  createdAt DateTime @default(now())
+  orders    Order[]
+
+  @@unique([shopId, email])
+  @@index([shopId])
+}
+
+model Product {
+  id          String          @id @default(cuid())
+  shopId      String
+  shop        Shop            @relation(fields: [shopId], references: [id])
+  name        String
+  price       Decimal         @db.Decimal(10, 2)
+  category    ProductCategory
+  isPublished Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  orderLines  OrderLine[]
+
+  @@index([shopId])
+  @@index([shopId, isPublished])
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  shopId     String
+  shop       Shop        @relation(fields: [shopId], references: [id])
+  customerId String
+  customer   Customer    @relation(fields: [customerId], references: [id])
+  status     OrderStatus @default(PENDING)
+  totalCents BigInt
+  createdAt  DateTime    @default(now())
+  lines      OrderLine[]
+
+  @@index([shopId])
+  @@index([customerId])
+}
+
+model OrderLine {
+  id             String @id @default(cuid())
+  orderId        String
+  order          Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product @relation(fields: [productId], references: [id])
+  quantity       Int
+  unitPriceCents BigInt
+
+  @@index([orderId])
+  @@index([productId])
 }
 
 /// generator off
-model UserAccount {
-  ID           Int         @id @default(autoincrement())
-  full_name    String
-  emailAddress String      @unique
-  createdAt    DateTime    @default(now())
-  orders       orderItem[]
-}
-
-model orderItem {
-  id              Int               @id @default(autoincrement())
-  ProductName     String
-  quantity        Int
-  userID          Int
-  userAccount     UserAccount       @relation(fields: [userID], references: [ID])
-  created_at      DateTime          @default(now())
-  INVOICE_RECORDS INVOICE_RECORDS[]
-}
-
-model PRODUCT_CATALOG {
-  product_id  Int             @id @default(autoincrement())
-  productname String
-  price       Float
-  category    productCategory
-}
-
-enum productCategory {
-  ELECTRONICS
-  FURNITURE
-  CLOTHING
-}
-
-model INVOICE_RECORDS {
-  invoiceID Int       @id @default(autoincrement())
-  ORDER_ID  Int
-  orderItem orderItem @relation(fields: [ORDER_ID], references: [id])
-  amount    Float
-  issuedAt  DateTime  @default(now())
+model audit_log {
+  id        String   @id @default(cuid())
+  event     String
+  payload   Json
+  createdAt DateTime @default(now())
 }

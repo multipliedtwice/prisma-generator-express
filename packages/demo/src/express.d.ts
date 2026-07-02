@@ -1,14 +1,9 @@
-import { PrismaClient } from '@prisma/client'
-import { Request } from 'express'
-import { ZodType } from 'zod'
+import type postgres from 'postgres'
+import type { PrismaLike } from './prisma'
 
 declare module 'express-serve-static-core' {
   interface Request {
-    prisma: PrismaClient
-    passToNext?: boolean
-    locals?: {
-      data?: any
-      outputValidator?: ZodType | any
-    }
+    prisma: PrismaLike
+    postgres?: ReturnType<typeof postgres>
   }
 }
