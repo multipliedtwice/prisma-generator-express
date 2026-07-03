@@ -1,47 +1,21 @@
 import { DMMF } from '@prisma/generator-helper'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
+import { OPERATION_METADATA } from '../copy/operationDefinitions'
 
 export interface UnifiedHandlerOptions {
   model: DMMF.Model
   importStyle: ImportStyle
 }
 
-const CORE_NAME_MAP: Record<string, string> = {
-  delete: 'deleteUnique',
-}
-
-function coreFnName(op: string): string {
-  return CORE_NAME_MAP[op] || op
-}
-
-const ALL_OPS = [
-  'findMany',
-  'findFirst',
-  'findFirstOrThrow',
-  'findUnique',
-  'findUniqueOrThrow',
-  'findManyPaginated',
-  'create',
-  'createMany',
-  'createManyAndReturn',
-  'update',
-  'updateMany',
-  'updateManyAndReturn',
-  'upsert',
-  'delete',
-  'deleteMany',
-  'aggregate',
-  'count',
-  'groupBy',
-]
-
 export function generateUnifiedHandler(options: UnifiedHandlerOptions): string {
   const ext = importExt(options.importStyle)
   const modelName = options.model.name
 
-  const handlers = ALL_OPS.map((op) => {
-    const exportName = `${modelName}${op.charAt(0).toUpperCase() + op.slice(1)}`
+  const dispatchOps = OPERATION_METADATA.filter((m) => m.name !== 'updateEach')
+
+  const handlers = dispatchOps.map((meta) => {
+    const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
 
     return `
 export async function ${exportName}(
@@ -50,7 +24,7 @@ export async function ${exportName}(
   next: NextFunction,
 ) {
   try {
-    ;(res.locals as LocalsBag).data = await core.${coreFnName(op)}(buildContext(req, res))
+    ;(res.locals as LocalsBag).data = await core.${meta.coreName}(buildContext(req, res))
     next()
   } catch (error: unknown) {
     next(mapError(error))

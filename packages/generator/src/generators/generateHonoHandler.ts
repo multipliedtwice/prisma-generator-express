@@ -1,44 +1,7 @@
 import { DMMF } from '@prisma/generator-helper'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
-
-const CORE_NAME_MAP: Record<string, string> = {
-  delete: 'deleteUnique',
-}
-
-function coreFnName(op: string): string {
-  return CORE_NAME_MAP[op] || op
-}
-
-const READ_OPS = [
-  'findMany',
-  'findFirst',
-  'findFirstOrThrow',
-  'findUnique',
-  'findUniqueOrThrow',
-  'findManyPaginated',
-  'aggregate',
-  'count',
-  'groupBy',
-]
-
-const WRITE_OPS = [
-  'create',
-  'createMany',
-  'createManyAndReturn',
-  'update',
-  'updateMany',
-  'updateManyAndReturn',
-  'upsert',
-  'delete',
-  'deleteMany',
-]
-
-const CREATED_OPS = new Set([
-  'create',
-  'createMany',
-  'createManyAndReturn',
-])
+import { OPERATION_METADATA } from '../copy/operationDefinitions'
 
 export function generateHonoHandler(options: {
   model: DMMF.Model
@@ -47,24 +10,27 @@ export function generateHonoHandler(options: {
   const ext = importExt(options.importStyle)
   const modelName = options.model.name
 
-  const readHandlers = READ_OPS.map((op) => {
-    const exportName = `${modelName}${op.charAt(0).toUpperCase() + op.slice(1)}`
+  const readOps = OPERATION_METADATA.filter((m) => m.kind === 'read')
+  const writeOps = OPERATION_METADATA.filter(
+    (m) => (m.kind === 'write' || m.kind === 'batch') && m.name !== 'updateEach',
+  )
+
+  const readHandlers = readOps.map((meta) => {
+    const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
     return `
 export async function ${exportName}(c: HandlerContext): Promise<void> {
-  const data = await core.${coreFnName(op)}(buildContext(c))
+  const data = await core.${meta.coreName}(buildContext(c))
   c.set('resultData', data)
 }`
   }).join('\n')
 
-  const writeHandlers = WRITE_OPS.map((op) => {
-    const exportName = `${modelName}${op.charAt(0).toUpperCase() + op.slice(1)}`
-    const statusCode = CREATED_OPS.has(op) ? 201 : 200
-
+  const writeHandlers = writeOps.map((meta) => {
+    const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
     return `
 export async function ${exportName}(c: HandlerContext): Promise<void> {
-  const data = await core.${coreFnName(op)}(buildContext(c))
+  const data = await core.${meta.coreName}(buildContext(c))
   c.set('resultData', data)
-  c.set('resultStatus', ${statusCode})
+  c.set('resultStatus', ${meta.successStatus})
 }`
   }).join('\n')
 

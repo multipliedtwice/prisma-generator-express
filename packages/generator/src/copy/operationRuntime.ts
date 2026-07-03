@@ -21,6 +21,8 @@ export type {
   FindManyPaginatedMode,
 }
 
+export const LOG_PREFIX = '[auto-progressive]'
+
 export interface OperationContext {
   prisma: unknown
   postgres?: unknown
@@ -154,7 +156,7 @@ export function mapError(error: unknown): HttpError {
     }
     if (e.code.startsWith('P')) {
       const msg = e.message || 'Database operation failed'
-      console.warn('[prisma-generator-express] Unmapped Prisma error code:', e.code, msg)
+      console.warn(LOG_PREFIX, 'Unmapped Prisma error code:', e.code, msg)
       return new HttpError(500, isProd ? 'Internal server error' : msg)
     }
   }
@@ -172,7 +174,7 @@ export function mapError(error: unknown): HttpError {
     }
   }
   const msg = error instanceof Error ? error.message : String(error)
-  console.error('[prisma-generator-express] Unhandled error:', error)
+  console.error(LOG_PREFIX, 'Unhandled error:', error)
   return new HttpError(500, isProd ? 'Internal server error' : (msg || 'Internal server error'))
 }
 
@@ -191,7 +193,7 @@ const _prismasqlReady = (async () => {
   } catch (err) {
     const code = (err as { code?: string } | null)?.code
     if (code !== 'MODULE_NOT_FOUND' && code !== 'ERR_MODULE_NOT_FOUND') {
-      console.warn('[prisma-generator-express] prisma-sql initialization failed:', err)
+      console.warn(LOG_PREFIX, 'prisma-sql initialization failed:', err)
     }
   }
 })()
@@ -207,12 +209,10 @@ export async function getExtendedClient(ctx: OperationContext): Promise<unknown>
   if (!_speedExtension) return base
   const connector = (ctx.postgres ?? ctx.sqlite) as object | undefined
   if (!connector) return base
-  if (typeof connector === 'object' && connector !== null) {
-    const innerMap = _extendedClients.get(connector)
-    if (innerMap) {
-      const cached = innerMap.get(base as unknown as object)
-      if (cached) return cached
-    }
+  const innerMap = _extendedClients.get(connector)
+  if (innerMap) {
+    const cached = innerMap.get(base as unknown as object)
+    if (cached) return cached
   }
   try {
     if (typeof base.$extends !== 'function') return base
@@ -221,14 +221,12 @@ export async function getExtendedClient(ctx: OperationContext): Promise<unknown>
       sqlite: ctx.sqlite,
       debug: process.env.DEBUG === 'true',
     }))
-    if (typeof connector === 'object' && connector !== null) {
-      let innerMap = _extendedClients.get(connector)
-      if (!innerMap) {
-        innerMap = new WeakMap<object, unknown>()
-        _extendedClients.set(connector, innerMap)
-      }
-      innerMap.set(base as unknown as object, extended)
+    let map = _extendedClients.get(connector)
+    if (!map) {
+      map = new WeakMap<object, unknown>()
+      _extendedClients.set(connector, map)
     }
+    map.set(base as unknown as object, extended)
     return extended
   } catch (error) {
     console.warn('[speedExtension] Failed to initialize, using base client:', error)
@@ -271,11 +269,17 @@ export function applyPaginationLimits(
     result.take = config.defaultLimit
   }
   if (config.maxLimit !== undefined && result.take !== undefined) {
-    const takeNum = Number(result.take)
+    const takeNum = typeof result.take === 'number' ? result.take : Number(result.take)
     if (!Number.isFinite(takeNum)) {
-      result.take = config.maxLimit
-    } else if (Math.abs(takeNum) > config.maxLimit) {
+      throw new HttpError(400, 'Invalid take: must be a finite number')
+    }
+    if (!Number.isInteger(takeNum)) {
+      throw new HttpError(400, 'Invalid take: must be an integer')
+    }
+    if (Math.abs(takeNum) > config.maxLimit) {
       result.take = takeNum < 0 ? -config.maxLimit : config.maxLimit
+    } else {
+      result.take = takeNum
     }
   }
   return result
@@ -453,9 +457,8 @@ export async function countForPagination(
     const results = (await delegate.findMany(distinctArgs)) as unknown[]
     if (results.length > effectiveLimit) {
       console.warn(
-        '[prisma-generator-express] Distinct count exceeds ' +
-          effectiveLimit +
-          ', falling back to approximate total',
+        LOG_PREFIX,
+        'Distinct count exceeds ' + effectiveLimit + ', falling back to approximate total',
       )
       return runCount()
     }
@@ -519,7 +522,8 @@ export function setByPath(target: Record<string, unknown>, path: string, value: 
     if (!isPlainObject(next)) {
       if (process.env.NODE_ENV !== 'production') {
         console.warn(
-          '[progressive] Dropping patch for "' + path +
+          LOG_PREFIX,
+          'Dropping patch for "' + path +
           '": cannot traverse non-plain-object at segment "' + part + '"',
         )
       }
@@ -579,7 +583,7 @@ export function sendSSE(res: SseWritable, payload: unknown): boolean {
     flushSSE(res)
     return true
   } catch (err) {
-    console.error('[progressive] failed to send SSE event:', err)
+    console.error(LOG_PREFIX, 'failed to send SSE event:', err)
     return false
   }
 }
@@ -632,8 +636,14 @@ export function sendSSEError(res: SseWritable, message: string): boolean {
     flushSSE(res)
     return true
   } catch (err) {
-    console.error('[progressive] failed to send SSE error event:', err)
+    console.error(LOG_PREFIX, 'failed to send SSE error event:', err)
     return false
+  }
+}
+
+export function safeSendError(res: SseWritable, message: string): void {
+  if (!res.writableEnded && !res.destroyed) {
+    sendSSEError(res, message)
   }
 }
 
@@ -672,6 +682,35 @@ export function emitTerminalSSEError(res: SseWritable, message: string): void {
   }
 }
 
+export interface WithSSEOptions {
+  res: SseWritable
+  signal?: AbortSignal
+  label: string
+}
+
+export async function withSSE(
+  options: WithSSEOptions,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const { res, signal, label } = options
+  let keepalive: IntervalHandle | null = null
+  const isClientGone = () =>
+    signal?.aborted === true || res.writableEnded || res.destroyed
+
+  try {
+    initSSE(res)
+    keepalive = startSSEKeepalive(res)
+    if (isClientGone()) return
+    await fn()
+  } catch (err) {
+    if (isClientGone()) return
+    console.error(LOG_PREFIX, label + ' dispatch error:', err)
+    safeSendError(res, mapError(err).message)
+  } finally {
+    endSSE(res, keepalive)
+  }
+}
+
 export interface RunSingleResultSSEOptions {
   req: EventEmitterLike
   res: SseWritable
@@ -680,22 +719,12 @@ export interface RunSingleResultSSEOptions {
 
 export async function runSingleResultSSE(options: RunSingleResultSSEOptions): Promise<void> {
   const { req, res, coreQueryFn } = options
-  let keepalive: IntervalHandle | null = null
-  try {
-    initSSE(res)
-    keepalive = startSSEKeepalive(res)
+  await withSSE({ res, label: 'single-result' }, async () => {
     if (req.destroyed) return
     const data = await coreQueryFn()
     if (res.writableEnded || res.destroyed) return
     sendSSEResult(res, data)
-  } catch (err) {
-    console.error('[progressive] single-result error:', err)
-    if (!res.writableEnded && !res.destroyed) {
-      sendSSEError(res, mapError(err).message)
-    }
-  } finally {
-    endSSE(res, keepalive)
-  }
+  })
 }
 
 function isStopResult(value: unknown): value is ProgressiveStopResult<unknown> {
@@ -714,7 +743,6 @@ export interface RunProgressiveOptions {
 
 export async function runProgressiveEndpoint(options: RunProgressiveOptions): Promise<void> {
   const { req, res, ctx, prisma, variant, stages, stageRegistry } = options
-  let keepalive: IntervalHandle | null = null
   const controller = new AbortController()
   const onClose = () => controller.abort()
   if (typeof req.on === 'function') req.on('close', onClose)
@@ -723,44 +751,38 @@ export async function runProgressiveEndpoint(options: RunProgressiveOptions): Pr
   const signal = controller.signal
 
   try {
-    initSSE(res)
-    keepalive = startSSEKeepalive(res)
-    sendSSEProgress(res, 'start', 0, stages.length)
+    await withSSE({ res, signal, label: 'stage' }, async () => {
+      sendSSEProgress(res, 'start', 0, stages.length)
 
-    for (let i = 0; i < stages.length; i++) {
-      if (res.writableEnded || res.destroyed || signal.aborted) return
-      const stageName = stages[i]
-      const stage = stageRegistry[stageName]
-      if (!stage) throw new Error('Missing progressive stage: ' + stageName)
+      for (let i = 0; i < stages.length; i++) {
+        if (res.writableEnded || res.destroyed || signal.aborted) return
+        const stageName = stages[i]
+        const stage = stageRegistry[stageName]
+        if (!stage) throw new Error('Missing progressive stage: ' + stageName)
 
-      const result = await stage({ ctx, req, res, prisma, variant, accumulated, signal })
+        const result = await stage({ ctx, req, res, prisma, variant, accumulated, signal })
+        if (res.writableEnded || res.destroyed) return
+
+        if (isStopResult(result)) {
+          sendSSEResult(res, result.data)
+          return
+        }
+
+        const patches = Array.isArray(result) ? result : result ? [result] : []
+        for (const patch of patches) {
+          if (!patch || typeof patch !== 'object') continue
+          const p = patch as ProgressivePatch
+          if (typeof p.key !== 'string') continue
+          if (!('value' in p)) continue
+          const applied = setByPath(accumulated, p.key, p.value)
+          if (applied) sendSSEField(res, p.key, p.value)
+        }
+        sendSSEProgress(res, stageName, i + 1, stages.length)
+      }
       if (res.writableEnded || res.destroyed) return
-
-      if (isStopResult(result)) {
-        sendSSEResult(res, result.data)
-        return
-      }
-
-      const patches = Array.isArray(result) ? result : result ? [result] : []
-      for (const patch of patches) {
-        if (!patch || typeof patch !== 'object') continue
-        const p = patch as ProgressivePatch
-        if (typeof p.key !== 'string') continue
-        if (!('value' in p)) continue
-        const applied = setByPath(accumulated, p.key, p.value)
-        if (applied) sendSSEField(res, p.key, p.value)
-      }
-      sendSSEProgress(res, stageName, i + 1, stages.length)
-    }
-    if (res.writableEnded || res.destroyed) return
-    sendSSEResult(res, accumulated)
-  } catch (err) {
-    console.error('[progressive] stage error:', err)
-    if (!res.writableEnded && !res.destroyed) {
-      sendSSEError(res, mapError(err).message)
-    }
+      sendSSEResult(res, accumulated)
+    })
   } finally {
     removeReqCloseListener(req, onClose)
-    endSSE(res, keepalive)
   }
 }

@@ -1,5 +1,5 @@
 import type { RouteConfig, WriteStrategy } from './routeConfig'
-import { OPERATION_DEFS, isOperationEnabled } from './operationDefinitions'
+import { OPERATION_BY_NAME, isOperationEnabled } from './operationDefinitions'
 import { normalizePrefix, removeTrailingSlash } from './misc'
 
 type SchemaObject = {
@@ -13,6 +13,7 @@ type SchemaObject = {
   oneOf?: (SchemaObject | RefObject)[]
   allOf?: (SchemaObject | RefObject)[]
   nullable?: boolean
+  maxItems?: number
 }
 
 type RefObject = { $ref: string; description?: string }
@@ -54,21 +55,33 @@ type BuildOptions = {
   writeStrategy?: WriteStrategy
 }
 
-const OP_MAP = new Map(OPERATION_DEFS.map((d) => [d.name, d]))
-
 const NUMERIC_SCALAR_TYPES = new Set(['Int', 'BigInt', 'Float', 'Decimal'])
-
 const STRING_NUMERIC_TYPES = new Set(['BigInt', 'Decimal'])
 
+const WHERE_PROP: SchemaObject = { type: 'object', description: 'Filter conditions' }
+const TAKE_PROP: SchemaObject = { type: 'integer', description: 'Limit results' }
+const SKIP_PROP: SchemaObject = { type: 'integer', description: 'Skip results' }
+const CURSOR_PROP: SchemaObject = { type: 'object', description: 'Cursor for pagination' }
+const ORDERBY_PROP: SchemaObject = { description: 'Sort order (object or array of objects)' }
+const SELECT_PROP: SchemaObject = { type: 'object', description: 'Select fields' }
+const INCLUDE_PROP: SchemaObject = { type: 'object', description: 'Include relations' }
+const OMIT_PROP: SchemaObject = { type: 'object', description: 'Omit fields from response' }
+const DISTINCT_PROP: SchemaObject = { description: 'Distinct fields (string or array of strings)' }
+const AGG_COUNT: SchemaObject = { description: 'Count aggregate (true or field selection object)' }
+const AGG_AVG: SchemaObject = { type: 'object', description: 'Average aggregate (field selection object)' }
+const AGG_SUM: SchemaObject = { type: 'object', description: 'Sum aggregate (field selection object)' }
+const AGG_MIN: SchemaObject = { type: 'object', description: 'Min aggregate (field selection object)' }
+const AGG_MAX: SchemaObject = { type: 'object', description: 'Max aggregate (field selection object)' }
+
 function opEnabled(config: RouteConfig, name: string): boolean {
-  const def = OP_MAP.get(name)
-  return def ? isOperationEnabled(config as Record<string, any>, def) : false
+  const meta = OPERATION_BY_NAME[name]
+  return meta ? isOperationEnabled(config as Record<string, any>, meta) : false
 }
 
 function opPath(basePath: string, name: string): string {
-  const def = OP_MAP.get(name)!
-  if (!def.pathSuffix) return basePath || '/'
-  return `${basePath}${def.pathSuffix}`
+  const meta = OPERATION_BY_NAME[name]
+  if (!meta.pathSuffix) return basePath || '/'
+  return `${basePath}${meta.pathSuffix}`
 }
 
 function postReadPath(basePath: string, name: string): string {
@@ -97,7 +110,7 @@ const COMMON_ERRORS: Record<number, string> = {
   503: 'Service unavailable — database connection pool timeout',
 }
 
-function addErrorResponses(operation: any, codes: number[]): void {
+function addErrorResponses(operation: any, codes: readonly number[]): void {
   for (const code of codes) {
     operation.responses[String(code)] = errorResponse(
       COMMON_ERRORS[code] || 'Error',
@@ -115,6 +128,10 @@ function queryParam(
   if (required) param.required = true
   return param
 }
+
+const oneOrMany = (schema: SchemaObject | RefObject): SchemaObject => ({
+  oneOf: [schema, { type: 'array', items: schema }],
+})
 
 function scalarUpdateOperations(
   baseSchema: SchemaObject | RefObject,
@@ -156,15 +173,15 @@ function findManyBodySchema(): SchemaObject {
   return {
     type: 'object',
     properties: {
-      where: { type: 'object', description: 'Filter conditions' },
-      orderBy: { description: 'Sort order (object or array of objects)' },
-      take: { type: 'integer', description: 'Limit results' },
-      skip: { type: 'integer', description: 'Skip results' },
-      select: { type: 'object', description: 'Select fields' },
-      include: { type: 'object', description: 'Include relations' },
-      omit: { type: 'object', description: 'Omit fields from response' },
-      cursor: { type: 'object', description: 'Cursor for pagination' },
-      distinct: { description: 'Distinct fields (string or array of strings)' },
+      where: WHERE_PROP,
+      orderBy: ORDERBY_PROP,
+      take: TAKE_PROP,
+      skip: SKIP_PROP,
+      select: SELECT_PROP,
+      include: INCLUDE_PROP,
+      omit: OMIT_PROP,
+      cursor: CURSOR_PROP,
+      distinct: DISTINCT_PROP,
     },
   }
 }
@@ -174,9 +191,9 @@ function findUniqueBodySchema(): SchemaObject {
     type: 'object',
     properties: {
       where: { type: 'object', description: 'Unique selector' },
-      select: { type: 'object', description: 'Select fields' },
-      include: { type: 'object', description: 'Include relations' },
-      omit: { type: 'object', description: 'Omit fields from response' },
+      select: SELECT_PROP,
+      include: INCLUDE_PROP,
+      omit: OMIT_PROP,
     },
     required: ['where'],
   }
@@ -186,11 +203,11 @@ function countBodySchema(): SchemaObject {
   return {
     type: 'object',
     properties: {
-      where: { type: 'object', description: 'Filter conditions' },
+      where: WHERE_PROP,
       orderBy: { description: 'Sort order' },
-      take: { type: 'integer', description: 'Limit results' },
-      skip: { type: 'integer', description: 'Skip results' },
-      cursor: { type: 'object', description: 'Cursor for pagination' },
+      take: TAKE_PROP,
+      skip: SKIP_PROP,
+      cursor: CURSOR_PROP,
       select: {
         description:
           'Count specific fields. When provided, returns per-field counts as an object instead of a single integer.',
@@ -203,30 +220,16 @@ function aggregateBodySchema(): SchemaObject {
   return {
     type: 'object',
     properties: {
-      where: { type: 'object', description: 'Filter conditions' },
+      where: WHERE_PROP,
       orderBy: { description: 'Sort order' },
-      cursor: { type: 'object', description: 'Cursor for pagination' },
-      take: { type: 'integer', description: 'Limit results' },
-      skip: { type: 'integer', description: 'Skip results' },
-      _count: {
-        description: 'Count aggregate (true or field selection object)',
-      },
-      _avg: {
-        type: 'object',
-        description: 'Average aggregate (field selection object)',
-      },
-      _sum: {
-        type: 'object',
-        description: 'Sum aggregate (field selection object)',
-      },
-      _min: {
-        type: 'object',
-        description: 'Min aggregate (field selection object)',
-      },
-      _max: {
-        type: 'object',
-        description: 'Max aggregate (field selection object)',
-      },
+      cursor: CURSOR_PROP,
+      take: TAKE_PROP,
+      skip: SKIP_PROP,
+      _count: AGG_COUNT,
+      _avg: AGG_AVG,
+      _sum: AGG_SUM,
+      _min: AGG_MIN,
+      _max: AGG_MAX,
     },
   }
 }
@@ -240,33 +243,19 @@ function groupByBodySchema(): SchemaObject {
         items: { type: 'string' },
         description: 'Fields to group by',
       },
-      where: { type: 'object', description: 'Filter conditions' },
+      where: WHERE_PROP,
       orderBy: { description: 'Sort order. Required when using skip or take.' },
       having: {
         type: 'object',
         description: 'Having conditions (filter object)',
       },
-      take: { type: 'integer', description: 'Limit results' },
-      skip: { type: 'integer', description: 'Skip results' },
-      _count: {
-        description: 'Count aggregate (true or field selection object)',
-      },
-      _avg: {
-        type: 'object',
-        description: 'Average aggregate (field selection object)',
-      },
-      _sum: {
-        type: 'object',
-        description: 'Sum aggregate (field selection object)',
-      },
-      _min: {
-        type: 'object',
-        description: 'Min aggregate (field selection object)',
-      },
-      _max: {
-        type: 'object',
-        description: 'Max aggregate (field selection object)',
-      },
+      take: TAKE_PROP,
+      skip: SKIP_PROP,
+      _count: AGG_COUNT,
+      _avg: AGG_AVG,
+      _sum: AGG_SUM,
+      _min: AGG_MIN,
+      _max: AGG_MAX,
     },
     required: ['by'],
   }
@@ -335,18 +324,9 @@ function applyWriteStrategy(
     }
     const reqSchema = op.requestBody?.content?.['application/json']?.schema
     if (reqSchema && reqSchema.properties) {
-      reqSchema.properties.select = {
-        type: 'object',
-        description: 'Select fields to return',
-      }
-      reqSchema.properties.include = {
-        type: 'object',
-        description: 'Include relations to return',
-      }
-      reqSchema.properties.omit = {
-        type: 'object',
-        description: 'Omit fields from response',
-      }
+      reqSchema.properties.select = SELECT_PROP
+      reqSchema.properties.include = INCLUDE_PROP
+      reqSchema.properties.omit = OMIT_PROP
     }
   }
 
@@ -430,9 +410,7 @@ export function buildModelOpenApi(
   }
 
   generateOperationSchemas(spec, modelName, modelFields)
-
   generatePaths(spec, modelName, basePath, config, modelFields)
-
   applyWriteStrategy(spec, modelName, basePath, options.writeStrategy)
 
   if (options.format === 'yaml') {
@@ -613,11 +591,6 @@ function generateOperationSchemas(
     (f) => f.kind === 'scalar' && NUMERIC_SCALAR_TYPES.has(f.type),
   )
 
-  const numericFieldSelection: Record<string, SchemaObject> = {}
-  for (const f of numericFields) {
-    numericFieldSelection[f.name] = { type: 'boolean' }
-  }
-
   const avgResultProps: Record<string, SchemaObject> = {}
   const numericResultProps: Record<string, SchemaObject> = {}
   for (const f of numericFields) {
@@ -630,15 +603,6 @@ function generateOperationSchemas(
     numericResultProps[f.name] = STRING_NUMERIC_TYPES.has(f.type)
       ? { oneOf: [{ type: 'string' }, { type: 'null' }] }
       : { oneOf: [{ type: 'number' }, { type: 'null' }] }
-  }
-
-  const allFieldSelection: Record<string, SchemaObject> = {
-    _all: { type: 'boolean' },
-  }
-  for (const f of fields) {
-    if (f.kind === 'scalar' || f.kind === 'enum') {
-      allFieldSelection[f.name] = { type: 'boolean' }
-    }
   }
 
   const countResultProps: Record<string, SchemaObject> = {
@@ -798,7 +762,7 @@ function addPostReadOperation(
   opName: string,
   summary: string,
   responseSchema: any,
-  errorCodes: number[],
+  errorCodes: readonly number[],
   description?: string,
 ) {
   const op: any = {
@@ -836,40 +800,27 @@ function generatePaths(
 ) {
   const postReads = !config.disablePostReads
 
-  const createInputRef = {
-    $ref: `#/components/schemas/${modelName}CreateInput`,
-  }
-  const updateInputRef = {
-    $ref: `#/components/schemas/${modelName}UpdateInput`,
-  }
-  const createManyInputRef = {
-    $ref: `#/components/schemas/${modelName}CreateManyInput`,
-  }
-  const updateManyMutationRef = {
-    $ref: `#/components/schemas/${modelName}UpdateManyMutationInput`,
-  }
+  const createInputRef = { $ref: `#/components/schemas/${modelName}CreateInput` }
+  const updateInputRef = { $ref: `#/components/schemas/${modelName}UpdateInput` }
+  const createManyInputRef = { $ref: `#/components/schemas/${modelName}CreateManyInput` }
+  const updateManyMutationRef = { $ref: `#/components/schemas/${modelName}UpdateManyMutationInput` }
   const responseRef = { $ref: `#/components/schemas/${modelName}Response` }
-  const nullableResponseSchema = {
-    oneOf: [responseRef, { type: 'null' as const }],
-  }
-  const batchCountRef = {
-    $ref: `#/components/schemas/${modelName}BatchCountResponse`,
-  }
+  const nullableResponseSchema = { oneOf: [responseRef, { type: 'null' as const }] }
+  const batchCountRef = { $ref: `#/components/schemas/${modelName}BatchCountResponse` }
   const listRef = { $ref: `#/components/schemas/${modelName}ListResponse` }
-  const aggregateRef = {
-    $ref: `#/components/schemas/${modelName}AggregateResponse`,
-  }
-  const groupByItemRef = {
-    $ref: `#/components/schemas/${modelName}GroupByItem`,
-  }
-  const updateEachItemRef = {
-    $ref: `#/components/schemas/${modelName}UpdateEachItemInput`,
-  }
-  const updateEachResponseRef = {
-    $ref: `#/components/schemas/${modelName}UpdateEachResponse`,
+  const aggregateRef = { $ref: `#/components/schemas/${modelName}AggregateResponse` }
+  const groupByItemRef = { $ref: `#/components/schemas/${modelName}GroupByItem` }
+  const updateEachItemRef = { $ref: `#/components/schemas/${modelName}UpdateEachItemInput` }
+  const updateEachResponseRef = { $ref: `#/components/schemas/${modelName}UpdateEachResponse` }
+
+  const projectionProps = {
+    select: SELECT_PROP,
+    include: INCLUDE_PROP,
+    omit: OMIT_PROP,
   }
 
   if (opEnabled(config, 'findMany')) {
+    const meta = OPERATION_BY_NAME['findMany']
     const op: any = {
       tags: [modelName],
       summary: `List ${modelName}`,
@@ -886,7 +837,7 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findMany'), 'get', op)
 
     if (postReads) {
@@ -897,12 +848,13 @@ function generatePaths(
         'findMany',
         `List ${modelName}`,
         { type: 'array', items: responseRef },
-        [400, 403, 500, 501, 503],
+        meta.errors,
       )
     }
   }
 
   if (opEnabled(config, 'findUnique')) {
+    const meta = OPERATION_BY_NAME['findUnique']
     const op: any = {
       tags: [modelName],
       summary: `Get ${modelName} by unique constraint`,
@@ -917,7 +869,7 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findUnique'), 'get', op)
 
     if (postReads) {
@@ -928,13 +880,14 @@ function generatePaths(
         'findUnique',
         `Get ${modelName} by unique constraint`,
         nullableResponseSchema,
-        [400, 403, 500, 501, 503],
+        meta.errors,
         'Returns null with status 200 when no record matches the unique constraint.',
       )
     }
   }
 
   if (opEnabled(config, 'findUniqueOrThrow')) {
+    const meta = OPERATION_BY_NAME['findUniqueOrThrow']
     const op: any = {
       tags: [modelName],
       summary: `Get ${modelName} by unique constraint (throws if not found)`,
@@ -947,7 +900,7 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 404, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findUniqueOrThrow'), 'get', op)
 
     if (postReads) {
@@ -958,12 +911,13 @@ function generatePaths(
         'findUniqueOrThrow',
         `Get ${modelName} by unique constraint (throws if not found)`,
         responseRef,
-        [400, 403, 404, 500, 501, 503],
+        meta.errors,
       )
     }
   }
 
   if (opEnabled(config, 'findFirst')) {
+    const meta = OPERATION_BY_NAME['findFirst']
     const op: any = {
       tags: [modelName],
       summary: `Get first ${modelName}`,
@@ -977,7 +931,7 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findFirst'), 'get', op)
 
     if (postReads) {
@@ -988,13 +942,14 @@ function generatePaths(
         'findFirst',
         `Get first ${modelName}`,
         nullableResponseSchema,
-        [400, 403, 500, 501, 503],
+        meta.errors,
         'Returns null with status 200 when no record matches.',
       )
     }
   }
 
   if (opEnabled(config, 'findFirstOrThrow')) {
+    const meta = OPERATION_BY_NAME['findFirstOrThrow']
     const op: any = {
       tags: [modelName],
       summary: `Get first ${modelName} (throws if not found)`,
@@ -1007,7 +962,7 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 404, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findFirstOrThrow'), 'get', op)
 
     if (postReads) {
@@ -1018,12 +973,13 @@ function generatePaths(
         'findFirstOrThrow',
         `Get first ${modelName} (throws if not found)`,
         responseRef,
-        [400, 403, 404, 500, 501, 503],
+        meta.errors,
       )
     }
   }
 
   if (opEnabled(config, 'findManyPaginated')) {
+    const meta = OPERATION_BY_NAME['findManyPaginated']
     const op: any = {
       tags: [modelName],
       summary: `List ${modelName} with pagination`,
@@ -1038,7 +994,7 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 409, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findManyPaginated'), 'get', op)
 
     if (postReads) {
@@ -1049,13 +1005,14 @@ function generatePaths(
         'findManyPaginated',
         `List ${modelName} with pagination`,
         listRef,
-        [400, 403, 409, 500, 501, 503],
+        meta.errors,
         'Returns paginated results with total count.',
       )
     }
   }
 
   if (opEnabled(config, 'create')) {
+    const meta = OPERATION_BY_NAME['create']
     const op: any = {
       tags: [modelName],
       summary: `Create ${modelName}`,
@@ -1068,18 +1025,7 @@ function generatePaths(
               type: 'object',
               properties: {
                 data: createInputRef,
-                select: {
-                  type: 'object',
-                  description: 'Select fields to return',
-                },
-                include: {
-                  type: 'object',
-                  description: 'Include relations to return',
-                },
-                omit: {
-                  type: 'object',
-                  description: 'Omit fields from response',
-                },
+                ...projectionProps,
               },
               required: ['data'],
             },
@@ -1093,11 +1039,12 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 409, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'create'), 'post', op)
   }
 
   if (opEnabled(config, 'createMany')) {
+    const meta = OPERATION_BY_NAME['createMany']
     const op: any = {
       tags: [modelName],
       summary: `Create many ${modelName}`,
@@ -1128,11 +1075,12 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 409, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'createMany'), 'post', op)
   }
 
   if (opEnabled(config, 'createManyAndReturn')) {
+    const meta = OPERATION_BY_NAME['createManyAndReturn']
     const op: any = {
       tags: [modelName],
       summary: `Create many ${modelName} and return records`,
@@ -1150,18 +1098,7 @@ function generatePaths(
                   description:
                     'Skip records that would cause unique constraint violations. Not supported on all database providers.',
                 },
-                select: {
-                  type: 'object',
-                  description: 'Select fields to return',
-                },
-                include: {
-                  type: 'object',
-                  description: 'Include relations to return',
-                },
-                omit: {
-                  type: 'object',
-                  description: 'Omit fields from response',
-                },
+                ...projectionProps,
               },
               required: ['data'],
             },
@@ -1179,11 +1116,12 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 409, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'createManyAndReturn'), 'post', op)
   }
 
   if (opEnabled(config, 'update')) {
+    const meta = OPERATION_BY_NAME['update']
     const op: any = {
       tags: [modelName],
       summary: `Update ${modelName}`,
@@ -1197,18 +1135,7 @@ function generatePaths(
               properties: {
                 where: { type: 'object' },
                 data: updateInputRef,
-                select: {
-                  type: 'object',
-                  description: 'Select fields to return',
-                },
-                include: {
-                  type: 'object',
-                  description: 'Include relations to return',
-                },
-                omit: {
-                  type: 'object',
-                  description: 'Omit fields from response',
-                },
+                ...projectionProps,
               },
               required: ['where', 'data'],
             },
@@ -1222,11 +1149,12 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 404, 409, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'update'), 'put', op)
   }
 
   if (opEnabled(config, 'updateMany')) {
+    const meta = OPERATION_BY_NAME['updateMany']
     const op: any = {
       tags: [modelName],
       summary: `Update many ${modelName}`,
@@ -1253,11 +1181,12 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 409, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'updateMany'), 'put', op)
   }
 
   if (opEnabled(config, 'updateManyAndReturn')) {
+    const meta = OPERATION_BY_NAME['updateManyAndReturn']
     const op: any = {
       tags: [modelName],
       summary: `Update many ${modelName} and return records`,
@@ -1271,18 +1200,7 @@ function generatePaths(
               properties: {
                 where: { type: 'object' },
                 data: updateManyMutationRef,
-                select: {
-                  type: 'object',
-                  description: 'Select fields to return',
-                },
-                include: {
-                  type: 'object',
-                  description: 'Include relations to return',
-                },
-                omit: {
-                  type: 'object',
-                  description: 'Omit fields from response',
-                },
+                ...projectionProps,
               },
               required: ['where', 'data'],
             },
@@ -1300,11 +1218,12 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 409, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'updateManyAndReturn'), 'put', op)
   }
 
   if (opEnabled(config, 'upsert')) {
+    const meta = OPERATION_BY_NAME['upsert']
     const op: any = {
       tags: [modelName],
       summary: `Upsert ${modelName}`,
@@ -1319,18 +1238,7 @@ function generatePaths(
                 where: { type: 'object' },
                 create: createInputRef,
                 update: updateInputRef,
-                select: {
-                  type: 'object',
-                  description: 'Select fields to return',
-                },
-                include: {
-                  type: 'object',
-                  description: 'Include relations to return',
-                },
-                omit: {
-                  type: 'object',
-                  description: 'Omit fields from response',
-                },
+                ...projectionProps,
               },
               required: ['where', 'create', 'update'],
             },
@@ -1344,11 +1252,12 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 409, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'upsert'), 'patch', op)
   }
 
   if (opEnabled(config, 'delete')) {
+    const meta = OPERATION_BY_NAME['delete']
     const op: any = {
       tags: [modelName],
       summary: `Delete ${modelName}`,
@@ -1361,18 +1270,7 @@ function generatePaths(
               type: 'object',
               properties: {
                 where: { type: 'object' },
-                select: {
-                  type: 'object',
-                  description: 'Select fields to return',
-                },
-                include: {
-                  type: 'object',
-                  description: 'Include relations to return',
-                },
-                omit: {
-                  type: 'object',
-                  description: 'Omit fields from response',
-                },
+                ...projectionProps,
               },
               required: ['where'],
             },
@@ -1386,11 +1284,12 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 404, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'delete'), 'delete', op)
   }
 
   if (opEnabled(config, 'deleteMany')) {
+    const meta = OPERATION_BY_NAME['deleteMany']
     const op: any = {
       tags: [modelName],
       summary: `Delete many ${modelName}`,
@@ -1414,11 +1313,12 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'deleteMany'), 'delete', op)
   }
 
   if (opEnabled(config, 'count')) {
+    const meta = OPERATION_BY_NAME['count']
     const op: any = {
       tags: [modelName],
       summary: `Count ${modelName}`,
@@ -1437,8 +1337,7 @@ function generatePaths(
                   },
                   {
                     type: 'object',
-                    description:
-                      'Per-field count object when select is provided',
+                    description: 'Per-field count object when select is provided',
                   },
                 ],
               },
@@ -1447,7 +1346,7 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'count'), 'get', op)
 
     if (postReads) {
@@ -1469,12 +1368,13 @@ function generatePaths(
             },
           ],
         },
-        [400, 403, 500, 501, 503],
+        meta.errors,
       )
     }
   }
 
   if (opEnabled(config, 'aggregate')) {
+    const meta = OPERATION_BY_NAME['aggregate']
     const op: any = {
       tags: [modelName],
       summary: `Aggregate ${modelName}`,
@@ -1487,7 +1387,7 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'aggregate'), 'get', op)
 
     if (postReads) {
@@ -1498,12 +1398,13 @@ function generatePaths(
         'aggregate',
         `Aggregate ${modelName}`,
         aggregateRef,
-        [400, 403, 500, 501, 503],
+        meta.errors,
       )
     }
   }
 
   if (opEnabled(config, 'groupBy')) {
+    const meta = OPERATION_BY_NAME['groupBy']
     const op: any = {
       tags: [modelName],
       summary: `Group ${modelName}`,
@@ -1522,7 +1423,7 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'groupBy'), 'get', op)
 
     if (postReads) {
@@ -1533,13 +1434,14 @@ function generatePaths(
         'groupBy',
         `Group ${modelName}`,
         { type: 'array', items: groupByItemRef },
-        [400, 403, 500, 501, 503],
+        meta.errors,
         'Groups records by the specified fields and returns aggregates.',
       )
     }
   }
 
   if (opEnabled(config, 'updateEach')) {
+    const meta = OPERATION_BY_NAME['updateEach']
     const op: any = {
       tags: [modelName],
       summary: `Update each ${modelName} (batch)`,
@@ -1578,7 +1480,7 @@ function generatePaths(
         },
       },
     }
-    addErrorResponses(op, [400, 403, 409, 500, 501, 503])
+    addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'updateEach'), 'post', op)
   }
 }
@@ -1688,225 +1590,95 @@ function mapFieldToSchema(field: ModelField): SchemaObject | RefObject {
   return schema
 }
 
+function nestedListRelationOps(fieldType: string): SchemaObject {
+  const createInput: SchemaObject = { type: 'object', description: `${fieldType} create input` }
+  const uniqueId: SchemaObject = { type: 'object', description: 'Unique identifier' }
+  const uniqueConnect: SchemaObject = { type: 'object', description: 'Unique identifier to connect' }
+  const uniqueDisconnect: SchemaObject = { type: 'object', description: 'Unique identifier to disconnect' }
+  const uniqueDelete: SchemaObject = { type: 'object', description: 'Unique identifier to delete' }
+  const whereFilter: SchemaObject = { type: 'object', description: 'Where filter' }
+  const whereCreatePair: SchemaObject = {
+    type: 'object',
+    description: '{ where, create } pair',
+    properties: { where: { type: 'object' }, create: { type: 'object' } },
+  }
+  const whereDataPair: SchemaObject = {
+    type: 'object',
+    description: '{ where, data } pair',
+    properties: { where: { type: 'object' }, data: { type: 'object' } },
+  }
+  const whereCreateUpdateTriple: SchemaObject = {
+    type: 'object',
+    description: '{ where, create, update } triple',
+    properties: {
+      where: { type: 'object' },
+      create: { type: 'object' },
+      update: { type: 'object' },
+    },
+  }
+
+  return {
+    type: 'object',
+    description: `Nested ${fieldType} write operations for list relation`,
+    properties: {
+      create: oneOrMany(createInput),
+      connect: oneOrMany(uniqueConnect),
+      connectOrCreate: oneOrMany(whereCreatePair),
+      createMany: {
+        type: 'object',
+        properties: {
+          data: { type: 'array', items: createInput },
+          skipDuplicates: { type: 'boolean' },
+        },
+      },
+      set: {
+        type: 'array',
+        items: uniqueId,
+        description: 'Replace all connected records',
+      },
+      disconnect: oneOrMany(uniqueDisconnect),
+      delete: oneOrMany(uniqueDelete),
+      update: oneOrMany(whereDataPair),
+      updateMany: oneOrMany(whereDataPair),
+      deleteMany: oneOrMany(whereFilter),
+      upsert: oneOrMany(whereCreateUpdateTriple),
+    },
+  }
+}
+
+function nestedSingleRelationOps(fieldType: string): SchemaObject {
+  return {
+    type: 'object',
+    description: `Nested ${fieldType} write operations for single relation`,
+    properties: {
+      create: { type: 'object', description: `${fieldType} create input` },
+      connect: { type: 'object', description: 'Unique identifier to connect' },
+      connectOrCreate: {
+        type: 'object',
+        description: '{ where, create } pair',
+        properties: { where: { type: 'object' }, create: { type: 'object' } },
+      },
+      disconnect: { type: 'boolean', description: 'Disconnect the related record' },
+      delete: { type: 'boolean', description: 'Delete the related record' },
+      update: { type: 'object', description: `${fieldType} update input` },
+      upsert: {
+        type: 'object',
+        description: '{ create, update } pair — create if not exists, update if exists',
+        properties: {
+          create: { type: 'object', description: `${fieldType} create input` },
+          update: { type: 'object', description: `${fieldType} update input` },
+        },
+      },
+    },
+  }
+}
+
 function mapFieldToWriteSchema(
   field: ModelField,
   mode: 'create' | 'update',
 ): SchemaObject | RefObject {
   if (field.kind === 'object') {
-    if (field.isList) {
-      return {
-        type: 'object',
-        description: `Nested ${field.type} write operations for list relation`,
-        properties: {
-          create: {
-            oneOf: [
-              { type: 'object', description: `${field.type} create input` },
-              {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  description: `${field.type} create input`,
-                },
-              },
-            ],
-          },
-          connect: {
-            oneOf: [
-              { type: 'object', description: 'Unique identifier to connect' },
-              {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  description: 'Unique identifier to connect',
-                },
-              },
-            ],
-          },
-          connectOrCreate: {
-            oneOf: [
-              {
-                type: 'object',
-                description: '{ where, create } pair',
-                properties: {
-                  where: { type: 'object' },
-                  create: { type: 'object' },
-                },
-              },
-              {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    where: { type: 'object' },
-                    create: { type: 'object' },
-                  },
-                },
-              },
-            ],
-          },
-          createMany: {
-            type: 'object',
-            properties: {
-              data: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  description: `${field.type} create input`,
-                },
-              },
-              skipDuplicates: { type: 'boolean' },
-            },
-          },
-          set: {
-            type: 'array',
-            items: { type: 'object', description: 'Unique identifier' },
-            description: 'Replace all connected records',
-          },
-          disconnect: {
-            oneOf: [
-              {
-                type: 'object',
-                description: 'Unique identifier to disconnect',
-              },
-              {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  description: 'Unique identifier to disconnect',
-                },
-              },
-            ],
-          },
-          delete: {
-            oneOf: [
-              { type: 'object', description: 'Unique identifier to delete' },
-              {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  description: 'Unique identifier to delete',
-                },
-              },
-            ],
-          },
-          update: {
-            oneOf: [
-              {
-                type: 'object',
-                description: '{ where, data } pair',
-                properties: {
-                  where: { type: 'object' },
-                  data: { type: 'object' },
-                },
-              },
-              {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    where: { type: 'object' },
-                    data: { type: 'object' },
-                  },
-                },
-              },
-            ],
-          },
-          updateMany: {
-            oneOf: [
-              {
-                type: 'object',
-                description: '{ where, data } pair',
-                properties: {
-                  where: { type: 'object' },
-                  data: { type: 'object' },
-                },
-              },
-              {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    where: { type: 'object' },
-                    data: { type: 'object' },
-                  },
-                },
-              },
-            ],
-          },
-          deleteMany: {
-            oneOf: [
-              { type: 'object', description: 'Where filter' },
-              {
-                type: 'array',
-                items: { type: 'object', description: 'Where filter' },
-              },
-            ],
-          },
-          upsert: {
-            oneOf: [
-              {
-                type: 'object',
-                description: '{ where, create, update } triple',
-                properties: {
-                  where: { type: 'object' },
-                  create: { type: 'object' },
-                  update: { type: 'object' },
-                },
-              },
-              {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  description: '{ where, create, update } triple',
-                  properties: {
-                    where: { type: 'object' },
-                    create: { type: 'object' },
-                    update: { type: 'object' },
-                  },
-                },
-              },
-            ],
-          },
-        },
-      }
-    }
-    return {
-      type: 'object',
-      description: `Nested ${field.type} write operations for single relation`,
-      properties: {
-        create: { type: 'object', description: `${field.type} create input` },
-        connect: {
-          type: 'object',
-          description: 'Unique identifier to connect',
-        },
-        connectOrCreate: {
-          type: 'object',
-          description: '{ where, create } pair',
-          properties: { where: { type: 'object' }, create: { type: 'object' } },
-        },
-        disconnect: {
-          type: 'boolean',
-          description: 'Disconnect the related record',
-        },
-        delete: { type: 'boolean', description: 'Delete the related record' },
-        update: { type: 'object', description: `${field.type} update input` },
-        upsert: {
-          type: 'object',
-          description:
-            '{ create, update } pair — create if not exists, update if exists',
-          properties: {
-            create: {
-              type: 'object',
-              description: `${field.type} create input`,
-            },
-            update: {
-              type: 'object',
-              description: `${field.type} update input`,
-            },
-          },
-        },
-      },
-    }
+    return field.isList ? nestedListRelationOps(field.type) : nestedSingleRelationOps(field.type)
   }
 
   let baseSchema: SchemaObject | RefObject

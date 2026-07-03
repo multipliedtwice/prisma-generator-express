@@ -1,6 +1,7 @@
 import type { RouteConfig, WriteStrategy } from './routeConfig'
 import {
-  OPERATION_DEFS,
+  OPERATION_METADATA,
+  OPERATION_BY_NAME,
   isOperationEnabled,
   READ_OPERATION_NAMES,
 } from './operationDefinitions'
@@ -44,10 +45,10 @@ export interface DocsModelContext {
 
 interface OpDetail {
   transport: string
-  required: string[]
+  required: readonly string[]
   optional: string[]
   responseDesc: string
-  errors: number[]
+  errors: readonly number[]
   supportsSelect: boolean
   supportsInclude: boolean
   supportsOmit: boolean
@@ -60,295 +61,24 @@ const PRISM_JS = 'https://cdn.jsdelivr.net/npm/prismjs@1/prism.min.js'
 const PRISM_JSON =
   'https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-json.min.js'
 
-const OP_DETAIL_MAP: Record<string, OpDetail> = {
-  findMany: {
-    transport: 'GET query params',
-    required: [],
-    optional: [
-      'where',
-      'select',
-      'include',
-      'omit',
-      'orderBy',
-      'cursor',
-      'take',
-      'skip',
-      'distinct',
-    ],
-    responseDesc: 'Array of records',
-    errors: [400, 403, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes: 'Pagination limits may apply when configured.',
-  },
-  findUnique: {
-    transport: 'GET query params',
-    required: ['where'],
-    optional: ['select', 'include', 'omit'],
-    responseDesc: 'Single record or null',
-    errors: [400, 403, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes: 'Returns null (not 404) when no record matches.',
-  },
-  findUniqueOrThrow: {
-    transport: 'GET query params',
-    required: ['where'],
-    optional: ['select', 'include', 'omit'],
-    responseDesc: 'Single record',
-    errors: [400, 403, 404, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes: 'Returns 404 when no record matches.',
-  },
-  findFirst: {
-    transport: 'GET query params',
-    required: [],
-    optional: [
-      'where',
-      'select',
-      'include',
-      'omit',
-      'orderBy',
-      'cursor',
-      'take',
-      'skip',
-      'distinct',
-    ],
-    responseDesc: 'Single record or null',
-    errors: [400, 403, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes: 'Returns null (not 404) when no record matches.',
-  },
-  findFirstOrThrow: {
-    transport: 'GET query params',
-    required: [],
-    optional: [
-      'where',
-      'select',
-      'include',
-      'omit',
-      'orderBy',
-      'cursor',
-      'take',
-      'skip',
-      'distinct',
-    ],
-    responseDesc: 'Single record',
-    errors: [400, 403, 404, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes: 'Returns 404 when no record matches.',
-  },
-  findManyPaginated: {
-    transport: 'GET query params',
-    required: [],
-    optional: [
-      'where',
-      'select',
-      'include',
-      'omit',
-      'orderBy',
-      'cursor',
-      'take',
-      'skip',
-      'distinct',
-    ],
-    responseDesc: '{ data: Record[], total: number, hasMore: boolean }',
-    errors: [400, 403, 409, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes:
-      'Wraps findMany with total count. hasMore is reliable for forward offset pagination (skip + take) only. Distinct count over 100k falls back to approximate total. 409 possible on transaction conflict.',
-  },
-  create: {
-    transport: 'POST JSON body',
-    required: ['data'],
-    optional: ['select', 'include', 'omit'],
-    responseDesc: 'Created record (201)',
-    errors: [400, 403, 409, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes: '409 on unique constraint violation.',
-  },
-  createMany: {
-    transport: 'POST JSON body',
-    required: ['data'],
-    optional: ['skipDuplicates'],
-    responseDesc: '{ count: number } (201)',
-    errors: [400, 403, 409, 500, 501, 503],
-    supportsSelect: false,
-    supportsInclude: false,
-    supportsOmit: false,
-    notes:
-      'data is an array of scalar-only inputs. Nested relation writes are not supported. skipDuplicates silently ignores conflicts (not supported on all providers).',
-  },
-  createManyAndReturn: {
-    transport: 'POST JSON body',
-    required: ['data'],
-    optional: ['skipDuplicates', 'select', 'include', 'omit'],
-    responseDesc: 'Array of created records (201)',
-    errors: [400, 403, 409, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes:
-      'Like createMany but returns created records. data items are scalar-only. Requires Prisma 5.14.0+, PostgreSQL/CockroachDB/SQLite only. The order of returned records is not guaranteed.',
-  },
-  update: {
-    transport: 'PUT JSON body',
-    required: ['where', 'data'],
-    optional: ['select', 'include', 'omit'],
-    responseDesc: 'Updated record',
-    errors: [400, 403, 404, 409, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes:
-      '404 when the record to update is not found. 409 on unique constraint violation or transaction conflict.',
-  },
-  updateEach: {
-    transport: 'POST JSON body (array)',
-    required: ['array of { where, data }'],
-    optional: [],
-    responseDesc:
-      'Non-atomic: per-row { status, data } / { status, error } array. Atomic: array of records.',
-    errors: [400, 403, 409, 500, 501, 503],
-    supportsSelect: false,
-    supportsInclude: false,
-    supportsOmit: false,
-    notes:
-      'Internal batch endpoint. Bypasses guard shapes. Not enabled by enableAll. Non-atomic max 1000 items, atomic max 100 items. Header x-batch-atomic:true switches to transactional mode.',
-  },
-  updateMany: {
-    transport: 'PUT JSON body',
-    required: ['where', 'data'],
-    optional: [],
-    responseDesc: '{ count: number }',
-    errors: [400, 403, 409, 500, 501, 503],
-    supportsSelect: false,
-    supportsInclude: false,
-    supportsOmit: false,
-    notes:
-      'Updates all matching records with scalar-only data. Nested relation writes are not supported. Returns count, not records. 409 on unique constraint violation.',
-  },
-  updateManyAndReturn: {
-    transport: 'PUT JSON body',
-    required: ['where', 'data'],
-    optional: ['select', 'include', 'omit'],
-    responseDesc: 'Array of updated records',
-    errors: [400, 403, 409, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes:
-      'Like updateMany but returns updated records. data is scalar-only. Requires Prisma 6.2.0+, PostgreSQL/CockroachDB/SQLite only. 409 on unique constraint violation.',
-  },
-  upsert: {
-    transport: 'PATCH JSON body',
-    required: ['where', 'create', 'update'],
-    optional: ['select', 'include', 'omit'],
-    responseDesc: 'Created or updated record',
-    errors: [400, 403, 409, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes: 'Creates if not found, updates if found.',
-  },
-  delete: {
-    transport: 'DELETE JSON body',
-    required: ['where'],
-    optional: ['select', 'include', 'omit'],
-    responseDesc: 'Deleted record',
-    errors: [400, 403, 404, 500, 501, 503],
-    supportsSelect: true,
-    supportsInclude: true,
-    supportsOmit: true,
-    notes: '404 when the record to delete is not found.',
-  },
-  deleteMany: {
-    transport: 'DELETE JSON body',
-    required: ['where'],
-    optional: [],
-    responseDesc: '{ count: number }',
-    errors: [400, 403, 500, 501, 503],
-    supportsSelect: false,
-    supportsInclude: false,
-    supportsOmit: false,
-    notes: 'Deletes all matching records. Returns count, not records.',
-  },
-  count: {
-    transport: 'GET query params',
-    required: [],
-    optional: ['where', 'orderBy', 'cursor', 'take', 'skip', 'select'],
-    responseDesc: 'Integer, or per-field count object when select is provided',
-    errors: [400, 403, 500, 501, 503],
-    supportsSelect: false,
-    supportsInclude: false,
-    supportsOmit: false,
-    notes:
-      'select here means count-specific field selection, not record field selection.',
-  },
-  aggregate: {
-    transport: 'GET query params',
-    required: [],
-    optional: [
-      'where',
-      'orderBy',
-      'cursor',
-      'take',
-      'skip',
-      '_count',
-      '_avg',
-      '_sum',
-      '_min',
-      '_max',
-    ],
-    responseDesc:
-      'Object with requested aggregate fields (_count, _avg, _sum, _min, _max)',
-    errors: [400, 403, 500, 501, 503],
-    supportsSelect: false,
-    supportsInclude: false,
-    supportsOmit: false,
-    notes: '_avg, _sum only apply to numeric fields.',
-  },
-  groupBy: {
-    transport: 'GET query params',
-    required: ['by'],
-    optional: [
-      'where',
-      'orderBy',
-      'having',
-      'take',
-      'skip',
-      '_count',
-      '_avg',
-      '_sum',
-      '_min',
-      '_max',
-    ],
-    responseDesc:
-      'Array of objects, each with grouped field values and requested aggregates',
-    errors: [400, 403, 500, 501, 503],
-    supportsSelect: false,
-    supportsInclude: false,
-    supportsOmit: false,
-    notes:
-      'by is a JSON-encoded array of scalar field names. orderBy is required when using skip or take. Response contains only the by-fields plus requested aggregates.',
-  },
-}
+function detailForOp(opName: string, writeStrategy?: WriteStrategy): OpDetail | null {
+  const meta = OPERATION_BY_NAME[opName]
+  if (!meta) return null
 
-function detailForOp(opName: string, writeStrategy?: WriteStrategy): OpDetail {
-  const base = OP_DETAIL_MAP[opName]
-  if (!base) return base
+  const optional = meta.argsSchema.filter((a) => !meta.requiredArgs.includes(a))
+
+  const base: OpDetail = {
+    transport: meta.transport,
+    required: meta.requiredArgs,
+    optional,
+    responseDesc: meta.responseDesc,
+    errors: meta.errors,
+    supportsSelect: meta.supportsProjection,
+    supportsInclude: meta.supportsProjection,
+    supportsOmit: meta.supportsProjection,
+    notes: meta.notes,
+  }
+
   if (writeStrategy === 'forceReturn') {
     if (opName === 'createMany') {
       return {
@@ -375,6 +105,7 @@ function detailForOp(opName: string, writeStrategy?: WriteStrategy): OpDetail {
       }
     }
   }
+
   return base
 }
 
@@ -696,21 +427,16 @@ export function renderDocs(
   const listRelations = relationFields.filter((f) => f.isList)
   const singleRelations = relationFields.filter((f) => !f.isList)
 
-  const getOps = OPERATION_DEFS.filter((d) =>
-    isOperationEnabled(config as Record<string, any>, d),
-  )
-    .filter((d) => !isOpHiddenByStrategy(d.name, writeStrategy))
-    .map((d) => {
-      const detail = detailForOp(d.name, writeStrategy)
+  const getOps = OPERATION_METADATA
+    .filter((meta) => isOperationEnabled(config as Record<string, any>, meta))
+    .filter((meta) => !isOpHiddenByStrategy(meta.name, writeStrategy))
+    .map((meta) => {
+      const detail = detailForOp(meta.name, writeStrategy)
       return {
-        op: d.name,
-        method: d.method.toUpperCase(),
-        path: buildFullPath(exampleBasePath, d.pathSuffix),
-        transport: detail
-          ? detail.transport
-          : d.method === 'get'
-            ? 'GET query params'
-            : 'JSON body',
+        op: meta.name,
+        method: meta.method.toUpperCase(),
+        path: buildFullPath(exampleBasePath, meta.pathSuffix),
+        transport: detail ? detail.transport : (meta.method === 'get' ? 'GET query params' : 'JSON body'),
         responseDesc: detail ? detail.responseDesc : '',
         errors: detail ? detail.errors.join(', ') : '',
         required: detail ? detail.required : [],
@@ -723,32 +449,31 @@ export function renderDocs(
     })
 
   const postReadOps = postReadsEnabled
-    ? OPERATION_DEFS.filter(
-        (d) =>
-          READ_OPERATION_NAMES.has(d.name) &&
-          isOperationEnabled(config as Record<string, any>, d),
-      ).map((d) => {
-        const detail = OP_DETAIL_MAP[d.name]
-        const postPath =
-          d.name === 'findMany'
-            ? buildFullPath(exampleBasePath, '/read')
-            : buildFullPath(exampleBasePath, d.pathSuffix)
-        return {
-          op: d.name + ' (POST)',
-          method: 'POST',
-          path: postPath,
-          transport: 'POST JSON body',
-          responseDesc: detail ? detail.responseDesc : '',
-          errors: detail ? detail.errors.join(', ') : '',
-          required: detail ? detail.required : [],
-          optional: detail ? detail.optional : [],
-          supportsSelect: detail ? detail.supportsSelect : false,
-          supportsInclude: detail ? detail.supportsInclude : false,
-          supportsOmit: detail ? detail.supportsOmit : false,
-          notes:
-            'POST alternative for complex queries exceeding URL length limits. Same args as GET but in request body.',
-        }
-      })
+    ? OPERATION_METADATA
+        .filter((meta) => READ_OPERATION_NAMES.has(meta.name))
+        .filter((meta) => isOperationEnabled(config as Record<string, any>, meta))
+        .map((meta) => {
+          const detail = detailForOp(meta.name)
+          const postPath =
+            meta.name === 'findMany'
+              ? buildFullPath(exampleBasePath, '/read')
+              : buildFullPath(exampleBasePath, meta.pathSuffix)
+          return {
+            op: meta.name + ' (POST)',
+            method: 'POST',
+            path: postPath,
+            transport: 'POST JSON body',
+            responseDesc: detail ? detail.responseDesc : '',
+            errors: detail ? detail.errors.join(', ') : '',
+            required: detail ? detail.required : [],
+            optional: detail ? detail.optional : [],
+            supportsSelect: detail ? detail.supportsSelect : false,
+            supportsInclude: detail ? detail.supportsInclude : false,
+            supportsOmit: detail ? detail.supportsOmit : false,
+            notes:
+              'POST alternative for complex queries exceeding URL length limits. Same args as GET but in request body.',
+          }
+        })
     : []
 
   const ops = [...getOps, ...postReadOps]
@@ -1301,76 +1026,32 @@ export function renderDocs(
     'hasMore is reliable for forward offset pagination (skip + take) only. With cursor pagination or negative take, hasMore may be inaccurate.',
     'When the server config sets pagination.defaultLimit, take is automatically applied to findMany and findManyPaginated if omitted.',
     'When the server config sets pagination.maxLimit, take is capped by absolute value to that limit for findMany and findManyPaginated. This applies to both positive and negative take values.',
+    'When maxLimit is set and take is a non-finite or non-integer value, the request is rejected with 400.',
     'Clients cannot detect these server-side limits from the API alone. Check with the API provider for configured limits.',
   ]
 
   const nestedWriteListOps = [
-    {
-      key: 'create',
-      desc: 'Create new related records inline. Accepts a single object or array.',
-    },
-    {
-      key: 'connect',
-      desc: 'Connect existing records by unique identifier. Accepts a single object or array.',
-    },
-    {
-      key: 'connectOrCreate',
-      desc: 'Connect if exists, create if not. Each item: { where, create }.',
-    },
-    {
-      key: 'createMany',
-      desc: 'Bulk create related records. Shape: { data: [...], skipDuplicates?: boolean }.',
-    },
-    {
-      key: 'set',
-      desc: 'Replace all connections. Provide an array of unique identifiers.',
-    },
-    {
-      key: 'disconnect',
-      desc: 'Disconnect related records without deleting them.',
-    },
+    { key: 'create', desc: 'Create new related records inline. Accepts a single object or array.' },
+    { key: 'connect', desc: 'Connect existing records by unique identifier. Accepts a single object or array.' },
+    { key: 'connectOrCreate', desc: 'Connect if exists, create if not. Each item: { where, create }.' },
+    { key: 'createMany', desc: 'Bulk create related records. Shape: { data: [...], skipDuplicates?: boolean }.' },
+    { key: 'set', desc: 'Replace all connections. Provide an array of unique identifiers.' },
+    { key: 'disconnect', desc: 'Disconnect related records without deleting them.' },
     { key: 'delete', desc: 'Delete related records by unique identifier.' },
-    {
-      key: 'update',
-      desc: 'Update related records. Each item: { where, data }.',
-    },
-    {
-      key: 'updateMany',
-      desc: 'Bulk update related records matching a filter. Each item: { where, data }.',
-    },
-    {
-      key: 'deleteMany',
-      desc: 'Bulk delete related records matching a filter.',
-    },
-    {
-      key: 'upsert',
-      desc: 'Create or update related records. Each item: { where, create, update }.',
-    },
+    { key: 'update', desc: 'Update related records. Each item: { where, data }.' },
+    { key: 'updateMany', desc: 'Bulk update related records matching a filter. Each item: { where, data }.' },
+    { key: 'deleteMany', desc: 'Bulk delete related records matching a filter.' },
+    { key: 'upsert', desc: 'Create or update related records. Each item: { where, create, update }.' },
   ]
 
   const nestedWriteSingleOps = [
     { key: 'create', desc: 'Create a new related record inline.' },
-    {
-      key: 'connect',
-      desc: 'Connect an existing record by unique identifier.',
-    },
-    {
-      key: 'connectOrCreate',
-      desc: 'Connect if exists, create if not. Shape: { where, create }.',
-    },
-    {
-      key: 'disconnect',
-      desc: 'Disconnect the related record (set relation to null). Pass true.',
-    },
+    { key: 'connect', desc: 'Connect an existing record by unique identifier.' },
+    { key: 'connectOrCreate', desc: 'Connect if exists, create if not. Shape: { where, create }.' },
+    { key: 'disconnect', desc: 'Disconnect the related record (set relation to null). Pass true.' },
     { key: 'delete', desc: 'Delete the related record. Pass true.' },
-    {
-      key: 'update',
-      desc: 'Update the related record inline with update input.',
-    },
-    {
-      key: 'upsert',
-      desc: 'Create the related record if it does not exist, update if it does. Shape: { create, update }.',
-    },
+    { key: 'update', desc: 'Update the related record inline with update input.' },
+    { key: 'upsert', desc: 'Create the related record if it does not exist, update if it does. Shape: { create, update }.' },
   ]
 
   const guardShapeInfo = [

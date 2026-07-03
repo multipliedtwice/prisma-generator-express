@@ -105,6 +105,18 @@ const buildOrderBy = (orderBy?: OrderByDef): string => {
   )
 }
 
+const validateSort = (value: unknown): SortDirection | undefined => {
+  if (value === undefined) return undefined
+  if (value === 'asc' || value === 'desc') return value
+  throw new HttpError(400, 'invalid orderBy.sort: expected "asc" or "desc"')
+}
+
+const validateNullsOrder = (value: unknown): NullsOrder | undefined => {
+  if (value === undefined) return undefined
+  if (value === 'first' || value === 'last') return value
+  throw new HttpError(400, 'invalid orderBy.nulls: expected "first" or "last"')
+}
+
 const parseOrderByParam = (raw: unknown): OrderByDef | undefined => {
   if (raw === undefined || raw === null || raw === '') return undefined
   if (typeof raw !== 'string') return undefined
@@ -124,12 +136,10 @@ const parseOrderByParam = (raw: unknown): OrderByDef | undefined => {
       if (dirRaw === 'asc' || dirRaw === 'desc')
         return { field, direction: dirRaw }
       if (dirRaw && typeof dirRaw === 'object') {
-        const sort = (dirRaw as { sort?: unknown }).sort
-        const nulls = (dirRaw as { nulls?: unknown }).nulls
-        const direction = sort === 'asc' || sort === 'desc' ? sort : undefined
-        const nullsOrder =
-          nulls === 'first' || nulls === 'last' ? nulls : undefined
-        return { field, direction, nulls: nullsOrder }
+        const dirObj = dirRaw as { sort?: unknown; nulls?: unknown }
+        const direction = validateSort(dirObj.sort)
+        const nulls = validateNullsOrder(dirObj.nulls)
+        return { field, direction, nulls }
       }
       return { field }
     }

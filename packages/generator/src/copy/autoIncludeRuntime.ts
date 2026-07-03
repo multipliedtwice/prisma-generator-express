@@ -1,8 +1,5 @@
 import type { Request, Response } from 'express'
 import {
-  initSSE,
-  endSSE,
-  startSSEKeepalive,
   sendSSEField,
   sendSSEResult,
   sendSSEError,
@@ -13,13 +10,16 @@ import {
   sendSSEPageMeta,
   runSingleResultSSE,
   emitTerminalSSEError,
+  safeSendError,
   setByPath,
   getDelegate,
   getExtendedClient,
   applyPaginationLimits,
   countForPagination,
+  withSSE,
   mapError,
   HttpError,
+  LOG_PREFIX,
   type OperationContext,
   type PrismaDelegate,
   type FindManyPaginatedMode,
@@ -35,8 +35,6 @@ import type { AutoIncludeProgressiveVariantConfig } from './routeConfig'
 
 const STAGE_CONCURRENCY = 4
 const MAX_IN_CHUNK = 1000
-
-type IntervalHandle = ReturnType<typeof setInterval>
 
 export type AutoIncludeBaseOp =
   | 'findUnique'
@@ -85,16 +83,11 @@ function stripInternalAtScope(
   internalPaths: string[],
   scopePath: string,
 ): void {
+  const prefix = scopePath === '' ? '' : scopePath + '.'
   for (const fullPath of internalPaths) {
-    if (scopePath === '') {
-      if (!fullPath.includes('.')) {
-        delete target[fullPath]
-      }
-      continue
-    }
-    if (!fullPath.startsWith(scopePath + '.')) continue
-    const relative = fullPath.slice(scopePath.length + 1)
-    if (relative.includes('.')) continue
+    if (!fullPath.startsWith(prefix)) continue
+    const relative = fullPath.slice(prefix.length)
+    if (relative === '' || relative.includes('.')) continue
     delete target[relative]
   }
 }
@@ -132,22 +125,14 @@ function buildPublicForStage(
   internalFieldPaths: string[],
   scopePath: string,
 ): unknown {
-  if (Array.isArray(result)) {
-    return result.map((item) => {
-      if (isPlainObject(item)) {
-        const copy: Record<string, unknown> = { ...item }
-        stripInternalAtScope(copy, internalFieldPaths, scopePath)
-        return copy
-      }
-      return item
-    })
-  }
-  if (isPlainObject(result)) {
-    const copy: Record<string, unknown> = { ...result }
+  const process = (item: unknown): unknown => {
+    if (!isPlainObject(item)) return item
+    const copy: Record<string, unknown> = { ...item }
     stripInternalAtScope(copy, internalFieldPaths, scopePath)
     return copy
   }
-  return result
+  if (Array.isArray(result)) return result.map(process)
+  return process(result)
 }
 
 function normalizeKey(v: unknown): string {
@@ -358,12 +343,7 @@ async function runAutoIncludeSingle(
   const isClientGone = () =>
     signal?.aborted === true || res.writableEnded || res.destroyed
 
-  let keepalive: IntervalHandle | null = null
-  try {
-    initSSE(res)
-    keepalive = startSSEKeepalive(res)
-    if (isClientGone()) return
-
+  await withSSE({ res, signal, label: 'single' }, async () => {
     const extended = await getExtendedClient(ctx)
     if (isClientGone()) return
 
@@ -374,7 +354,7 @@ async function runAutoIncludeSingle(
       rootResult = await rootDelegate[baseOp as Exclude<AutoIncludeBaseOp, 'findMany' | 'findManyPaginated'>](plan.rootArgs)
     } catch (err) {
       if (isClientGone()) return
-      console.error('[auto-progressive] root query failed:', err)
+      console.error(LOG_PREFIX, 'root query failed:', err)
       sendSSEError(res, mapError(err).message)
       return
     }
@@ -429,7 +409,7 @@ async function runAutoIncludeSingle(
           })
         } catch (err) {
           if (isAborted()) return
-          console.error('[auto-progressive] stage failed:', stage.relationPath, err)
+          console.error(LOG_PREFIX, 'stage failed:', stage.relationPath, err)
           stageErrorMessage = mapError(err).message
           return
         }
@@ -443,23 +423,13 @@ async function runAutoIncludeSingle(
     if (isClientGone()) return
 
     if (stageErrorMessage) {
-      if (!res.writableEnded && !res.destroyed) {
-        sendSSEError(res, stageErrorMessage)
-      }
+      safeSendError(res, stageErrorMessage)
       return
     }
 
     if (res.writableEnded || res.destroyed) return
     sendSSEResult(res, publicState)
-  } catch (err) {
-    if (isClientGone()) return
-    console.error('[auto-progressive] dispatch error:', err)
-    if (!res.writableEnded && !res.destroyed) {
-      sendSSEError(res, mapError(err).message)
-    }
-  } finally {
-    endSSE(res, keepalive)
-  }
+  })
 }
 
 function buildStageQueryArgs(
@@ -696,7 +666,7 @@ async function processFindManyStages(args: {
         })
       } catch (err) {
         if (isAborted()) return
-        console.error('[auto-progressive] stage failed:', stage.relationPath, err)
+        console.error(LOG_PREFIX, 'stage failed:', stage.relationPath, err)
         stageErrorMessage = mapError(err).message
         return
       }
@@ -765,125 +735,63 @@ async function runPaginatedRoot(args: {
   return { data: data as unknown[], count }
 }
 
-async function runAutoIncludeMany(
+async function runAutoIncludeManyOrPaginated(
   options: RunAutoIncludeOptions,
   plan: AutoIncludePlan,
+  isPaginated: boolean,
 ): Promise<void> {
   const { res, ctx, delegateKey, models, signal } = options
 
   const isClientGone = () =>
     signal?.aborted === true || res.writableEnded || res.destroyed
 
-  let keepalive: IntervalHandle | null = null
-  try {
-    initSSE(res)
-    keepalive = startSSEKeepalive(res)
-    if (isClientGone()) return
-
-    const extended = await getExtendedClient(ctx)
-    if (isClientGone()) return
-
-    const rootDelegate = getDelegate(extended, delegateKey)
-    const rootArgs = applyPaginationLimits(plan.rootArgs, ctx.paginationConfig, !!ctx.guardShape)
-
-    let rootResult: unknown
-    try {
-      rootResult = await rootDelegate.findMany(rootArgs)
-    } catch (err) {
-      if (isClientGone()) return
-      console.error('[auto-progressive] root findMany failed:', err)
-      sendSSEError(res, mapError(err).message)
-      return
-    }
-
-    if (isClientGone()) return
-
-    if (!Array.isArray(rootResult)) {
-      sendSSEError(res, 'auto-progressive: unexpected non-array root result for findMany')
-      return
-    }
-
-    const { publicRows, rootPairs } = buildRootPairs(rootResult, plan.internalFieldPaths)
-
-    sendSSERootArray(res, publicRows)
-    sendSSEProgress(res, 'root', 0, plan.stages.length)
-
-    const stageError = await processFindManyStages({
-      extended, models, plan, rootPairs, res, signal,
-    })
-
-    if (isClientGone()) return
-
-    if (stageError) {
-      if (!res.writableEnded && !res.destroyed) {
-        sendSSEError(res, stageError)
-      }
-      return
-    }
-
-    if (res.writableEnded || res.destroyed) return
-    sendSSEResult(res, publicRows)
-  } catch (err) {
-    if (isClientGone()) return
-    console.error('[auto-progressive] many dispatch error:', err)
-    if (!res.writableEnded && !res.destroyed) {
-      sendSSEError(res, mapError(err).message)
-    }
-  } finally {
-    endSSE(res, keepalive)
-  }
-}
-
-async function runAutoIncludePaginated(
-  options: RunAutoIncludeOptions,
-  plan: AutoIncludePlan,
-): Promise<void> {
-  const { res, ctx, delegateKey, models, signal } = options
-
-  const isClientGone = () =>
-    signal?.aborted === true || res.writableEnded || res.destroyed
-
-  let keepalive: IntervalHandle | null = null
-  try {
-    initSSE(res)
-    keepalive = startSSEKeepalive(res)
-    if (isClientGone()) return
-
+  await withSSE({ res, signal, label: isPaginated ? 'paginated' : 'many' }, async () => {
     const extended = await getExtendedClient(ctx)
     if (isClientGone()) return
 
     const rootArgs = applyPaginationLimits(plan.rootArgs, ctx.paginationConfig, !!ctx.guardShape)
-    const mode: FindManyPaginatedMode = ctx.findManyPaginatedMode ?? 'promiseAll'
 
     let rootRows: unknown[]
-    let total: number
+    let total = 0
+    let hasMore = false
+
     try {
-      const r = await runPaginatedRoot({
-        extended,
-        delegateKey,
-        rootArgs,
-        ctx,
-        mode,
-      })
-      rootRows = r.data
-      total = r.count
+      if (isPaginated) {
+        const mode: FindManyPaginatedMode = ctx.findManyPaginatedMode ?? 'promiseAll'
+        const r = await runPaginatedRoot({ extended, delegateKey, rootArgs, ctx, mode })
+        rootRows = r.data
+        total = r.count
+        const skip = typeof rootArgs.skip === 'number' ? rootArgs.skip : 0
+        const takeRaw = typeof rootArgs.take === 'number' ? rootArgs.take : rootRows.length
+        const absTake = Math.abs(takeRaw)
+        hasMore = absTake > 0 && rootRows.length >= absTake && skip + rootRows.length < total
+      } else {
+        const rootDelegate = getDelegate(extended, delegateKey)
+        const result = await rootDelegate.findMany(rootArgs)
+        if (!Array.isArray(result)) {
+          safeSendError(res, 'auto-progressive: unexpected non-array root result for findMany')
+          return
+        }
+        rootRows = result
+      }
     } catch (err) {
       if (isClientGone()) return
-      console.error('[auto-progressive] root findManyPaginated failed:', err)
+      console.error(
+        LOG_PREFIX,
+        isPaginated ? 'root findManyPaginated failed:' : 'root findMany failed:',
+        err,
+      )
       sendSSEError(res, mapError(err).message)
       return
     }
 
     if (isClientGone()) return
-
-    const skip = typeof rootArgs.skip === 'number' ? rootArgs.skip : 0
-    const takeRaw = typeof rootArgs.take === 'number' ? rootArgs.take : rootRows.length
-    const absTake = Math.abs(takeRaw)
-    const hasMore = absTake > 0 && rootRows.length >= absTake && skip + rootRows.length < total
 
     const { publicRows, rootPairs } = buildRootPairs(rootRows, plan.internalFieldPaths)
 
-    sendSSEPageMeta(res, total, hasMore)
+    if (isPaginated) {
+      sendSSEPageMeta(res, total, hasMore)
+    }
     sendSSERootArray(res, publicRows)
     sendSSEProgress(res, 'root', 0, plan.stages.length)
 
@@ -894,23 +802,17 @@ async function runAutoIncludePaginated(
     if (isClientGone()) return
 
     if (stageError) {
-      if (!res.writableEnded && !res.destroyed) {
-        sendSSEError(res, stageError)
-      }
+      safeSendError(res, stageError)
       return
     }
 
     if (res.writableEnded || res.destroyed) return
-    sendSSEResult(res, { data: publicRows, total, hasMore })
-  } catch (err) {
-    if (isClientGone()) return
-    console.error('[auto-progressive] paginated dispatch error:', err)
-    if (!res.writableEnded && !res.destroyed) {
-      sendSSEError(res, mapError(err).message)
+    if (isPaginated) {
+      sendSSEResult(res, { data: publicRows, total, hasMore })
+    } else {
+      sendSSEResult(res, publicRows)
     }
-  } finally {
-    endSSE(res, keepalive)
-  }
+  })
 }
 
 export async function runAutoIncludeProgressive(
@@ -950,10 +852,10 @@ export async function runAutoIncludeProgressive(
   }
 
   if (options.baseOp === 'findMany') {
-    return runAutoIncludeMany(options, plan)
+    return runAutoIncludeManyOrPaginated(options, plan, false)
   }
   if (options.baseOp === 'findManyPaginated') {
-    return runAutoIncludePaginated(options, plan)
+    return runAutoIncludeManyOrPaginated(options, plan, true)
   }
   return runAutoIncludeSingle(options, plan)
 }

@@ -3,7 +3,7 @@ import { GeneratorOptions } from '@prisma/generator-helper'
 export function generateQueryBuilderHelper(options: GeneratorOptions): string {
   const schemaPath = options.schemaPath
     ? JSON.stringify(options.schemaPath)
-    : "require('path').resolve(process.cwd(), 'prisma/schema.prisma')"
+    : "resolve(process.cwd(), 'prisma/schema.prisma')"
 
   return `import { spawn } from 'child_process'
 import { resolve, join, dirname } from 'path'

@@ -10,28 +10,21 @@ export interface ModelCoreOptions {
   findManyPaginatedMode: FindManyPaginatedMode
 }
 
-type WriteOpDecision =
-  | { mode: 'normal'; method: string }
-  | { mode: 'redirect'; method: string }
-  | { mode: 'throw' }
+type WriteOpDecision = { throw?: true; method: string }
 
 function decideWriteOp(
   name: string,
   defaultMethod: string,
   strategy: WriteStrategy,
 ): WriteOpDecision {
-  if (strategy === 'regular') {
-    return { mode: 'normal', method: defaultMethod }
+  if (strategy === 'throwOnNonReturning' && (name === 'createMany' || name === 'updateMany')) {
+    return { throw: true, method: defaultMethod }
   }
-  if (strategy === 'throwOnNonReturning') {
-    if (name === 'createMany' || name === 'updateMany') {
-      return { mode: 'throw' }
-    }
-    return { mode: 'normal', method: defaultMethod }
+  if (strategy === 'forceReturn') {
+    if (name === 'createMany') return { method: 'createManyAndReturn' }
+    if (name === 'updateMany') return { method: 'updateManyAndReturn' }
   }
-  if (name === 'createMany') return { mode: 'redirect', method: 'createManyAndReturn' }
-  if (name === 'updateMany') return { mode: 'redirect', method: 'updateManyAndReturn' }
-  return { mode: 'normal', method: defaultMethod }
+  return { method: defaultMethod }
 }
 
 function renderPaginatedBody(modelNameLower: string, mode: FindManyPaginatedMode): string {
@@ -112,7 +105,7 @@ export async function ${op}(ctx: OperationContext): Promise<unknown> {
   const writeHandlers = writeOps.map((op) => {
     const decision = decideWriteOp(op.name, op.method, writeStrategy)
 
-    if (decision.mode === 'throw') {
+    if (decision.throw) {
       return `
 export async function ${op.name}(_ctx: OperationContext): Promise<unknown> {
   throw new HttpError(501, '${op.name} is disabled by writeStrategy="${writeStrategy}"')

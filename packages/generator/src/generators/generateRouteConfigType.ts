@@ -1,62 +1,14 @@
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import type { Target } from '../constants'
-import { capitalize } from '../utils/strings'
+import { OPERATION_METADATA, READ_OPERATION_NAMES } from '../copy/operationDefinitions'
 
-const ROUTER_OPERATIONS = [
-  'findUnique',
-  'findUniqueOrThrow',
-  'findFirst',
-  'findFirstOrThrow',
-  'findMany',
-  'findManyPaginated',
-  'count',
-  'aggregate',
-  'groupBy',
-  'create',
-  'createMany',
-  'createManyAndReturn',
-  'update',
-  'updateMany',
-  'updateManyAndReturn',
-  'upsert',
-  'delete',
-  'deleteMany',
-] as const
+const ROUTER_OPERATIONS = OPERATION_METADATA
+  .filter((m) => m.name !== 'updateEach')
+  .map((m) => m.name)
 
-type RouterOperation = (typeof ROUTER_OPERATIONS)[number]
-
-const READ_OPERATIONS: ReadonlySet<RouterOperation> = new Set<RouterOperation>([
-  'findUnique',
-  'findUniqueOrThrow',
-  'findFirst',
-  'findFirstOrThrow',
-  'findMany',
-  'findManyPaginated',
-  'count',
-  'aggregate',
-  'groupBy',
-])
-
-const ROUTER_OP_TO_SHAPE_OP: Record<RouterOperation, string> = {
-  findUnique: 'findUnique',
-  findUniqueOrThrow: 'findUniqueOrThrow',
-  findFirst: 'findFirst',
-  findFirstOrThrow: 'findFirstOrThrow',
-  findMany: 'findMany',
-  findManyPaginated: 'findManyPaginated',
-  count: 'count',
-  aggregate: 'aggregate',
-  groupBy: 'groupBy',
-  create: 'create',
-  createMany: 'createMany',
-  createManyAndReturn: 'createManyAndReturn',
-  update: 'update',
-  updateMany: 'updateMany',
-  updateManyAndReturn: 'updateManyAndReturn',
-  upsert: 'upsert',
-  delete: 'delete',
-  deleteMany: 'deleteMany',
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1)
 }
 
 function requestTypeFor(target: Target): string {
@@ -120,17 +72,14 @@ export function generateRouteConfigType(
     )
   }
 
-  const shapeOps = Object.values(ROUTER_OP_TO_SHAPE_OP).filter(
-    (v, i, a) => a.indexOf(v) === i,
-  )
+  const shapeOps = Array.from(new Set(ROUTER_OPERATIONS))
   const opShapeImports = shapeOps
     .map((op) => `${m}${capitalize(op)}ShapeInput`)
     .join(',\n  ')
 
   const overrides = ROUTER_OPERATIONS.map((routerOp) => {
-    const shapeOp = ROUTER_OP_TO_SHAPE_OP[routerOp]
-    const c = capitalize(shapeOp)
-    const isRead = READ_OPERATIONS.has(routerOp)
+    const c = capitalize(routerOp)
+    const isRead = READ_OPERATION_NAMES.has(routerOp)
     const lines = [
       `    before?: ${beforeRef}[]`,
       `    after?: ${afterRef}[]`,

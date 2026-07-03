@@ -18,6 +18,7 @@ import {
   generateRelationMeta,
   generateRelationModelsIndex,
 } from './generators/generateRelationMeta'
+import { generateModelMetadata } from './generators/generateModelMetadata'
 import {
   getRelativeClientPath,
   getGuardShapesImport,
@@ -181,6 +182,17 @@ generatorHandler({
       modelNames.push(model.name)
 
       const guardShapesImport = getGuardShapesImport(options, model.name)
+
+      await writeFileSafely({
+        content: generateModelMetadata({
+          model: model as DMMF.Model,
+          enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
+          importStyle,
+        }),
+        options,
+        model: model as DMMF.Model,
+        operation: 'Metadata',
+      })
 
       await writeFileSafely({
         content: generateModelCore({

@@ -3,6 +3,46 @@ import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import { WriteStrategy, FindManyPaginatedMode } from '../constants'
+import { OPERATION_METADATA } from '../copy/operationDefinitions'
+
+function pathExpr(suffix: string): string {
+  if (!suffix) return `basePath || '/'`
+  return `\`\${basePath}${suffix}\``
+}
+
+function emitReadOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+  const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
+  const handlerName = `${modelName}${c}`
+  const pathValue = pathExpr(meta.pathSuffix)
+
+  const postReadLine = meta.supportsPostRead
+    ? meta.name === 'findMany'
+      ? `      if (postReadsEnabled) {
+        const postPath = basePath ? \`\${basePath}/read\` : '/read'
+        instance.post(postPath, handleRead(opConfig, ${handlerName}, parseBodyAsQueryHook))
+      }`
+      : `      if (postReadsEnabled) instance.post(path, handleRead(opConfig, ${handlerName}, parseBodyAsQueryHook))`
+    : ''
+
+  return `    if (isEnabled(config.${meta.configKey})) {
+      const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
+      const path = ${pathValue}
+      instance.get(path, handleRead(opConfig, ${handlerName}, parseQueryHook))
+${postReadLine}
+    }`
+}
+
+function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+  const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
+  const handlerName = `${modelName}${c}`
+  const pathValue = pathExpr(meta.pathSuffix)
+
+  return `    if (isEnabled(config.${meta.configKey})) {
+      const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
+      const path = ${pathValue}
+      instance.${meta.method}(path, handleWrite(opConfig, ${handlerName}))
+    }`
+}
 
 export function generateFastifyRouterFunction({
   model,
@@ -26,56 +66,25 @@ export function generateFastifyRouterFunction({
   const modelNameLower = modelName.toLowerCase()
   const routerFunctionName = `${modelName}Router`
 
-  const fieldsMeta = model.fields.map((f) => ({
-    name: f.name,
-    kind: f.kind,
-    type: f.type,
-    isList: f.isList,
-    isRequired: f.isRequired,
-    hasDefaultValue: f.hasDefaultValue,
-    isUpdatedAt: f.isUpdatedAt ?? false,
-    documentation: f.documentation,
-    relationFromFields: f.relationFromFields,
-  }))
+  const handlerImports = OPERATION_METADATA
+    .map((m) => `  ${modelName}${m.name.charAt(0).toUpperCase() + m.name.slice(1)},`)
+    .join('\n')
 
-  const referencedEnumTypes = new Set(
-    model.fields.filter((f) => f.kind === 'enum').map((f) => f.type),
-  )
+  const readOps = OPERATION_METADATA.filter((m) => m.kind === 'read')
+  const writeOps = OPERATION_METADATA.filter((m) => m.kind === 'write' || m.kind === 'batch')
+    .filter((m) => m.name !== 'updateEach')
 
-  const enumsMeta = enums
-    .filter((e) => referencedEnumTypes.has(e.name))
-    .map((e) => ({
-      name: e.name,
-      values: e.values.map((v) => ({ name: v.name })),
-    }))
+  const readOpBlocks = readOps.map((m) => emitReadOp(m, modelName)).join('\n\n')
+  const writeOpBlocks = writeOps.map((m) => emitWriteOp(m, modelName)).join('\n\n')
 
   return `import type { FastifyInstance, FastifyRequest, FastifyReply, FastifyError } from 'fastify'
 import { startQueryBuilder } from '../queryBuilder${ext}'
 import {
-  ${modelName}FindUnique,
-  ${modelName}FindUniqueOrThrow,
-  ${modelName}FindFirst,
-  ${modelName}FindFirstOrThrow,
-  ${modelName}FindMany,
-  ${modelName}FindManyPaginated,
-  ${modelName}Create,
-  ${modelName}CreateMany,
-  ${modelName}CreateManyAndReturn,
-  ${modelName}Update,
-  ${modelName}UpdateMany,
-  ${modelName}UpdateManyAndReturn,
-  ${modelName}Upsert,
-  ${modelName}Delete,
-  ${modelName}DeleteMany,
-  ${modelName}Aggregate,
-  ${modelName}Count,
-  ${modelName}GroupBy,
-  ${modelName}UpdateEach,
+${handlerImports}
 } from './${modelName}Handlers${ext}'
 import type {
   RouteConfig,
   FastifyHookHandler,
-  WriteStrategy,
   FindManyPaginatedMode,
   PaginationConfig,
 } from '../routeConfig.target${ext}'
@@ -84,17 +93,13 @@ import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import { validateCountSourceWhere } from '../routeConfig${ext}'
 import { mapError, transformResult, mergePaginationConfig, HttpError, type OperationContext } from '../operationRuntime${ext}'
+import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, importStyle, 'fastify')}
 const _env = getEnv()
 
-const WRITE_STRATEGY: WriteStrategy = '${writeStrategy}'
 const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode}'
 const DROP_GUARD = ${dropGuard} || _env.E2E === 'true'
-
-const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
-
-const MODEL_ENUMS = ${JSON.stringify(enumsMeta, null, 2)} as const
 
 type OperationConfigLike = {
   before?: FastifyHookHandler[]
@@ -234,7 +239,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
           MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
           MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
           config,
-          { format: 'json', writeStrategy: WRITE_STRATEGY },
+          { format: 'json', writeStrategy: '${writeStrategy}' },
         )
       }
       return _openApiJsonCache
@@ -247,7 +252,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
           MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
           MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
           config,
-          { format: 'yaml', writeStrategy: WRITE_STRATEGY },
+          { format: 'yaml', writeStrategy: '${writeStrategy}' },
         ) as string
       }
       return _openApiYamlCache
@@ -292,7 +297,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
       })
     }
 
-    const handleGet = (
+    const handleRead = (
       opConfig: OperationConfigLike,
       handlerFn: (req: FastifyRequest, reply: FastifyReply) => Promise<void>,
       parseFn: (req: FastifyRequest) => void,
@@ -326,125 +331,9 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
       }
     }
 
-    if (isEnabled(config.findFirst)) {
-      const opConfig: OperationConfigLike = (config.findFirst as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/first\` : '/first'
-      instance.get(path, handleGet(opConfig, ${modelName}FindFirst, parseQueryHook))
-      if (postReadsEnabled) instance.post(path, handleGet(opConfig, ${modelName}FindFirst, parseBodyAsQueryHook))
-    }
+${readOpBlocks}
 
-    if (isEnabled(config.findFirstOrThrow)) {
-      const opConfig: OperationConfigLike = (config.findFirstOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/first/strict\` : '/first/strict'
-      instance.get(path, handleGet(opConfig, ${modelName}FindFirstOrThrow, parseQueryHook))
-      if (postReadsEnabled) instance.post(path, handleGet(opConfig, ${modelName}FindFirstOrThrow, parseBodyAsQueryHook))
-    }
-
-    if (isEnabled(config.findManyPaginated)) {
-      const opConfig: OperationConfigLike = (config.findManyPaginated as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/paginated\` : '/paginated'
-      instance.get(path, handleGet(opConfig, ${modelName}FindManyPaginated, parseQueryHook))
-      if (postReadsEnabled) instance.post(path, handleGet(opConfig, ${modelName}FindManyPaginated, parseBodyAsQueryHook))
-    }
-
-    if (isEnabled(config.aggregate)) {
-      const opConfig: OperationConfigLike = (config.aggregate as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/aggregate\` : '/aggregate'
-      instance.get(path, handleGet(opConfig, ${modelName}Aggregate, parseQueryHook))
-      if (postReadsEnabled) instance.post(path, handleGet(opConfig, ${modelName}Aggregate, parseBodyAsQueryHook))
-    }
-
-    if (isEnabled(config.count)) {
-      const opConfig: OperationConfigLike = (config.count as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/count\` : '/count'
-      instance.get(path, handleGet(opConfig, ${modelName}Count, parseQueryHook))
-      if (postReadsEnabled) instance.post(path, handleGet(opConfig, ${modelName}Count, parseBodyAsQueryHook))
-    }
-
-    if (isEnabled(config.groupBy)) {
-      const opConfig: OperationConfigLike = (config.groupBy as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/groupby\` : '/groupby'
-      instance.get(path, handleGet(opConfig, ${modelName}GroupBy, parseQueryHook))
-      if (postReadsEnabled) instance.post(path, handleGet(opConfig, ${modelName}GroupBy, parseBodyAsQueryHook))
-    }
-
-    if (isEnabled(config.findUniqueOrThrow)) {
-      const opConfig: OperationConfigLike = (config.findUniqueOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/unique/strict\` : '/unique/strict'
-      instance.get(path, handleGet(opConfig, ${modelName}FindUniqueOrThrow, parseQueryHook))
-      if (postReadsEnabled) instance.post(path, handleGet(opConfig, ${modelName}FindUniqueOrThrow, parseBodyAsQueryHook))
-    }
-
-    if (isEnabled(config.findUnique)) {
-      const opConfig: OperationConfigLike = (config.findUnique as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/unique\` : '/unique'
-      instance.get(path, handleGet(opConfig, ${modelName}FindUnique, parseQueryHook))
-      if (postReadsEnabled) instance.post(path, handleGet(opConfig, ${modelName}FindUnique, parseBodyAsQueryHook))
-    }
-
-    if (isEnabled(config.findMany)) {
-      const opConfig: OperationConfigLike = (config.findMany as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath || '/'
-      instance.get(path, handleGet(opConfig, ${modelName}FindMany, parseQueryHook))
-      if (postReadsEnabled) {
-        const postPath = basePath ? \`\${basePath}/read\` : '/read'
-        instance.post(postPath, handleGet(opConfig, ${modelName}FindMany, parseBodyAsQueryHook))
-      }
-    }
-
-    if (isEnabled(config.createManyAndReturn)) {
-      const opConfig: OperationConfigLike = (config.createManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-      instance.post(path, handleWrite(opConfig, ${modelName}CreateManyAndReturn))
-    }
-
-    if (isEnabled(config.createMany)) {
-      const opConfig: OperationConfigLike = (config.createMany as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/many\` : '/many'
-      instance.post(path, handleWrite(opConfig, ${modelName}CreateMany))
-    }
-
-    if (isEnabled(config.create)) {
-      const opConfig: OperationConfigLike = (config.create as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath || '/'
-      instance.post(path, handleWrite(opConfig, ${modelName}Create))
-    }
-
-    if (isEnabled(config.updateManyAndReturn)) {
-      const opConfig: OperationConfigLike = (config.updateManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-      instance.put(path, handleWrite(opConfig, ${modelName}UpdateManyAndReturn))
-    }
-
-    if (isEnabled(config.updateMany)) {
-      const opConfig: OperationConfigLike = (config.updateMany as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/many\` : '/many'
-      instance.put(path, handleWrite(opConfig, ${modelName}UpdateMany))
-    }
-
-    if (isEnabled(config.update)) {
-      const opConfig: OperationConfigLike = (config.update as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath || '/'
-      instance.put(path, handleWrite(opConfig, ${modelName}Update))
-    }
-
-    if (isEnabled(config.upsert)) {
-      const opConfig: OperationConfigLike = (config.upsert as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath || '/'
-      instance.patch(path, handleWrite(opConfig, ${modelName}Upsert))
-    }
-
-    if (isEnabled(config.deleteMany)) {
-      const opConfig: OperationConfigLike = (config.deleteMany as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath ? \`\${basePath}/many\` : '/many'
-      instance.delete(path, handleWrite(opConfig, ${modelName}DeleteMany))
-    }
-
-    if (isEnabled(config.delete)) {
-      const opConfig: OperationConfigLike = (config.delete as OperationConfigLike | undefined) ?? defaultOpConfig
-      const path = basePath || '/'
-      instance.delete(path, handleWrite(opConfig, ${modelName}Delete))
-    }
+${writeOpBlocks}
 
     if (config.updateEach) {
       const opConfig: OperationConfigLike = (config.updateEach as OperationConfigLike | undefined) ?? defaultOpConfig

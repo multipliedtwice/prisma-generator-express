@@ -3,6 +3,46 @@ import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import { WriteStrategy } from '../constants'
+import { OPERATION_METADATA } from '../copy/operationDefinitions'
+
+function pathExpr(suffix: string): string {
+  if (!suffix) return `basePath || '/'`
+  return `\`\${basePath}${suffix}\``
+}
+
+function emitReadOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+  const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
+  const handlerName = `${modelName}${c}`
+  const pathValue = pathExpr(meta.pathSuffix)
+
+  const postReadLine = meta.supportsPostRead
+    ? meta.name === 'findMany'
+      ? `    if (postReadsEnabled) {
+      const postPath = basePath ? \`\${basePath}/read\` : '/read'
+      app.post(postPath, handleRead(opConfig, ${handlerName}, parseBodyAsQueryMiddleware))
+    }`
+      : `    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${handlerName}, parseBodyAsQueryMiddleware))`
+    : ''
+
+  return `  if (isEnabled(config.${meta.configKey})) {
+    const opConfig = opFor('${meta.configKey}')
+    const path = ${pathValue}
+    app.get(path, handleRead(opConfig, ${handlerName}, parseQueryMiddleware))
+${postReadLine}
+  }`
+}
+
+function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+  const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
+  const handlerName = `${modelName}${c}`
+  const pathValue = pathExpr(meta.pathSuffix)
+
+  return `  if (isEnabled(config.${meta.configKey})) {
+    const opConfig = opFor('${meta.configKey}')
+    const path = ${pathValue}
+    app.${meta.method}(path, handleWrite(opConfig, ${handlerName}))
+  }`
+}
 
 export function generateHonoRouterFunction({
   model,
@@ -24,53 +64,23 @@ export function generateHonoRouterFunction({
   const modelNameLower = modelName.toLowerCase()
   const routerFunctionName = `${modelName}Router`
 
-  const fieldsMeta = model.fields.map((f) => ({
-    name: f.name,
-    kind: f.kind,
-    type: f.type,
-    isList: f.isList,
-    isRequired: f.isRequired,
-    hasDefaultValue: f.hasDefaultValue,
-    isUpdatedAt: f.isUpdatedAt ?? false,
-    documentation: f.documentation,
-    relationFromFields: f.relationFromFields,
-  }))
+  const handlerImports = OPERATION_METADATA
+    .map((m) => `  ${modelName}${m.name.charAt(0).toUpperCase() + m.name.slice(1)},`)
+    .join('\n')
 
-  const referencedEnumTypes = new Set(
-    model.fields.filter((f) => f.kind === 'enum').map((f) => f.type),
-  )
+  const readOps = OPERATION_METADATA.filter((m) => m.kind === 'read')
+  const writeOps = OPERATION_METADATA.filter((m) => m.kind === 'write' || m.kind === 'batch')
+    .filter((m) => m.name !== 'updateEach')
 
-  const enumsMeta = enums
-    .filter((e) => referencedEnumTypes.has(e.name))
-    .map((e) => ({
-      name: e.name,
-      values: e.values.map((v) => ({ name: v.name })),
-    }))
+  const readOpBlocks = readOps.map((m) => emitReadOp(m, modelName)).join('\n\n')
+  const writeOpBlocks = writeOps.map((m) => emitWriteOp(m, modelName)).join('\n\n')
 
   return `import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { HTTPException } from 'hono/http-exception'
 import {
-  ${modelName}FindUnique,
-  ${modelName}FindUniqueOrThrow,
-  ${modelName}FindFirst,
-  ${modelName}FindFirstOrThrow,
-  ${modelName}FindMany,
-  ${modelName}FindManyPaginated,
-  ${modelName}Create,
-  ${modelName}CreateMany,
-  ${modelName}CreateManyAndReturn,
-  ${modelName}Update,
-  ${modelName}UpdateMany,
-  ${modelName}UpdateManyAndReturn,
-  ${modelName}Upsert,
-  ${modelName}Delete,
-  ${modelName}DeleteMany,
-  ${modelName}Aggregate,
-  ${modelName}Count,
-  ${modelName}GroupBy,
-  ${modelName}UpdateEach,
+${handlerImports}
 } from './${modelName}Handlers${ext}'
 import type {
   RouteConfig,
@@ -79,7 +89,6 @@ import type {
   HonoEnvBase,
   HonoInternalVariables,
   GeneratedHonoEnv,
-  WriteStrategy,
   PaginationConfig,
 } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
@@ -91,11 +100,11 @@ import {
   transformResult,
   mergePaginationConfig,
 } from '../operationRuntime${ext}'
+import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'HonoBeforeHook', guardShapesImport, importStyle, 'hono')}
 const _env = getEnv()
 
-const WRITE_STRATEGY: WriteStrategy = '${writeStrategy}'
 const DROP_GUARD = ${dropGuard} || _env.E2E === 'true'
 
 type JsonLike =
@@ -105,10 +114,6 @@ type JsonLike =
   | null
   | JsonLike[]
   | { [k: string]: JsonLike }
-
-const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
-
-const MODEL_ENUMS = ${JSON.stringify(enumsMeta, null, 2)} as const
 
 type OperationConfigLike<TEnv extends HonoEnvBase> = {
   before?: HonoBeforeHook<TEnv>[]
@@ -259,7 +264,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config as RouteConfig,
-        { format: 'json', writeStrategy: WRITE_STRATEGY },
+        { format: 'json', writeStrategy: '${writeStrategy}' },
       )
     }
     return _openApiJsonCache
@@ -272,7 +277,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config as RouteConfig,
-        { format: 'yaml', writeStrategy: WRITE_STRATEGY },
+        { format: 'yaml', writeStrategy: '${writeStrategy}' },
       ) as string
     }
     return _openApiYamlCache
@@ -343,109 +348,9 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
       ?? (defaultOpConfig as OperationConfigLike<TEnv>)
   }
 
-  if (isEnabled(config.findFirst)) {
-    const opConfig = opFor('findFirst')
-    const path = basePath ? \`\${basePath}/first\` : '/first'
-    app.get(path, handleRead(opConfig, ${modelName}FindFirst, parseQueryMiddleware))
-    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}FindFirst, parseBodyAsQueryMiddleware))
-  }
-  if (isEnabled(config.findFirstOrThrow)) {
-    const opConfig = opFor('findFirstOrThrow')
-    const path = basePath ? \`\${basePath}/first/strict\` : '/first/strict'
-    app.get(path, handleRead(opConfig, ${modelName}FindFirstOrThrow, parseQueryMiddleware))
-    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}FindFirstOrThrow, parseBodyAsQueryMiddleware))
-  }
-  if (isEnabled(config.findManyPaginated)) {
-    const opConfig = opFor('findManyPaginated')
-    const path = basePath ? \`\${basePath}/paginated\` : '/paginated'
-    app.get(path, handleRead(opConfig, ${modelName}FindManyPaginated, parseQueryMiddleware))
-    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}FindManyPaginated, parseBodyAsQueryMiddleware))
-  }
-  if (isEnabled(config.aggregate)) {
-    const opConfig = opFor('aggregate')
-    const path = basePath ? \`\${basePath}/aggregate\` : '/aggregate'
-    app.get(path, handleRead(opConfig, ${modelName}Aggregate, parseQueryMiddleware))
-    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}Aggregate, parseBodyAsQueryMiddleware))
-  }
-  if (isEnabled(config.count)) {
-    const opConfig = opFor('count')
-    const path = basePath ? \`\${basePath}/count\` : '/count'
-    app.get(path, handleRead(opConfig, ${modelName}Count, parseQueryMiddleware))
-    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}Count, parseBodyAsQueryMiddleware))
-  }
-  if (isEnabled(config.groupBy)) {
-    const opConfig = opFor('groupBy')
-    const path = basePath ? \`\${basePath}/groupby\` : '/groupby'
-    app.get(path, handleRead(opConfig, ${modelName}GroupBy, parseQueryMiddleware))
-    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}GroupBy, parseBodyAsQueryMiddleware))
-  }
-  if (isEnabled(config.findUniqueOrThrow)) {
-    const opConfig = opFor('findUniqueOrThrow')
-    const path = basePath ? \`\${basePath}/unique/strict\` : '/unique/strict'
-    app.get(path, handleRead(opConfig, ${modelName}FindUniqueOrThrow, parseQueryMiddleware))
-    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}FindUniqueOrThrow, parseBodyAsQueryMiddleware))
-  }
-  if (isEnabled(config.findUnique)) {
-    const opConfig = opFor('findUnique')
-    const path = basePath ? \`\${basePath}/unique\` : '/unique'
-    app.get(path, handleRead(opConfig, ${modelName}FindUnique, parseQueryMiddleware))
-    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${modelName}FindUnique, parseBodyAsQueryMiddleware))
-  }
-  if (isEnabled(config.findMany)) {
-    const opConfig = opFor('findMany')
-    const path = basePath || '/'
-    app.get(path, handleRead(opConfig, ${modelName}FindMany, parseQueryMiddleware))
-    if (postReadsEnabled) {
-      const postPath = basePath ? \`\${basePath}/read\` : '/read'
-      app.post(postPath, handleRead(opConfig, ${modelName}FindMany, parseBodyAsQueryMiddleware))
-    }
-  }
+${readOpBlocks}
 
-  if (isEnabled(config.createManyAndReturn)) {
-    const opConfig = opFor('createManyAndReturn')
-    const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    app.post(path, handleWrite(opConfig, ${modelName}CreateManyAndReturn))
-  }
-  if (isEnabled(config.createMany)) {
-    const opConfig = opFor('createMany')
-    const path = basePath ? \`\${basePath}/many\` : '/many'
-    app.post(path, handleWrite(opConfig, ${modelName}CreateMany))
-  }
-  if (isEnabled(config.create)) {
-    const opConfig = opFor('create')
-    const path = basePath || '/'
-    app.post(path, handleWrite(opConfig, ${modelName}Create))
-  }
-  if (isEnabled(config.updateManyAndReturn)) {
-    const opConfig = opFor('updateManyAndReturn')
-    const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    app.put(path, handleWrite(opConfig, ${modelName}UpdateManyAndReturn))
-  }
-  if (isEnabled(config.updateMany)) {
-    const opConfig = opFor('updateMany')
-    const path = basePath ? \`\${basePath}/many\` : '/many'
-    app.put(path, handleWrite(opConfig, ${modelName}UpdateMany))
-  }
-  if (isEnabled(config.update)) {
-    const opConfig = opFor('update')
-    const path = basePath || '/'
-    app.put(path, handleWrite(opConfig, ${modelName}Update))
-  }
-  if (isEnabled(config.upsert)) {
-    const opConfig = opFor('upsert')
-    const path = basePath || '/'
-    app.patch(path, handleWrite(opConfig, ${modelName}Upsert))
-  }
-  if (isEnabled(config.deleteMany)) {
-    const opConfig = opFor('deleteMany')
-    const path = basePath ? \`\${basePath}/many\` : '/many'
-    app.delete(path, handleWrite(opConfig, ${modelName}DeleteMany))
-  }
-  if (isEnabled(config.delete)) {
-    const opConfig = opFor('delete')
-    const path = basePath || '/'
-    app.delete(path, handleWrite(opConfig, ${modelName}Delete))
-  }
+${writeOpBlocks}
 
   if (config.updateEach) {
     const opConfig = (config.updateEach as unknown as OperationConfigLike<TEnv> | undefined) ?? (defaultOpConfig as OperationConfigLike<TEnv>)

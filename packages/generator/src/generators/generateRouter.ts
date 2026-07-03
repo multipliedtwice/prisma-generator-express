@@ -3,6 +3,54 @@ import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import { WriteStrategy, FindManyPaginatedMode } from '../constants'
+import { OPERATION_METADATA } from '../copy/operationDefinitions'
+
+interface OpEmitContext {
+  modelName: string
+  basePath: string
+  postReadsEnabled: string
+}
+
+function pathExpr(basePath: string, suffix: string): string {
+  if (!suffix) return basePath || '/'
+  if (!basePath) return `'${suffix}'`
+  return `\`\${basePath}${suffix}\``
+}
+
+function emitReadOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+  const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
+  const handlerName = `${modelName}${c}`
+  const pathValue = pathExpr('basePath', meta.pathSuffix)
+
+  const postReadBlock = meta.supportsPostRead
+    ? `    if (postReadsEnabled) {
+      const postPath = ${meta.name === 'findMany' ? "basePath ? `${basePath}/read` : '/read'" : `path`}
+      router.post(postPath, parseBodyAsQuery, setShape(opConfig), ...before, ${handlerName} as RequestHandler, ...after, respond)
+    }`
+    : ''
+
+  return `  if (isEnabled(config.${meta.configKey})) {
+    const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
+    const { before = [], after = [] } = opConfig
+    const path = ${pathValue}
+    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.${meta.coreName}, '${meta.name}'), ${handlerName} as RequestHandler, ...after, respond)
+${postReadBlock}
+  }`
+}
+
+function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+  const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
+  const handlerName = `${modelName}${c}`
+  const pathValue = pathExpr('basePath', meta.pathSuffix)
+  const respondFn = meta.successStatus === 201 ? 'respondCreated' : 'respond'
+
+  return `  if (isEnabled(config.${meta.configKey})) {
+    const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
+    const { before = [], after = [] } = opConfig
+    const path = ${pathValue}
+    router.${meta.method}(path, setShape(opConfig), ...before, ${handlerName} as RequestHandler, ...after, ${respondFn})
+  }`
+}
 
 export function generateRouterFunction({
   model,
@@ -27,57 +75,28 @@ export function generateRouterFunction({
   const delegateKey = modelName.charAt(0).toLowerCase() + modelName.slice(1)
   const routerFunctionName = `${modelName}Router`
 
-  const fieldsMeta = model.fields.map((f) => ({
-    name: f.name,
-    kind: f.kind,
-    type: f.type,
-    isList: f.isList,
-    isRequired: f.isRequired,
-    hasDefaultValue: f.hasDefaultValue,
-    isUpdatedAt: f.isUpdatedAt ?? false,
-    documentation: f.documentation,
-    relationFromFields: f.relationFromFields,
-  }))
+  const handlerImports = OPERATION_METADATA
+    .filter((m) => m.name !== 'updateEach')
+    .map((m) => `  ${modelName}${m.name.charAt(0).toUpperCase() + m.name.slice(1)},`)
+    .join('\n')
 
-  const referencedEnumTypes = new Set(
-    model.fields.filter((f) => f.kind === 'enum').map((f) => f.type),
-  )
+  const readOps = OPERATION_METADATA.filter((m) => m.kind === 'read')
+  const writeOps = OPERATION_METADATA.filter((m) => m.kind === 'write' || m.kind === 'batch')
+    .filter((m) => m.name !== 'updateEach')
 
-  const enumsMeta = enums
-    .filter((e) => referencedEnumTypes.has(e.name))
-    .map((e) => ({
-      name: e.name,
-      values: e.values.map((v) => ({ name: v.name })),
-    }))
+  const readOpBlocks = readOps.map((m) => emitReadOp(m, modelName)).join('\n\n')
+  const writeOpBlocks = writeOps.map((m) => emitWriteOp(m, modelName)).join('\n\n')
 
   return `import express from 'express'
 import type { Request, Response, NextFunction, RequestHandler } from 'express'
 import { startQueryBuilder } from '../queryBuilder${ext}'
 import {
-  ${modelName}FindUnique,
-  ${modelName}FindUniqueOrThrow,
-  ${modelName}FindFirst,
-  ${modelName}FindFirstOrThrow,
-  ${modelName}FindMany,
-  ${modelName}FindManyPaginated,
-  ${modelName}Create,
-  ${modelName}CreateMany,
-  ${modelName}CreateManyAndReturn,
-  ${modelName}Update,
-  ${modelName}UpdateMany,
-  ${modelName}UpdateManyAndReturn,
-  ${modelName}Upsert,
-  ${modelName}Delete,
-  ${modelName}DeleteMany,
-  ${modelName}Aggregate,
-  ${modelName}Count,
-  ${modelName}GroupBy,
+${handlerImports}
 } from './${modelName}Handlers${ext}'
 import * as core from './${modelName}Core${ext}'
 import type {
   RouteConfig,
   QueryBuilderConfig,
-  WriteStrategy,
   FindManyPaginatedMode,
   PaginationConfig,
 } from '../routeConfig.target${ext}'
@@ -99,16 +118,13 @@ import {
 } from '../operationRuntime${ext}'
 import { relationModels } from '../relationModels${ext}'
 import { runAutoIncludeProgressive } from '../autoIncludeRuntime${ext}'
+import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'RequestHandler', guardShapesImport, importStyle, 'express')}
 const _env = getEnv()
 
-const WRITE_STRATEGY: WriteStrategy = '${writeStrategy}'
 const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode}'
 const DROP_GUARD = ${dropGuard} || _env.E2E === 'true'
-
-const MODEL_FIELDS = ${JSON.stringify(fieldsMeta, null, 2)} as const
-const MODEL_ENUMS = ${JSON.stringify(enumsMeta, null, 2)} as const
 
 type OperationConfigLike = {
   before?: RequestHandler[]
@@ -183,7 +199,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config as unknown as Parameters<typeof buildModelOpenApi>[3],
-        { format: 'json', writeStrategy: WRITE_STRATEGY },
+        { format: 'json', writeStrategy: '${writeStrategy}' },
       )
     }
     return _openApiJsonCache
@@ -196,7 +212,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config as unknown as Parameters<typeof buildModelOpenApi>[3],
-        { format: 'yaml', writeStrategy: WRITE_STRATEGY },
+        { format: 'yaml', writeStrategy: '${writeStrategy}' },
       ) as string
     }
     return _openApiYamlCache
@@ -374,12 +390,14 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
   }
 
   const respond: RequestHandler = (_req, res) => {
+    if (res.headersSent || res.writableEnded) return
     const data = readLocals(res).data
     if (data === undefined) return res.status(500).json({ message: 'No data set by handler' })
     return res.json(transformResult(data))
   }
 
   const respondCreated: RequestHandler = (_req, res) => {
+    if (res.headersSent || res.writableEnded) return
     const data = readLocals(res).data
     if (data === undefined) return res.status(500).json({ message: 'No data set by handler' })
     return res.status(201).json(transformResult(data))
@@ -396,127 +414,10 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
     })
   }
 
-  if (isEnabled(config.findFirst)) {
-    const opConfig: OperationConfigLike = (config.findFirst as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/first\` : '/first'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findFirst, 'findFirst'), ${modelName}FindFirst as RequestHandler, ...after, respond)
-    if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}FindFirst as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.findFirstOrThrow)) {
-    const opConfig: OperationConfigLike = (config.findFirstOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/first/strict\` : '/first/strict'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findFirstOrThrow, 'findFirstOrThrow'), ${modelName}FindFirstOrThrow as RequestHandler, ...after, respond)
-    if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}FindFirstOrThrow as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.findManyPaginated)) {
-    const opConfig: OperationConfigLike = (config.findManyPaginated as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/paginated\` : '/paginated'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findManyPaginated, 'findManyPaginated'), ${modelName}FindManyPaginated as RequestHandler, ...after, respond)
-    if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}FindManyPaginated as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.aggregate)) {
-    const opConfig: OperationConfigLike = (config.aggregate as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/aggregate\` : '/aggregate'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.aggregate, 'aggregate'), ${modelName}Aggregate as RequestHandler, ...after, respond)
-    if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}Aggregate as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.count)) {
-    const opConfig: OperationConfigLike = (config.count as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/count\` : '/count'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.count, 'count'), ${modelName}Count as RequestHandler, ...after, respond)
-    if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}Count as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.groupBy)) {
-    const opConfig: OperationConfigLike = (config.groupBy as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/groupby\` : '/groupby'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.groupBy, 'groupBy'), ${modelName}GroupBy as RequestHandler, ...after, respond)
-    if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}GroupBy as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.findUniqueOrThrow)) {
-    const opConfig: OperationConfigLike = (config.findUniqueOrThrow as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/unique/strict\` : '/unique/strict'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findUniqueOrThrow, 'findUniqueOrThrow'), ${modelName}FindUniqueOrThrow as RequestHandler, ...after, respond)
-    if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}FindUniqueOrThrow as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.findUnique)) {
-    const opConfig: OperationConfigLike = (config.findUnique as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/unique\` : '/unique'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findUnique, 'findUnique'), ${modelName}FindUnique as RequestHandler, ...after, respond)
-    if (postReadsEnabled) router.post(path, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}FindUnique as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.findMany)) {
-    const opConfig: OperationConfigLike = (config.findMany as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath || '/'
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.findMany, 'findMany'), ${modelName}FindMany as RequestHandler, ...after, respond)
-    if (postReadsEnabled) {
-      const postPath = basePath ? \`\${basePath}/read\` : '/read'
-      router.post(postPath, parseBodyAsQuery, setShape(opConfig), ...before, ${modelName}FindMany as RequestHandler, ...after, respond)
-    }
-  }
+${readOpBlocks}
 
-  if (isEnabled(config.createManyAndReturn)) {
-    const opConfig: OperationConfigLike = (config.createManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    router.post(path, setShape(opConfig), ...before, ${modelName}CreateManyAndReturn as RequestHandler, ...after, respondCreated)
-  }
-  if (isEnabled(config.createMany)) {
-    const opConfig: OperationConfigLike = (config.createMany as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/many\` : '/many'
-    router.post(path, setShape(opConfig), ...before, ${modelName}CreateMany as RequestHandler, ...after, respondCreated)
-  }
-  if (isEnabled(config.create)) {
-    const opConfig: OperationConfigLike = (config.create as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath || '/'
-    router.post(path, setShape(opConfig), ...before, ${modelName}Create as RequestHandler, ...after, respondCreated)
-  }
-  if (isEnabled(config.updateManyAndReturn)) {
-    const opConfig: OperationConfigLike = (config.updateManyAndReturn as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/many/return\` : '/many/return'
-    router.put(path, setShape(opConfig), ...before, ${modelName}UpdateManyAndReturn as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.updateMany)) {
-    const opConfig: OperationConfigLike = (config.updateMany as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/many\` : '/many'
-    router.put(path, setShape(opConfig), ...before, ${modelName}UpdateMany as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.update)) {
-    const opConfig: OperationConfigLike = (config.update as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath || '/'
-    router.put(path, setShape(opConfig), ...before, ${modelName}Update as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.upsert)) {
-    const opConfig: OperationConfigLike = (config.upsert as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath || '/'
-    router.patch(path, setShape(opConfig), ...before, ${modelName}Upsert as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.deleteMany)) {
-    const opConfig: OperationConfigLike = (config.deleteMany as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath ? \`\${basePath}/many\` : '/many'
-    router.delete(path, setShape(opConfig), ...before, ${modelName}DeleteMany as RequestHandler, ...after, respond)
-  }
-  if (isEnabled(config.delete)) {
-    const opConfig: OperationConfigLike = (config.delete as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
-    const path = basePath || '/'
-    router.delete(path, setShape(opConfig), ...before, ${modelName}Delete as RequestHandler, ...after, respond)
-  }
+${writeOpBlocks}
+
   if (config.updateEach) {
     const opConfig: OperationConfigLike = (config.updateEach as OperationConfigLike | undefined) ?? defaultOpConfig
     if ((!opConfig.before || opConfig.before.length === 0) && _env.NODE_ENV !== 'production') {
