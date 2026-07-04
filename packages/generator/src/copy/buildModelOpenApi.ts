@@ -1,6 +1,8 @@
+import { stringify as yamlStringify } from 'yaml'
 import type { RouteConfig, WriteStrategy } from './routeConfig'
 import { OPERATION_BY_NAME, isOperationEnabled } from './operationDefinitions'
 import { normalizePrefix, removeTrailingSlash } from './misc'
+import { NUMERIC_SCALAR_TYPES, STRING_NUMERIC_TYPES } from './scalarTypes'
 
 type SchemaObject = {
   type?: string | string[]
@@ -55,9 +57,6 @@ type BuildOptions = {
   writeStrategy?: WriteStrategy
 }
 
-const NUMERIC_SCALAR_TYPES = new Set(['Int', 'BigInt', 'Float', 'Decimal'])
-const STRING_NUMERIC_TYPES = new Set(['BigInt', 'Decimal'])
-
 const WHERE_PROP: SchemaObject = { type: 'object', description: 'Filter conditions' }
 const TAKE_PROP: SchemaObject = { type: 'integer', description: 'Limit results' }
 const SKIP_PROP: SchemaObject = { type: 'integer', description: 'Skip results' }
@@ -72,6 +71,20 @@ const AGG_AVG: SchemaObject = { type: 'object', description: 'Average aggregate 
 const AGG_SUM: SchemaObject = { type: 'object', description: 'Sum aggregate (field selection object)' }
 const AGG_MIN: SchemaObject = { type: 'object', description: 'Min aggregate (field selection object)' }
 const AGG_MAX: SchemaObject = { type: 'object', description: 'Max aggregate (field selection object)' }
+
+const PROJECTION_PROPS: Record<string, SchemaObject> = {
+  select: SELECT_PROP,
+  include: INCLUDE_PROP,
+  omit: OMIT_PROP,
+}
+
+const AGGREGATE_PROPS: Record<string, SchemaObject> = {
+  _count: AGG_COUNT,
+  _avg: AGG_AVG,
+  _sum: AGG_SUM,
+  _min: AGG_MIN,
+  _max: AGG_MAX,
+}
 
 function opEnabled(config: RouteConfig, name: string): boolean {
   const meta = OPERATION_BY_NAME[name]
@@ -177,9 +190,7 @@ function findManyBodySchema(): SchemaObject {
       orderBy: ORDERBY_PROP,
       take: TAKE_PROP,
       skip: SKIP_PROP,
-      select: SELECT_PROP,
-      include: INCLUDE_PROP,
-      omit: OMIT_PROP,
+      ...PROJECTION_PROPS,
       cursor: CURSOR_PROP,
       distinct: DISTINCT_PROP,
     },
@@ -191,9 +202,7 @@ function findUniqueBodySchema(): SchemaObject {
     type: 'object',
     properties: {
       where: { type: 'object', description: 'Unique selector' },
-      select: SELECT_PROP,
-      include: INCLUDE_PROP,
-      omit: OMIT_PROP,
+      ...PROJECTION_PROPS,
     },
     required: ['where'],
   }
@@ -225,11 +234,7 @@ function aggregateBodySchema(): SchemaObject {
       cursor: CURSOR_PROP,
       take: TAKE_PROP,
       skip: SKIP_PROP,
-      _count: AGG_COUNT,
-      _avg: AGG_AVG,
-      _sum: AGG_SUM,
-      _min: AGG_MIN,
-      _max: AGG_MAX,
+      ...AGGREGATE_PROPS,
     },
   }
 }
@@ -251,35 +256,26 @@ function groupByBodySchema(): SchemaObject {
       },
       take: TAKE_PROP,
       skip: SKIP_PROP,
-      _count: AGG_COUNT,
-      _avg: AGG_AVG,
-      _sum: AGG_SUM,
-      _min: AGG_MIN,
-      _max: AGG_MAX,
+      ...AGGREGATE_PROPS,
     },
     required: ['by'],
   }
 }
 
+const POST_READ_BODY_SCHEMAS: Record<string, () => SchemaObject> = {
+  findMany: findManyBodySchema,
+  findFirst: findManyBodySchema,
+  findFirstOrThrow: findManyBodySchema,
+  findManyPaginated: findManyBodySchema,
+  findUnique: findUniqueBodySchema,
+  findUniqueOrThrow: findUniqueBodySchema,
+  count: countBodySchema,
+  aggregate: aggregateBodySchema,
+  groupBy: groupByBodySchema,
+}
+
 function getPostReadBodySchema(opName: string): SchemaObject {
-  switch (opName) {
-    case 'findMany':
-    case 'findFirst':
-    case 'findFirstOrThrow':
-    case 'findManyPaginated':
-      return findManyBodySchema()
-    case 'findUnique':
-    case 'findUniqueOrThrow':
-      return findUniqueBodySchema()
-    case 'count':
-      return countBodySchema()
-    case 'aggregate':
-      return aggregateBodySchema()
-    case 'groupBy':
-      return groupByBodySchema()
-    default:
-      return findManyBodySchema()
-  }
+  return (POST_READ_BODY_SCHEMAS[opName] ?? findManyBodySchema)()
 }
 
 function applyWriteStrategy(
@@ -324,27 +320,30 @@ function applyWriteStrategy(
     }
     const reqSchema = op.requestBody?.content?.['application/json']?.schema
     if (reqSchema && reqSchema.properties) {
-      reqSchema.properties.select = SELECT_PROP
-      reqSchema.properties.include = INCLUDE_PROP
-      reqSchema.properties.omit = OMIT_PROP
+      Object.assign(reqSchema.properties, PROJECTION_PROPS)
     }
   }
 
-  if (node.post) {
-    injectProjectionAndArrayResponse(
-      node.post,
-      '201',
-      'Create many ' + modelName + ' (forceReturn)',
-      'writeStrategy="forceReturn": this endpoint silently invokes createManyAndReturn and returns the created records instead of { count }.',
-    )
-  }
+  const forceReturnOps: Array<{
+    method: 'post' | 'put'
+    successCode: '200' | '201'
+    verb: string
+    targetOp: string
+  }> = [
+    { method: 'post', successCode: '201', verb: 'Create', targetOp: 'createManyAndReturn' },
+    { method: 'put',  successCode: '200', verb: 'Update', targetOp: 'updateManyAndReturn' },
+  ]
 
-  if (node.put) {
+  for (const entry of forceReturnOps) {
+    const target = node[entry.method]
+    if (!target) continue
     injectProjectionAndArrayResponse(
-      node.put,
-      '200',
-      'Update many ' + modelName + ' (forceReturn)',
-      'writeStrategy="forceReturn": this endpoint silently invokes updateManyAndReturn and returns the updated records instead of { count }.',
+      target,
+      entry.successCode,
+      entry.verb + ' many ' + modelName + ' (forceReturn)',
+      'writeStrategy="forceReturn": this endpoint silently invokes ' + entry.targetOp +
+      ' and returns the ' + (entry.verb === 'Create' ? 'created' : 'updated') +
+      ' records instead of { count }.',
     )
   }
 }
@@ -414,7 +413,7 @@ export function buildModelOpenApi(
   applyWriteStrategy(spec, modelName, basePath, options.writeStrategy)
 
   if (options.format === 'yaml') {
-    return toYaml(spec)
+    return yamlStringify(spec)
   }
   return spec
 }
@@ -424,12 +423,9 @@ function generateOperationSchemas(
   modelName: string,
   fields: ModelField[],
 ) {
-  const relatedModels = new Set<string>()
-  fields.forEach((field) => {
-    if (field.kind === 'object') {
-      relatedModels.add(field.type)
-    }
-  })
+  const relatedModels = new Set(
+    fields.filter((f) => f.kind === 'object').map((f) => f.type),
+  )
 
   relatedModels.forEach((relatedModel) => {
     if (!spec.components.schemas[`${relatedModel}Response`]) {
@@ -813,12 +809,6 @@ function generatePaths(
   const updateEachItemRef = { $ref: `#/components/schemas/${modelName}UpdateEachItemInput` }
   const updateEachResponseRef = { $ref: `#/components/schemas/${modelName}UpdateEachResponse` }
 
-  const projectionProps = {
-    select: SELECT_PROP,
-    include: INCLUDE_PROP,
-    omit: OMIT_PROP,
-  }
-
   if (opEnabled(config, 'findMany')) {
     const meta = OPERATION_BY_NAME['findMany']
     const op: any = {
@@ -1025,7 +1015,7 @@ function generatePaths(
               type: 'object',
               properties: {
                 data: createInputRef,
-                ...projectionProps,
+                ...PROJECTION_PROPS,
               },
               required: ['data'],
             },
@@ -1098,7 +1088,7 @@ function generatePaths(
                   description:
                     'Skip records that would cause unique constraint violations. Not supported on all database providers.',
                 },
-                ...projectionProps,
+                ...PROJECTION_PROPS,
               },
               required: ['data'],
             },
@@ -1135,7 +1125,7 @@ function generatePaths(
               properties: {
                 where: { type: 'object' },
                 data: updateInputRef,
-                ...projectionProps,
+                ...PROJECTION_PROPS,
               },
               required: ['where', 'data'],
             },
@@ -1200,7 +1190,7 @@ function generatePaths(
               properties: {
                 where: { type: 'object' },
                 data: updateManyMutationRef,
-                ...projectionProps,
+                ...PROJECTION_PROPS,
               },
               required: ['where', 'data'],
             },
@@ -1238,7 +1228,7 @@ function generatePaths(
                 where: { type: 'object' },
                 create: createInputRef,
                 update: updateInputRef,
-                ...projectionProps,
+                ...PROJECTION_PROPS,
               },
               required: ['where', 'create', 'update'],
             },
@@ -1270,7 +1260,7 @@ function generatePaths(
               type: 'object',
               properties: {
                 where: { type: 'object' },
-                ...projectionProps,
+                ...PROJECTION_PROPS,
               },
               required: ['where'],
             },
@@ -1743,146 +1733,4 @@ function mapScalarType(type: string): SchemaObject {
     },
   }
   return typeMap[type] || { type: 'string' }
-}
-
-function yamlEscapeValue(value: unknown, indent: number = 0): string {
-  if (value === null) return 'null'
-  if (value === undefined) return 'null'
-  if (typeof value === 'boolean') return value ? 'true' : 'false'
-  if (typeof value === 'number') return String(value)
-
-  const str = String(value)
-  if (str === '') return "''"
-
-  const needsQuote =
-    str === '~' ||
-    str === '.inf' ||
-    str === '-.inf' ||
-    str === '.nan' ||
-    str === '-' ||
-    str === '?' ||
-    str.startsWith('- ') ||
-    str.startsWith('? ') ||
-    /^[!&*|>@`]/.test(str) ||
-    str.includes(':') ||
-    str.includes('#') ||
-    str.includes('{') ||
-    str.includes('}') ||
-    str.includes('[') ||
-    str.includes(']') ||
-    str.includes(',') ||
-    str.includes('&') ||
-    str.includes('*') ||
-    str.includes('!') ||
-    str.includes('|') ||
-    str.includes('>') ||
-    str.includes("'") ||
-    str.includes('"') ||
-    str.includes('%') ||
-    str.includes('@') ||
-    str.includes('`') ||
-    str.startsWith(' ') ||
-    str.endsWith(' ') ||
-    str === 'true' ||
-    str === 'false' ||
-    str === 'null' ||
-    str === 'yes' ||
-    str === 'no' ||
-    str === 'on' ||
-    str === 'off' ||
-    (!isNaN(Number(str)) && str !== '')
-
-  if (str.includes('\n')) {
-    const blockIndent = '  '.repeat(indent + 1)
-    return (
-      '|\n' +
-      str
-        .split('\n')
-        .map((l) => blockIndent + l)
-        .join('\n')
-    )
-  }
-
-  if (needsQuote) {
-    return '"' + str.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'
-  }
-
-  return str
-}
-
-function yamlEscapeKey(key: string): string {
-  if (key === '') return "''"
-
-  const needsQuote =
-    key === '~' ||
-    key === '.inf' ||
-    key === '-.inf' ||
-    key === '.nan' ||
-    key === '-' ||
-    key === '?' ||
-    key.startsWith('- ') ||
-    key.startsWith('? ') ||
-    /^[!&*|>@`]/.test(key) ||
-    key.includes(':') ||
-    key.includes('#') ||
-    key.includes('{') ||
-    key.includes('}') ||
-    key.includes('[') ||
-    key.includes(']') ||
-    key.includes(',') ||
-    key.includes('&') ||
-    key.includes('*') ||
-    key.includes('!') ||
-    key.includes('|') ||
-    key.includes('>') ||
-    key.includes("'") ||
-    key.includes('"') ||
-    key.includes('%') ||
-    key.includes('@') ||
-    key.includes('`') ||
-    key.includes(' ') ||
-    key === 'true' ||
-    key === 'false' ||
-    key === 'null' ||
-    key === 'yes' ||
-    key === 'no' ||
-    key === 'on' ||
-    key === 'off' ||
-    (!isNaN(Number(key)) && key !== '')
-
-  if (needsQuote) {
-    return '"' + key.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'
-  }
-
-  return key
-}
-
-function toYaml(obj: any, indent = 0): string {
-  const spaces = '  '.repeat(indent)
-  let yaml = ''
-
-  if (Array.isArray(obj)) {
-    if (obj.length === 0) return `${spaces}[]\n`
-    for (const item of obj) {
-      if (typeof item === 'object' && item !== null) {
-        const inner = toYaml(item, indent + 1).trimStart()
-        yaml += `${spaces}- ${inner}`
-      } else {
-        yaml += `${spaces}- ${yamlEscapeValue(item, indent)}\n`
-      }
-    }
-  } else if (typeof obj === 'object' && obj !== null) {
-    if (Object.keys(obj).length === 0) return `${spaces}{}\n`
-    for (const [key, value] of Object.entries(obj)) {
-      if (value === undefined) continue
-      const safeKey = yamlEscapeKey(key)
-      if (typeof value === 'object' && value !== null) {
-        yaml += `${spaces}${safeKey}:\n${toYaml(value, indent + 1)}`
-      } else {
-        yaml += `${spaces}${safeKey}: ${yamlEscapeValue(value, indent)}\n`
-      }
-    }
-  }
-
-  return yaml
 }

@@ -47,17 +47,11 @@ export async function writeFileSafely({
   const dirPath = path.dirname(filePath)
   if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true })
 
-  let formattedContent: string
-  try {
-    const resolvedOptions = await getPrettierOptions()
-    formattedContent = await prettier.format(content, {
-      ...resolvedOptions,
-      parser: 'typescript',
-    })
-  } catch {
-    console.warn('⚠️  Prettier formatting failed for ' + path.basename(filePath) + ', writing unformatted')
-    formattedContent = content
-  }
+  const resolvedOptions = await getPrettierOptions()
+  const formattedContent = await prettier.format(content, {
+    ...resolvedOptions,
+    parser: 'typescript',
+  })
 
   fs.writeFileSync(filePath, formattedContent)
 }

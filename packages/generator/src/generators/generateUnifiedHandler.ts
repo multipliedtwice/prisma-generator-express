@@ -34,7 +34,8 @@ export async function ${exportName}(
 
   return `import type { Request, Response, NextFunction } from 'express'
 import * as core from './${modelName}Core${ext}'
-import { OperationContext, mapError } from '../operationRuntime${ext}'
+import { OperationContext } from '../operationRuntime${ext}'
+import { mapError } from '../errorMapper${ext}'
 
 type ExtendedRequest = Request & {
   prisma?: unknown

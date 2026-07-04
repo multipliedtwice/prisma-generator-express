@@ -17,7 +17,10 @@ function pathExpr(basePath: string, suffix: string): string {
   return `\`\${basePath}${suffix}\``
 }
 
-function emitReadOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+function emitReadOp(
+  meta: (typeof OPERATION_METADATA)[number],
+  modelName: string,
+): string {
   const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
   const handlerName = `${modelName}${c}`
   const pathValue = pathExpr('basePath', meta.pathSuffix)
@@ -38,7 +41,10 @@ ${postReadBlock}
   }`
 }
 
-function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+function emitWriteOp(
+  meta: (typeof OPERATION_METADATA)[number],
+  modelName: string,
+): string {
   const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
   const handlerName = `${modelName}${c}`
   const pathValue = pathExpr('basePath', meta.pathSuffix)
@@ -75,17 +81,24 @@ export function generateRouterFunction({
   const delegateKey = modelName.charAt(0).toLowerCase() + modelName.slice(1)
   const routerFunctionName = `${modelName}Router`
 
-  const handlerImports = OPERATION_METADATA
-    .filter((m) => m.name !== 'updateEach')
-    .map((m) => `  ${modelName}${m.name.charAt(0).toUpperCase() + m.name.slice(1)},`)
+  const handlerImports = OPERATION_METADATA.filter(
+    (m) => m.name !== 'updateEach',
+  )
+    .map(
+      (m) =>
+        `  ${modelName}${m.name.charAt(0).toUpperCase() + m.name.slice(1)},`,
+    )
     .join('\n')
 
   const readOps = OPERATION_METADATA.filter((m) => m.kind === 'read')
-  const writeOps = OPERATION_METADATA.filter((m) => m.kind === 'write' || m.kind === 'batch')
-    .filter((m) => m.name !== 'updateEach')
+  const writeOps = OPERATION_METADATA.filter(
+    (m) => m.kind === 'write' || m.kind === 'batch',
+  ).filter((m) => m.name !== 'updateEach')
 
   const readOpBlocks = readOps.map((m) => emitReadOp(m, modelName)).join('\n\n')
-  const writeOpBlocks = writeOps.map((m) => emitWriteOp(m, modelName)).join('\n\n')
+  const writeOpBlocks = writeOps
+    .map((m) => emitWriteOp(m, modelName))
+    .join('\n\n')
 
   return `import express from 'express'
 import type { Request, Response, NextFunction, RequestHandler } from 'express'
@@ -105,17 +118,16 @@ import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import { validateCountSourceWhere } from '../routeConfig${ext}'
 import type { OperationContext } from '../operationRuntime${ext}'
+import { transformResult } from '../operationRuntime${ext}'
+import { HttpError, mapError } from '../errorMapper${ext}'
+import { mergePaginationConfig } from '../pagination${ext}'
 import {
-  transformResult,
   acceptsEventStream,
   runProgressiveEndpoint,
   runSingleResultSSE,
   emitTerminalSSEError,
   removeReqCloseListener,
-  mergePaginationConfig,
-  mapError,
-  HttpError,
-} from '../operationRuntime${ext}'
+} from '../sse${ext}'
 import { relationModels } from '../relationModels${ext}'
 import { runAutoIncludeProgressive } from '../autoIncludeRuntime${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
@@ -434,6 +446,9 @@ ${writeOpBlocks}
       ...before,
       async (req: Request, res: Response, next: NextFunction) => {
         try {
+          if (!Array.isArray(req.body)) {
+            throw new HttpError(400, 'updateEach body must be an array of { where, data } items')
+          }
           const atomic = req.get('x-batch-atomic') === 'true'
           readLocals(res).data = await core.updateEach(buildContext(req, res), atomic)
           next()
@@ -447,15 +462,7 @@ ${writeOpBlocks}
   }
 
   router.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
-    let httpError: HttpError
-    if (err instanceof HttpError) {
-      httpError = err
-    } else if (err && typeof err === 'object' && typeof (err as { status?: number }).status === 'number') {
-      const e = err as { status: number; message?: string }
-      httpError = new HttpError(e.status, e.message || 'Internal server error')
-    } else {
-      httpError = mapError(err)
-    }
+    const httpError = mapError(err)
     if (!res.headersSent) return res.status(httpError.status).json({ message: httpError.message })
     next(err)
   })

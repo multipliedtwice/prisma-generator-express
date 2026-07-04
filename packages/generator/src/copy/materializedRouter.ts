@@ -6,7 +6,8 @@ import type {
   Response,
   Router,
 } from 'express'
-import { HttpError, mapError, transformResult } from './operationRuntime'
+import { HttpError, mapError } from './errorMapper'
+import { transformResult } from './operationRuntime'
 
 type SortDirection = 'asc' | 'desc'
 type NullsOrder = 'first' | 'last'
@@ -48,7 +49,8 @@ type MaterializedRouterOptions = {
 
 const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
-export const forbidden = (message: string): HttpError => new HttpError(403, message)
+export const forbidden = (message: string): HttpError =>
+  new HttpError(403, message)
 
 const quoteIdent = (name: string): string => {
   if (!IDENT_RE.test(name))
@@ -163,8 +165,12 @@ const validateViewIdentifier = (
 ): void => {
   if (!IDENT_RE.test(value)) {
     throw new Error(
-      'materializedViewsRouter: invalid ' + fieldName + ' identifier for view "' +
-      viewName + '": ' + value,
+      'materializedViewsRouter: invalid ' +
+        fieldName +
+        ' identifier for view "' +
+        viewName +
+        '": ' +
+        value,
     )
   }
 }
@@ -182,9 +188,10 @@ const validateViewConfig = (viewName: string, def: ViewDef): void => {
   }
   if (!def.allowedOrderBy && !def.orderBy) {
     console.warn(
-      '[materializedViewsRouter] view "' + viewName +
-      '" has neither `orderBy` nor `allowedOrderBy` set. ' +
-      'Clients can sort by any valid identifier, which may cause full table scans.',
+      '[materializedViewsRouter] view "' +
+        viewName +
+        '" has neither `orderBy` nor `allowedOrderBy` set. ' +
+        'Clients can sort by any valid identifier, which may cause full table scans.',
     )
   }
 }
@@ -208,7 +215,7 @@ export const materializedViewsRouter = (
     ...before,
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const viewName = req.params.viewName
+        const viewName = String(req.params.viewName)
         const def = opts.views[viewName]
         if (!def) throw new HttpError(404, 'unknown view')
         if (def.authorize) await def.authorize(req, viewName, def)
@@ -257,23 +264,10 @@ export const materializedViewsRouter = (
 
   router.use(
     (err: unknown, _req: Request, res: Response, next: NextFunction) => {
-      const httpError =
-        err instanceof HttpError
-          ? err
-          : err &&
-              typeof err === 'object' &&
-              typeof (err as { status?: number }).status === 'number'
-            ? new HttpError(
-                (err as { status: number }).status,
-                (err as { message?: string }).message ||
-                  'Internal server error',
-              )
-            : mapError(err)
-
+      const httpError = mapError(err)
       if (!res.headersSent) {
         return res.status(httpError.status).json({ message: httpError.message })
       }
-
       next(err)
     },
   )

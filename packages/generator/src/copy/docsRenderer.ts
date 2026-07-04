@@ -6,6 +6,7 @@ import {
   READ_OPERATION_NAMES,
 } from './operationDefinitions'
 import { getEnv, normalizePrefix } from './misc'
+import { NUMERIC_SCALAR_TYPES } from './scalarTypes'
 
 const _env = getEnv()
 
@@ -61,7 +62,10 @@ const PRISM_JS = 'https://cdn.jsdelivr.net/npm/prismjs@1/prism.min.js'
 const PRISM_JSON =
   'https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-json.min.js'
 
-function detailForOp(opName: string, writeStrategy?: WriteStrategy): OpDetail | null {
+function detailForOp(
+  opName: string,
+  writeStrategy?: WriteStrategy,
+): OpDetail | null {
   const meta = OPERATION_BY_NAME[opName]
   if (!meta) return null
 
@@ -301,14 +305,8 @@ function scalarFilterOperators(scalarType: string): string[] {
       'not',
     ]
   }
-  if (
-    scalarType === 'Int' ||
-    scalarType === 'BigInt' ||
-    scalarType === 'Float' ||
-    scalarType === 'Decimal'
-  ) {
+  if (NUMERIC_SCALAR_TYPES.has(scalarType))
     return ['equals', 'in', 'notIn', 'lt', 'lte', 'gt', 'gte', 'not']
-  }
   if (scalarType === 'DateTime')
     return ['equals', 'in', 'notIn', 'lt', 'lte', 'gt', 'gte', 'not']
   if (scalarType === 'Boolean') return ['equals', 'not']
@@ -427,8 +425,9 @@ export function renderDocs(
   const listRelations = relationFields.filter((f) => f.isList)
   const singleRelations = relationFields.filter((f) => !f.isList)
 
-  const getOps = OPERATION_METADATA
-    .filter((meta) => isOperationEnabled(config as Record<string, any>, meta))
+  const getOps = OPERATION_METADATA.filter((meta) =>
+    isOperationEnabled(config as Record<string, any>, meta),
+  )
     .filter((meta) => !isOpHiddenByStrategy(meta.name, writeStrategy))
     .map((meta) => {
       const detail = detailForOp(meta.name, writeStrategy)
@@ -436,7 +435,11 @@ export function renderDocs(
         op: meta.name,
         method: meta.method.toUpperCase(),
         path: buildFullPath(exampleBasePath, meta.pathSuffix),
-        transport: detail ? detail.transport : (meta.method === 'get' ? 'GET query params' : 'JSON body'),
+        transport: detail
+          ? detail.transport
+          : meta.method === 'get'
+            ? 'GET query params'
+            : 'JSON body',
         responseDesc: detail ? detail.responseDesc : '',
         errors: detail ? detail.errors.join(', ') : '',
         required: detail ? detail.required : [],
@@ -449,9 +452,10 @@ export function renderDocs(
     })
 
   const postReadOps = postReadsEnabled
-    ? OPERATION_METADATA
-        .filter((meta) => READ_OPERATION_NAMES.has(meta.name))
-        .filter((meta) => isOperationEnabled(config as Record<string, any>, meta))
+    ? OPERATION_METADATA.filter((meta) => READ_OPERATION_NAMES.has(meta.name))
+        .filter((meta) =>
+          isOperationEnabled(config as Record<string, any>, meta),
+        )
         .map((meta) => {
           const detail = detailForOp(meta.name)
           const postPath =
@@ -1031,27 +1035,72 @@ export function renderDocs(
   ]
 
   const nestedWriteListOps = [
-    { key: 'create', desc: 'Create new related records inline. Accepts a single object or array.' },
-    { key: 'connect', desc: 'Connect existing records by unique identifier. Accepts a single object or array.' },
-    { key: 'connectOrCreate', desc: 'Connect if exists, create if not. Each item: { where, create }.' },
-    { key: 'createMany', desc: 'Bulk create related records. Shape: { data: [...], skipDuplicates?: boolean }.' },
-    { key: 'set', desc: 'Replace all connections. Provide an array of unique identifiers.' },
-    { key: 'disconnect', desc: 'Disconnect related records without deleting them.' },
+    {
+      key: 'create',
+      desc: 'Create new related records inline. Accepts a single object or array.',
+    },
+    {
+      key: 'connect',
+      desc: 'Connect existing records by unique identifier. Accepts a single object or array.',
+    },
+    {
+      key: 'connectOrCreate',
+      desc: 'Connect if exists, create if not. Each item: { where, create }.',
+    },
+    {
+      key: 'createMany',
+      desc: 'Bulk create related records. Shape: { data: [...], skipDuplicates?: boolean }.',
+    },
+    {
+      key: 'set',
+      desc: 'Replace all connections. Provide an array of unique identifiers.',
+    },
+    {
+      key: 'disconnect',
+      desc: 'Disconnect related records without deleting them.',
+    },
     { key: 'delete', desc: 'Delete related records by unique identifier.' },
-    { key: 'update', desc: 'Update related records. Each item: { where, data }.' },
-    { key: 'updateMany', desc: 'Bulk update related records matching a filter. Each item: { where, data }.' },
-    { key: 'deleteMany', desc: 'Bulk delete related records matching a filter.' },
-    { key: 'upsert', desc: 'Create or update related records. Each item: { where, create, update }.' },
+    {
+      key: 'update',
+      desc: 'Update related records. Each item: { where, data }.',
+    },
+    {
+      key: 'updateMany',
+      desc: 'Bulk update related records matching a filter. Each item: { where, data }.',
+    },
+    {
+      key: 'deleteMany',
+      desc: 'Bulk delete related records matching a filter.',
+    },
+    {
+      key: 'upsert',
+      desc: 'Create or update related records. Each item: { where, create, update }.',
+    },
   ]
 
   const nestedWriteSingleOps = [
     { key: 'create', desc: 'Create a new related record inline.' },
-    { key: 'connect', desc: 'Connect an existing record by unique identifier.' },
-    { key: 'connectOrCreate', desc: 'Connect if exists, create if not. Shape: { where, create }.' },
-    { key: 'disconnect', desc: 'Disconnect the related record (set relation to null). Pass true.' },
+    {
+      key: 'connect',
+      desc: 'Connect an existing record by unique identifier.',
+    },
+    {
+      key: 'connectOrCreate',
+      desc: 'Connect if exists, create if not. Shape: { where, create }.',
+    },
+    {
+      key: 'disconnect',
+      desc: 'Disconnect the related record (set relation to null). Pass true.',
+    },
     { key: 'delete', desc: 'Delete the related record. Pass true.' },
-    { key: 'update', desc: 'Update the related record inline with update input.' },
-    { key: 'upsert', desc: 'Create the related record if it does not exist, update if it does. Shape: { create, update }.' },
+    {
+      key: 'update',
+      desc: 'Update the related record inline with update input.',
+    },
+    {
+      key: 'upsert',
+      desc: 'Create the related record if it does not exist, update if it does. Shape: { create, update }.',
+    },
   ]
 
   const guardShapeInfo = [

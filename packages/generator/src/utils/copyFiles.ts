@@ -13,6 +13,13 @@ const SHARED_FILES = [
   'routeConfig.ts',
   'docsRenderer.ts',
   'operationRuntime.ts',
+  'errorMapper.ts',
+  'sse.ts',
+  'pagination.ts',
+  'materializedCount.ts',
+  'guardHelpers.ts',
+  'scalarTypes.ts',
+  'concurrency.ts',
 ]
 
 const EXPRESS_ONLY_FILES = [

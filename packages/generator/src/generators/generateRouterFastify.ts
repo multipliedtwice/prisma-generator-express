@@ -92,7 +92,10 @@ import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import { validateCountSourceWhere } from '../routeConfig${ext}'
-import { mapError, transformResult, mergePaginationConfig, HttpError, type OperationContext } from '../operationRuntime${ext}'
+import type { OperationContext } from '../operationRuntime${ext}'
+import { transformResult } from '../operationRuntime${ext}'
+import { HttpError, mapError } from '../errorMapper${ext}'
+import { mergePaginationConfig } from '../pagination${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, importStyle, 'fastify')}
@@ -276,11 +279,9 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
     })
 
     instance.setErrorHandler((error: FastifyError, _request: FastifyRequest, reply: FastifyReply) => {
-      const e = error as { status?: number; statusCode?: number; message?: string }
-      const status = e.status ?? e.statusCode ?? 500
-      const message = error.message || 'Internal server error'
+      const httpError = mapError(error)
       if (!reply.sent) {
-        reply.code(status).send({ message })
+        reply.code(httpError.status).send({ message: httpError.message })
       }
     })
 
@@ -346,6 +347,9 @@ ${writeOpBlocks}
       const path = basePath ? \`\${basePath}/each\` : '/each'
       instance.post(path, async (request: FastifyRequest, reply: FastifyReply) => {
         try {
+          if (!Array.isArray(request.body)) {
+            throw new HttpError(400, 'updateEach body must be an array of { where, data } items')
+          }
           makeShapeHook(config, opConfig)(request)
           const { before = [], after = [] } = opConfig
           if (await runHooks(before, request, reply)) return

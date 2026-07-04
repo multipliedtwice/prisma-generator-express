@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@prisma/generator-helper": "7.5.0",
-    "prettier": "3.6.2"
+    "prettier": "3.6.2",
+    "yaml": "^2.9.0"
   },
   "peerDependencies": {
     "@prisma/client": ">=6.0.0",
@@ -31,6 +32,15 @@
     "prisma-sql": ">=1.0.0"
   },
   "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    },
+    "fastify": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    },
     "prisma-guard": {
       "optional": true
     },

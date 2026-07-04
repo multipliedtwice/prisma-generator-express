@@ -134,16 +134,15 @@ ${validationLines}
   return `import {
   OperationContext,
   PrismaClientLike,
-  HttpError,
   getExtendedClient,
   getDelegate,
   validateBody,
   requireBodyField,
-  applyPaginationLimits,
-  assertGuard,
-  countForPagination,
-  mapError,
 } from '../operationRuntime${ext}'
+import { HttpError, mapError } from '../errorMapper${ext}'
+import { applyPaginationLimits, countForPagination } from '../pagination${ext}'
+import { assertGuard } from '../guardHelpers${ext}'
+import { mapLimited } from '../concurrency${ext}'
 
 export async function findMany(ctx: OperationContext): Promise<unknown> {
   const rawQuery = ctx.parsedQuery || {}
@@ -241,20 +240,15 @@ export async function updateEach(
   const CONCURRENCY = 8
   const results: Array<{ status: 'ok'; data: unknown } | { status: 'error'; error: string }> =
     new Array(items.length)
-  let cursor = 0
-  const workerCount = Math.min(CONCURRENCY, items.length)
-  const workers = Array.from({ length: workerCount }, async () => {
-    for (;;) {
-      const i = cursor++
-      if (i >= items.length) return
-      try {
-        results[i] = { status: 'ok', data: await delegate.update(items[i]) }
-      } catch (err) {
-        results[i] = { status: 'error', error: mapError(err).message }
-      }
+
+  await mapLimited(items, CONCURRENCY, async (item, i) => {
+    try {
+      results[i] = { status: 'ok', data: await delegate.update(item) }
+    } catch (err) {
+      results[i] = { status: 'error', error: mapError(err).message }
     }
   })
-  await Promise.all(workers)
+
   return results
 }
 `

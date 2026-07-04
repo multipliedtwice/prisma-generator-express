@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express'
+import { HttpError, LOG_PREFIX, mapError } from './errorMapper'
 import {
   sendSSEField,
   sendSSEResult,
@@ -12,19 +13,21 @@ import {
   emitTerminalSSEError,
   safeSendError,
   setByPath,
-  getDelegate,
-  getExtendedClient,
+  withSSE,
+} from './sse'
+import {
   applyPaginationLimits,
   countForPagination,
-  withSSE,
-  mapError,
-  HttpError,
-  LOG_PREFIX,
+} from './pagination'
+import {
+  getDelegate,
+  getExtendedClient,
   type OperationContext,
   type PrismaDelegate,
   type FindManyPaginatedMode,
 } from './operationRuntime'
 import { isPlainObject } from './misc'
+import { mapLimited } from './concurrency'
 import {
   planAutoInclude,
   type AutoIncludePlan,
@@ -65,6 +68,10 @@ type RowPair = {
 
 type ParentEntry = RowPair & {
   locator: Array<number | string>
+}
+
+function createClientGoneChecker(res: Response, signal?: AbortSignal): () => boolean {
+  return () => signal?.aborted === true || res.writableEnded || res.destroyed
 }
 
 function readPath(source: Record<string, unknown>, path: string): unknown {
@@ -153,26 +160,6 @@ function groupStagesByDepth(stages: AutoIncludeStage[]): AutoIncludeStage[][] {
   return Array.from(byDepth.keys())
     .sort((a, b) => a - b)
     .map((d) => byDepth.get(d) as AutoIncludeStage[])
-}
-
-async function runConcurrent<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  let index = 0
-  const workers: Promise<void>[] = []
-  const workerCount = Math.min(limit, items.length)
-  for (let w = 0; w < workerCount; w++) {
-    workers.push((async () => {
-      for (;;) {
-        const i = index++
-        if (i >= items.length) return
-        await fn(items[i])
-      }
-    })())
-  }
-  await Promise.all(workers)
 }
 
 function handleAutoIncludeFallback(
@@ -307,7 +294,7 @@ async function runOneStageSingle(options: {
 
   const targetModel = models[stage.relationField.type]
   if (!targetModel) {
-    throw new Error('Target model not in relation metadata: ' + stage.relationField.type)
+    throw new HttpError(500, 'Target model not in relation metadata: ' + stage.relationField.type)
   }
 
   const finalArgs: Record<string, unknown> = { ...stage.stageArgs }
@@ -321,14 +308,14 @@ async function runOneStageSingle(options: {
 
   const appliedInternal = setByPath(internal, stage.relationPath, result)
   if (!appliedInternal) {
-    throw new Error('Failed to apply internal patch for ' + stage.relationPath)
+    throw new HttpError(500, 'Failed to apply internal patch for ' + stage.relationPath)
   }
 
   const publicResult = buildPublicForStage(result, internalFieldPaths, stage.relationPath)
 
   const appliedPublic = setByPath(publicState, stage.relationPath, publicResult)
   if (!appliedPublic) {
-    throw new Error('Failed to apply public patch for ' + stage.relationPath)
+    throw new HttpError(500, 'Failed to apply public patch for ' + stage.relationPath)
   }
 
   sendSSEField(res, stage.relationPath, publicResult)
@@ -339,9 +326,7 @@ async function runAutoIncludeSingle(
   plan: AutoIncludePlan,
 ): Promise<void> {
   const { res, ctx, baseOp, delegateKey, models, signal } = options
-
-  const isClientGone = () =>
-    signal?.aborted === true || res.writableEnded || res.destroyed
+  const isClientGone = createClientGoneChecker(res, signal)
 
   await withSSE({ res, signal, label: 'single' }, async () => {
     const extended = await getExtendedClient(ctx)
@@ -394,7 +379,7 @@ async function runAutoIncludeSingle(
       if (isClientGone()) return
       if (stageErrorMessage) break
 
-      await runConcurrent(group, STAGE_CONCURRENCY, async (stage) => {
+      await mapLimited(group, STAGE_CONCURRENCY, async (stage) => {
         if (isAborted()) return
         try {
           await runOneStageSingle({
@@ -457,11 +442,7 @@ function buildStageQueryArgs(
   }
 
   if (baseOmit && baseOmit[childKey] === true) {
-    const nextOmit: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(baseOmit)) {
-      if (k === childKey) continue
-      nextOmit[k] = v
-    }
+    const { [childKey]: _drop, ...nextOmit } = baseOmit
     if (Object.keys(nextOmit).length > 0) {
       finalArgs.omit = nextOmit
     } else {
@@ -529,7 +510,7 @@ async function runOneStageMany(options: {
 
   const targetModel = models[rel.type]
   if (!targetModel) {
-    throw new Error('Target model not in relation metadata: ' + rel.type)
+    throw new HttpError(500, 'Target model not in relation metadata: ' + rel.type)
   }
 
   if (parentEntries.length === 0) {
@@ -651,7 +632,7 @@ async function processFindManyStages(args: {
     if (signal?.aborted === true || res.writableEnded || res.destroyed) return stageErrorMessage
     if (stageErrorMessage) break
 
-    await runConcurrent(group, STAGE_CONCURRENCY, async (stage) => {
+    await mapLimited(group, STAGE_CONCURRENCY, async (stage) => {
       if (isAborted()) return
       const parentEntries = collectParentEntries(rootPairs, stage.parentPath)
       try {
@@ -679,6 +660,29 @@ async function processFindManyStages(args: {
   return stageErrorMessage
 }
 
+async function fetchRootAndCount(args: {
+  delegate: PrismaDelegate
+  rawClient: unknown
+  rootArgs: Record<string, unknown>
+  distinctCountLimit: number | undefined
+  countSource: NonNullable<OperationContext['paginationConfig']>['countSource'] | undefined
+}): Promise<{ data: unknown[]; count: number }> {
+  const { delegate, rawClient, rootArgs, distinctCountLimit, countSource } = args
+  const [data, count] = await Promise.all([
+    delegate.findMany(rootArgs),
+    countForPagination(
+      delegate,
+      rootArgs,
+      undefined,
+      undefined,
+      distinctCountLimit,
+      countSource,
+      rawClient,
+    ),
+  ])
+  return { data: data as unknown[], count }
+}
+
 async function runPaginatedRoot(args: {
   extended: unknown
   delegateKey: string
@@ -700,39 +704,24 @@ async function runPaginatedRoot(args: {
         'findManyPaginatedMode="transaction" requires transaction support on the Prisma client',
       )
     }
-    const result = await txClient.$transaction(async (tx: unknown) => {
-      const txDelegate = getDelegate(tx, delegateKey)
-      const [data, count] = await Promise.all([
-        txDelegate.findMany(rootArgs),
-        countForPagination(
-          txDelegate,
-          rootArgs,
-          undefined,
-          undefined,
-          distinctCountLimit,
-          countSource,
-          tx,
-        ),
-      ])
-      return { data, count }
-    })
-    return { data: result.data as unknown[], count: result.count }
+    return txClient.$transaction((tx: unknown) =>
+      fetchRootAndCount({
+        delegate: getDelegate(tx, delegateKey),
+        rawClient: tx,
+        rootArgs,
+        distinctCountLimit,
+        countSource,
+      }),
+    )
   }
 
-  const rootDelegate = getDelegate(extended, delegateKey)
-  const [data, count] = await Promise.all([
-    rootDelegate.findMany(rootArgs),
-    countForPagination(
-      rootDelegate,
-      rootArgs,
-      undefined,
-      undefined,
-      distinctCountLimit,
-      countSource,
-      extended,
-    ),
-  ])
-  return { data: data as unknown[], count }
+  return fetchRootAndCount({
+    delegate: getDelegate(extended, delegateKey),
+    rawClient: extended,
+    rootArgs,
+    distinctCountLimit,
+    countSource,
+  })
 }
 
 async function runAutoIncludeManyOrPaginated(
@@ -741,9 +730,7 @@ async function runAutoIncludeManyOrPaginated(
   isPaginated: boolean,
 ): Promise<void> {
   const { res, ctx, delegateKey, models, signal } = options
-
-  const isClientGone = () =>
-    signal?.aborted === true || res.writableEnded || res.destroyed
+  const isClientGone = createClientGoneChecker(res, signal)
 
   await withSSE({ res, signal, label: isPaginated ? 'paginated' : 'many' }, async () => {
     const extended = await getExtendedClient(ctx)

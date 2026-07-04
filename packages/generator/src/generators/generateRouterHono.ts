@@ -95,11 +95,9 @@ import { parseQueryParams } from '../parseQueryParams${ext}'
 import { normalizePrefix, getEnv, sanitizeKeys } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import { validateCountSourceWhere } from '../routeConfig${ext}'
-import {
-  mapError,
-  transformResult,
-  mergePaginationConfig,
-} from '../operationRuntime${ext}'
+import { transformResult } from '../operationRuntime${ext}'
+import { mapError } from '../errorMapper${ext}'
+import { mergePaginationConfig } from '../pagination${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'HonoBeforeHook', guardShapesImport, importStyle, 'hono')}

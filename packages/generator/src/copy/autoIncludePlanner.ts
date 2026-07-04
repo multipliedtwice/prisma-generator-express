@@ -64,15 +64,15 @@ function hasWhereLikeRelationReference(
   args: Record<string, unknown>,
   model: ModelRelationMap,
 ): boolean {
-  const checkObject = (obj: unknown): boolean => {
+  const hasRelationKeysInObj = (obj: unknown): boolean => {
     if (!isPlainObject(obj)) return false
     for (const key of Object.keys(obj)) {
       if (model.relations[key]) return true
       if (key === 'AND' || key === 'OR' || key === 'NOT') {
         const sub = obj[key]
         if (Array.isArray(sub)) {
-          for (const item of sub) if (checkObject(item)) return true
-        } else if (checkObject(sub)) {
+          for (const item of sub) if (hasRelationKeysInObj(item)) return true
+        } else if (hasRelationKeysInObj(sub)) {
           return true
         }
       }
@@ -80,24 +80,22 @@ function hasWhereLikeRelationReference(
     return false
   }
 
-  if (checkObject(args.where)) return true
-
-  if (args.orderBy) {
-    const obs = Array.isArray(args.orderBy) ? args.orderBy : [args.orderBy]
-    for (const ob of obs) {
+  const anyOrderByHasRelation = (v: unknown): boolean => {
+    const list = Array.isArray(v) ? v : [v]
+    for (const ob of list) {
       if (!isPlainObject(ob)) continue
-      for (const key of Object.keys(ob)) {
-        if (model.relations[key]) return true
-      }
+      for (const key of Object.keys(ob)) if (model.relations[key]) return true
     }
+    return false
   }
 
+  if (hasRelationKeysInObj(args.where)) return true
+  if (args.orderBy && anyOrderByHasRelation(args.orderBy)) return true
   if (isPlainObject(args.cursor)) {
     for (const key of Object.keys(args.cursor)) {
       if (model.relations[key]) return true
     }
   }
-
   return false
 }
 
@@ -246,11 +244,7 @@ function walk(
 
     const relationPath = parentPath ? parentPath + '.' + branch.name : branch.name
 
-    const stageArgs: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(relationArgs)) {
-      if (k === 'select' || k === 'include' || k === 'omit') continue
-      stageArgs[k] = v
-    }
+    const { select: _s, include: _i, omit: _o, ...stageArgs } = relationArgs
 
     const stageIndex = ctx.stages.length
 
@@ -314,12 +308,9 @@ export function planAutoInclude(input: AutoIncludePlannerInput): AutoIncludePlan
     rootArgs.select = result.projectionAfterStrip
     delete rootArgs.include
   } else if (rootModel && isPlainObject(input.args.include)) {
-    const stripped: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(input.args.include)) {
-      if (!rootModel.relations[k]) {
-        stripped[k] = v
-      }
-    }
+    const stripped = Object.fromEntries(
+      Object.entries(input.args.include).filter(([k]) => !rootModel.relations[k]),
+    )
     if (Object.keys(stripped).length > 0) {
       rootArgs.include = stripped
     } else {
