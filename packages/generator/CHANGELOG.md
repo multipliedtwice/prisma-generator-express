@@ -1,3 +1,10 @@
+# [1.60.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.59.0...v1.60.0) (2026-07-04)
+
+
+### Features
+
+* add concurrency control and error mapping utilities ([9a3c7d4](https://github.com/multipliedtwice/prisma-generator-express/commit/9a3c7d4e151af83d08a908dd9c49d8617e971170))
+
 # [1.59.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.58.5...v1.59.0) (2026-07-01)
 
 ## [1.58.5](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.58.4...v1.58.5) (2026-07-01)
