@@ -15,10 +15,7 @@ import {
   setByPath,
   withSSE,
 } from './sse'
-import {
-  applyPaginationLimits,
-  countForPagination,
-} from './pagination'
+import { applyPaginationLimits, countForPagination } from './pagination'
 import {
   getDelegate,
   getExtendedClient,
@@ -35,6 +32,10 @@ import {
   type AutoIncludeStage,
 } from './autoIncludePlanner'
 import type { AutoIncludeProgressiveVariantConfig } from './routeConfig'
+import {
+  isGuardedAutoIncludeBaseOp,
+  runGuardedAutoIncludeProgressive,
+} from './autoIncludeRuntimeGuarded'
 
 const STAGE_CONCURRENCY = 4
 const MAX_IN_CHUNK = 1000
@@ -70,7 +71,10 @@ type ParentEntry = RowPair & {
   locator: Array<number | string>
 }
 
-function createClientGoneChecker(res: Response, signal?: AbortSignal): () => boolean {
+function createClientGoneChecker(
+  res: Response,
+  signal?: AbortSignal,
+): () => boolean {
   return () => signal?.aborted === true || res.writableEnded || res.destroyed
 }
 
@@ -103,7 +107,8 @@ function mergeWhere(
   userWhere: unknown,
   linkFilter: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (!isPlainObject(userWhere) || Object.keys(userWhere).length === 0) return linkFilter
+  if (!isPlainObject(userWhere) || Object.keys(userWhere).length === 0)
+    return linkFilter
   return { AND: [userWhere, linkFilter] }
 }
 
@@ -269,7 +274,16 @@ async function runOneStageSingle(options: {
   res: Response
   isAborted: () => boolean
 }): Promise<void> {
-  const { extended, models, stage, internal, publicState, internalFieldPaths, res, isAborted } = options
+  const {
+    extended,
+    models,
+    stage,
+    internal,
+    publicState,
+    internalFieldPaths,
+    res,
+    isAborted,
+  } = options
   if (isAborted()) return
 
   const parentRaw = readPath(internal, stage.parentPath)
@@ -294,28 +308,46 @@ async function runOneStageSingle(options: {
 
   const targetModel = models[stage.relationField.type]
   if (!targetModel) {
-    throw new HttpError(500, 'Target model not in relation metadata: ' + stage.relationField.type)
+    throw new HttpError(
+      500,
+      'Target model not in relation metadata: ' + stage.relationField.type,
+    )
   }
 
   const finalArgs: Record<string, unknown> = { ...stage.stageArgs }
   finalArgs.where = mergeWhere(stage.stageArgs.where, linkFilter)
 
-  const delegate: PrismaDelegate = getDelegate(extended, targetModel.delegateKey)
-  const method: 'findMany' | 'findFirst' = stage.relationField.isList ? 'findMany' : 'findFirst'
+  const delegate: PrismaDelegate = getDelegate(
+    extended,
+    targetModel.delegateKey,
+  )
+  const method: 'findMany' | 'findFirst' = stage.relationField.isList
+    ? 'findMany'
+    : 'findFirst'
   const result = await delegate[method](finalArgs)
 
   if (isAborted()) return
 
   const appliedInternal = setByPath(internal, stage.relationPath, result)
   if (!appliedInternal) {
-    throw new HttpError(500, 'Failed to apply internal patch for ' + stage.relationPath)
+    throw new HttpError(
+      500,
+      'Failed to apply internal patch for ' + stage.relationPath,
+    )
   }
 
-  const publicResult = buildPublicForStage(result, internalFieldPaths, stage.relationPath)
+  const publicResult = buildPublicForStage(
+    result,
+    internalFieldPaths,
+    stage.relationPath,
+  )
 
   const appliedPublic = setByPath(publicState, stage.relationPath, publicResult)
   if (!appliedPublic) {
-    throw new HttpError(500, 'Failed to apply public patch for ' + stage.relationPath)
+    throw new HttpError(
+      500,
+      'Failed to apply public patch for ' + stage.relationPath,
+    )
   }
 
   sendSSEField(res, stage.relationPath, publicResult)
@@ -336,7 +368,9 @@ async function runAutoIncludeSingle(
 
     let rootResult: unknown
     try {
-      rootResult = await rootDelegate[baseOp as Exclude<AutoIncludeBaseOp, 'findMany' | 'findManyPaginated'>](plan.rootArgs)
+      rootResult = await rootDelegate[
+        baseOp as Exclude<AutoIncludeBaseOp, 'findMany' | 'findManyPaginated'>
+      ](plan.rootArgs)
     } catch (err) {
       if (isClientGone()) return
       console.error(LOG_PREFIX, 'root query failed:', err)
@@ -400,7 +434,12 @@ async function runAutoIncludeSingle(
         }
         if (isAborted()) return
         completed++
-        const ok = sendSSEProgress(res, stage.relationPath, completed, plan.stages.length)
+        const ok = sendSSEProgress(
+          res,
+          stage.relationPath,
+          completed,
+          plan.stages.length,
+        )
         if (!ok) return
       })
     }
@@ -430,7 +469,9 @@ function buildStageQueryArgs(
     : null
 
   const finalArgs: Record<string, unknown> = { ...stage.stageArgs }
-  finalArgs.where = mergeWhere(stage.stageArgs.where, { [childKey]: { in: inChunk } })
+  finalArgs.where = mergeWhere(stage.stageArgs.where, {
+    [childKey]: { in: inChunk },
+  })
 
   let injectedChildPath: string | null = null
 
@@ -500,7 +541,15 @@ async function runOneStageMany(options: {
   res: Response
   isAborted: () => boolean
 }): Promise<void> {
-  const { extended, models, stage, parentEntries, internalFieldPaths, res, isAborted } = options
+  const {
+    extended,
+    models,
+    stage,
+    parentEntries,
+    internalFieldPaths,
+    res,
+    isAborted,
+  } = options
 
   if (isAborted()) return
 
@@ -510,7 +559,10 @@ async function runOneStageMany(options: {
 
   const targetModel = models[rel.type]
   if (!targetModel) {
-    throw new HttpError(500, 'Target model not in relation metadata: ' + rel.type)
+    throw new HttpError(
+      500,
+      'Target model not in relation metadata: ' + rel.type,
+    )
   }
 
   if (parentEntries.length === 0) {
@@ -524,7 +576,10 @@ async function runOneStageMany(options: {
 
   const internalParents = parentEntries.map((p) => p.internal)
   const distinctValues = collectDistinctParentValues(internalParents, parentKey)
-  const delegate: PrismaDelegate = getDelegate(extended, targetModel.delegateKey)
+  const delegate: PrismaDelegate = getDelegate(
+    extended,
+    targetModel.delegateKey,
+  )
 
   const children: unknown[] = []
   let injectedChildPath: string | null = null
@@ -532,7 +587,11 @@ async function runOneStageMany(options: {
   for (let i = 0; i < distinctValues.length; i += MAX_IN_CHUNK) {
     if (isAborted()) return
     const chunk = distinctValues.slice(i, i + MAX_IN_CHUNK)
-    const { args, injectedChildPath: ip } = buildStageQueryArgs(stage, childKey, chunk)
+    const { args, injectedChildPath: ip } = buildStageQueryArgs(
+      stage,
+      childKey,
+      chunk,
+    )
     if (ip) injectedChildPath = ip
     const partial = await delegate.findMany(args)
     if (isAborted()) return
@@ -564,7 +623,11 @@ async function runOneStageMany(options: {
       }
     }
 
-    const publicVal = buildPublicForStage(internalVal, effectivePaths, stage.relationPath)
+    const publicVal = buildPublicForStage(
+      internalVal,
+      effectivePaths,
+      stage.relationPath,
+    )
 
     entry.internal[stage.relationName] = internalVal
     entry.public[stage.relationName] = publicVal
@@ -629,7 +692,8 @@ async function processFindManyStages(args: {
     res.destroyed
 
   for (const group of groups) {
-    if (signal?.aborted === true || res.writableEnded || res.destroyed) return stageErrorMessage
+    if (signal?.aborted === true || res.writableEnded || res.destroyed)
+      return stageErrorMessage
     if (stageErrorMessage) break
 
     await mapLimited(group, STAGE_CONCURRENCY, async (stage) => {
@@ -653,7 +717,12 @@ async function processFindManyStages(args: {
       }
       if (isAborted()) return
       completed++
-      const ok = sendSSEProgress(res, stage.relationPath, completed, plan.stages.length)
+      const ok = sendSSEProgress(
+        res,
+        stage.relationPath,
+        completed,
+        plan.stages.length,
+      )
       if (!ok) return
     })
   }
@@ -665,9 +734,12 @@ async function fetchRootAndCount(args: {
   rawClient: unknown
   rootArgs: Record<string, unknown>
   distinctCountLimit: number | undefined
-  countSource: NonNullable<OperationContext['paginationConfig']>['countSource'] | undefined
+  countSource:
+    | NonNullable<OperationContext['paginationConfig']>['countSource']
+    | undefined
 }): Promise<{ data: unknown[]; count: number }> {
-  const { delegate, rawClient, rootArgs, distinctCountLimit, countSource } = args
+  const { delegate, rawClient, rootArgs, distinctCountLimit, countSource } =
+    args
   const [data, count] = await Promise.all([
     delegate.findMany(rootArgs),
     countForPagination(
@@ -732,83 +804,130 @@ async function runAutoIncludeManyOrPaginated(
   const { res, ctx, delegateKey, models, signal } = options
   const isClientGone = createClientGoneChecker(res, signal)
 
-  await withSSE({ res, signal, label: isPaginated ? 'paginated' : 'many' }, async () => {
-    const extended = await getExtendedClient(ctx)
-    if (isClientGone()) return
-
-    const rootArgs = applyPaginationLimits(plan.rootArgs, ctx.paginationConfig, !!ctx.guardShape)
-
-    let rootRows: unknown[]
-    let total = 0
-    let hasMore = false
-
-    try {
-      if (isPaginated) {
-        const mode: FindManyPaginatedMode = ctx.findManyPaginatedMode ?? 'promiseAll'
-        const r = await runPaginatedRoot({ extended, delegateKey, rootArgs, ctx, mode })
-        rootRows = r.data
-        total = r.count
-        const skip = typeof rootArgs.skip === 'number' ? rootArgs.skip : 0
-        const takeRaw = typeof rootArgs.take === 'number' ? rootArgs.take : rootRows.length
-        const absTake = Math.abs(takeRaw)
-        hasMore = absTake > 0 && rootRows.length >= absTake && skip + rootRows.length < total
-      } else {
-        const rootDelegate = getDelegate(extended, delegateKey)
-        const result = await rootDelegate.findMany(rootArgs)
-        if (!Array.isArray(result)) {
-          safeSendError(res, 'auto-progressive: unexpected non-array root result for findMany')
-          return
-        }
-        rootRows = result
-      }
-    } catch (err) {
+  await withSSE(
+    { res, signal, label: isPaginated ? 'paginated' : 'many' },
+    async () => {
+      const extended = await getExtendedClient(ctx)
       if (isClientGone()) return
-      console.error(
-        LOG_PREFIX,
-        isPaginated ? 'root findManyPaginated failed:' : 'root findMany failed:',
-        err,
+
+      const rootArgs = applyPaginationLimits(
+        plan.rootArgs,
+        ctx.paginationConfig,
+        !!ctx.guardShape,
       )
-      sendSSEError(res, mapError(err).message)
-      return
-    }
 
-    if (isClientGone()) return
+      let rootRows: unknown[]
+      let total = 0
+      let hasMore = false
 
-    const { publicRows, rootPairs } = buildRootPairs(rootRows, plan.internalFieldPaths)
+      try {
+        if (isPaginated) {
+          const mode: FindManyPaginatedMode =
+            ctx.findManyPaginatedMode ?? 'promiseAll'
+          const r = await runPaginatedRoot({
+            extended,
+            delegateKey,
+            rootArgs,
+            ctx,
+            mode,
+          })
+          rootRows = r.data
+          total = r.count
+          const skip = typeof rootArgs.skip === 'number' ? rootArgs.skip : 0
+          const takeRaw =
+            typeof rootArgs.take === 'number' ? rootArgs.take : rootRows.length
+          const absTake = Math.abs(takeRaw)
+          hasMore =
+            absTake > 0 &&
+            rootRows.length >= absTake &&
+            skip + rootRows.length < total
+        } else {
+          const rootDelegate = getDelegate(extended, delegateKey)
+          const result = await rootDelegate.findMany(rootArgs)
+          if (!Array.isArray(result)) {
+            safeSendError(
+              res,
+              'auto-progressive: unexpected non-array root result for findMany',
+            )
+            return
+          }
+          rootRows = result
+        }
+      } catch (err) {
+        if (isClientGone()) return
+        console.error(
+          LOG_PREFIX,
+          isPaginated
+            ? 'root findManyPaginated failed:'
+            : 'root findMany failed:',
+          err,
+        )
+        sendSSEError(res, mapError(err).message)
+        return
+      }
 
-    if (isPaginated) {
-      sendSSEPageMeta(res, total, hasMore)
-    }
-    sendSSERootArray(res, publicRows)
-    sendSSEProgress(res, 'root', 0, plan.stages.length)
+      if (isClientGone()) return
 
-    const stageError = await processFindManyStages({
-      extended, models, plan, rootPairs, res, signal,
-    })
+      const { publicRows, rootPairs } = buildRootPairs(
+        rootRows,
+        plan.internalFieldPaths,
+      )
 
-    if (isClientGone()) return
+      if (isPaginated) {
+        sendSSEPageMeta(res, total, hasMore)
+      }
+      sendSSERootArray(res, publicRows)
+      sendSSEProgress(res, 'root', 0, plan.stages.length)
 
-    if (stageError) {
-      safeSendError(res, stageError)
-      return
-    }
+      const stageError = await processFindManyStages({
+        extended,
+        models,
+        plan,
+        rootPairs,
+        res,
+        signal,
+      })
 
-    if (res.writableEnded || res.destroyed) return
-    if (isPaginated) {
-      sendSSEResult(res, { data: publicRows, total, hasMore })
-    } else {
-      sendSSEResult(res, publicRows)
-    }
-  })
+      if (isClientGone()) return
+
+      if (stageError) {
+        safeSendError(res, stageError)
+        return
+      }
+
+      if (res.writableEnded || res.destroyed) return
+      if (isPaginated) {
+        sendSSEResult(res, { data: publicRows, total, hasMore })
+      } else {
+        sendSSEResult(res, publicRows)
+      }
+    },
+  )
 }
 
 export async function runAutoIncludeProgressive(
   options: RunAutoIncludeOptions,
 ): Promise<void> {
   if (options.ctx.guardShape) {
+    if (isGuardedAutoIncludeBaseOp(options.baseOp)) {
+      return runGuardedAutoIncludeProgressive({
+        req: options.req,
+        res: options.res,
+        ctx: options.ctx,
+        args: options.args,
+        baseOp: options.baseOp,
+        modelName: options.modelName,
+        delegateKey: options.delegateKey,
+        models: options.models,
+        variantConfig: options.variantConfig,
+        coreQueryFn: options.coreQueryFn,
+        signal: options.signal,
+      })
+    }
     return handleAutoIncludeFallback(
       options,
-      'auto-progressive fallback: guard shape disables auto-include',
+      'auto-progressive fallback: guard shape disables auto-include for baseOp=' +
+        options.baseOp,
     )
   }
 

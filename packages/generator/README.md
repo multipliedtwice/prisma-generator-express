@@ -14,7 +14,7 @@ Running `npx prisma generate` produces:
 - Per-route and per-endpoint pagination config, including optional materialized-view count sources
 - Router generator with middleware support (before/after hooks per operation)
 - POST read endpoints for all read operations (for complex queries exceeding URL length limits)
-- Express-only progressive read streaming over Server-Sent Events (SSE), using manual stages or auto-include splitting for supported relation reads, including deep `findMany` / `findManyPaginated` auto-include paths
+- Express-only progressive read streaming over Server-Sent Events (SSE), using manual stages or auto-include splitting for supported relation reads, including unguarded deep `findMany` / `findManyPaginated` auto-include paths and guarded single-record auto-include paths
 - Express-only standalone materialized view router for read-only access to registered PostgreSQL materialized views
 - OpenAPI 3.1 spec (JSON and YAML endpoints registered automatically per router)
 - Documentation helpers for contract view and Scalar UI (require manual mounting)
@@ -80,7 +80,7 @@ Some operations require newer versions:
 
 The Hono target v1 is tested on Node.js runtimes only. See [Cloudflare Workers and edge runtimes](#cloudflare-workers-and-edge-runtimes).
 
-Progressive Endpoint Composition over Server-Sent Events is currently supported by the Express target only. Express supports both manual staged streaming and auto-include streaming for supported relation reads, including single-record reads and deep `findMany` / `findManyPaginated` reads within the configured planner limits. Fastify and Hono continue to support normal JSON read and write routes.
+Progressive Endpoint Composition over Server-Sent Events is currently supported by the Express target only. Express supports both manual staged streaming and auto-include streaming for supported relation reads. Unguarded auto-include supports single-record reads and deep `findMany` / `findManyPaginated` reads within the configured planner limits. Guarded auto-include supports selected single-record read shapes while keeping every root and relation-stage query inside prisma-guard. Fastify and Hono continue to support normal JSON read and write routes.
 
 ### Database provider support
 
@@ -588,6 +588,8 @@ Each operation config accepts an optional `shape` property. When present, the ge
 The downstream handler reads these values (`res.locals.guardShape`, `request.guardShape`, `c.get('guardShape')`) when constructing the Prisma call.
 
 When `shape` is absent, the handler calls Prisma directly with no guard enforcement.
+
+For Express auto-include SSE on supported single-record reads, the router can also resolve the guard shape before planning the stream. It still executes the root query and every relation-stage query through prisma-guard. See [Guarded auto-include mode](#guarded-auto-include-mode).
 
 Generated route config types treat `shape` as a named shape map. Use `default` for the normal single-shape case, and add other keys only when you need caller-based variants. The runtime still passes the map to `prisma-guard`; the `default` variant is selected when no caller is provided or no variant matches.
 
@@ -1670,7 +1672,7 @@ Manual progressive SSE can be configured on Express GET read operations only:
 - `aggregate`
 - `groupBy`
 
-Auto-include progressive SSE supports these Express GET read operations:
+Auto-include progressive SSE supports these Express GET read operations when no guard shape is attached:
 
 - `findUnique`
 - `findUniqueOrThrow`
@@ -1679,7 +1681,16 @@ Auto-include progressive SSE supports these Express GET read operations:
 - `findMany`
 - `findManyPaginated`
 
-`findMany` and `findManyPaginated` support deep relation loading by flattening parent rows at each relation path, with fallback cases listed in [Auto-include behavior and limits](#auto-include-behavior-and-limits).
+Unguarded `findMany` and `findManyPaginated` support deep relation loading by flattening parent rows at each relation path, with fallback cases listed in [Auto-include behavior and limits](#auto-include-behavior-and-limits).
+
+When a prisma-guard shape is attached, auto-include supports these single-record read operations:
+
+- `findUnique`
+- `findUniqueOrThrow`
+- `findFirst`
+- `findFirstOrThrow`
+
+Guarded `findMany` and `findManyPaginated` continue to use the configured fallback behavior. Normal guarded JSON reads are not affected.
 
 If auto-include is configured on an unsupported operation, the router either falls back to single-result SSE or sends an SSE error depending on `fallback`.
 
@@ -2143,13 +2154,109 @@ Example deep event sequence:
 ```
 
 
+
+### Guarded auto-include mode
+
+Auto-include also works with prisma-guard on supported single-record Express reads.
+
+When a route operation has both `progressive: { mode: 'autoInclude' }` and a guard `shape`, the router resolves the shape through prisma-guard before planning the stream. The request should not send `select`, `include`, or `omit`; the guard shape's default read projection is used as the response contract.
+
+```ts
+import { force } from 'prisma-guard'
+
+const userConfig = {
+  guard: {
+    variantHeader: 'x-api-variant',
+  },
+
+  findFirst: {
+    shape: {
+      me: (ctx) => ({
+        where: {
+          id: { equals: force(ctx.userId) },
+        },
+        select: {
+          id: true,
+          email: true,
+          profile: {
+            select: {
+              id: true,
+              displayName: true,
+            },
+          },
+          companies: {
+            where: {
+              company: {
+                is: {
+                  deletedAt: { equals: null },
+                },
+              },
+            },
+            select: {
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              role: {
+                select: {
+                  role: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    },
+    progressive: {
+      me: {
+        enabled: true,
+        mode: 'autoInclude',
+        fallback: 'error',
+      },
+    },
+  },
+}
+
+app.use('/', UserRouter(userConfig))
+```
+
+Client request:
+
+```http
+GET /user/first
+Accept: text/event-stream
+x-api-variant: me
+```
+
+The guarded auto-include planner resolves the matched shape, applies the shape's default projection, strips direct relation branches from the root query, and loads those direct relations as follow-up guarded stage queries. The root query and every stage query execute through `prisma.model.guard(slicedShape, caller).method(args)`. Relation stages are never executed as raw Prisma delegate calls.
+
+Direct relation stages stream as normal `field` events:
+
+```json
+{ "type": "field", "key": "id", "value": "user-id" }
+```
+
+```json
+{ "type": "field", "key": "profile", "value": { "id": "profile-id", "displayName": "Alice" } }
+```
+
+```json
+{ "type": "field", "key": "companies", "value": [{ "company": { "id": "company-id", "name": "Acme" }, "role": { "role": "admin" } }] }
+```
+
+The final `result` event contains the assembled object.
+
+For guarded auto-include, `fallback: 'error'` is recommended during development so unsupported shapes are visible immediately. In production, `fallback: 'singleResult'` can be used to return one final SSE result through the normal guarded handler when the planner cannot split the shape.
+
 ### Auto-include behavior and limits
 
 Auto-include is designed for supported Prisma `include` and relation `select` trees on reads.
 
 When `findManyPaginatedMode = "transaction"`, the root `findMany` and the total count run inside one interactive transaction, so `data` and `total` are mutually consistent. Relation stages, however, load **after** the transaction commits and are not part of it — relation batches can reflect writes committed between the root transaction and the stage queries.
 
-Supported root operations:
+Supported unguarded root operations:
 
 - `findUnique`
 - `findUniqueOrThrow`
@@ -2158,16 +2265,23 @@ Supported root operations:
 - `findMany`
 - `findManyPaginated`
 
-Supported single-record relation shapes:
+Supported guarded root operations:
+
+- `findUnique`
+- `findUniqueOrThrow`
+- `findFirst`
+- `findFirstOrThrow`
+
+Supported unguarded single-record relation shapes:
 
 - direct to-one relation includes/selects
 - direct to-many relation includes/selects
 - to-many relation args such as `where`, `orderBy`, `take`, `skip`, `cursor`, and `distinct`
 - nested relation loading through to-one parents
 
-Single-record auto-include falls back when a nested stage crosses a to-many parent. Direct to-many loading is still supported, but nested loading under that array is not handled by the single-record progressive runtime.
+Unguarded single-record auto-include falls back when a nested stage crosses a to-many parent. Direct to-many loading is still supported, but nested loading under that array is not handled by the single-record progressive runtime.
 
-Supported `findMany` and `findManyPaginated` relation shapes:
+Supported unguarded `findMany` and `findManyPaginated` relation shapes:
 
 - direct and nested to-one relation includes/selects
 - direct and nested to-many relation includes/selects
@@ -2175,11 +2289,33 @@ Supported `findMany` and `findManyPaginated` relation shapes:
 - single-column link fields only
 - nested depth up to the configured planner limit
 
-For `findMany` and `findManyPaginated`, each stage loads children with a batched query over the flattened parent rows at that stage's `parentPath`. Direct root stages stream `relationBatch` events. Depth-2-or-deeper stages stream `nestedRelationBatch` events with locator/value attachments, then also appear in the terminal `result` event.
+For unguarded `findMany` and `findManyPaginated`, each stage loads children with a batched query over the flattened parent rows at that stage's `parentPath`. Direct root stages stream `relationBatch` events. Depth-2-or-deeper stages stream `nestedRelationBatch` events with locator/value attachments, then also appear in the terminal `result` event.
 
 `findMany` and `findManyPaginated` auto-include apply configured pagination limits to the root query before loading relation batches. If the client omits `take`, `pagination.defaultLimit` is applied when configured. If the client sends a large `take`, `pagination.maxLimit` is enforced before the root query runs.
 
-Current MVP fallback cases include:
+Supported guarded single-record relation shapes:
+
+- direct to-one relation `select` branches
+- direct to-many relation `select` branches
+- relation-level `where`, `orderBy`, `take`, `skip`, `cursor`, and `distinct` on direct to-many stages
+- nested `select` trees inside a direct relation stage, loaded as part of that guarded stage query
+
+Guarded auto-include plans from the guard shape's default projection. Client-provided `select`, `include`, or `omit` is rejected for guarded auto-include and follows the configured fallback behavior. Normal guarded JSON reads still support client projection validation according to prisma-guard rules.
+
+Guarded auto-include falls back when a shape uses an unsupported streaming form, including:
+
+- client-provided `select`, `include`, or `omit`
+- shape-level `include` or `omit` in the auto-include plan
+- `_count` anywhere in the planned projection
+- implicit many-to-many relations
+- composite relation link fields
+- root relation filters in `where`, `orderBy`, or `cursor`
+- relation references in a staged relation's `orderBy` or `cursor`
+- link-field collisions in a staged relation `where`
+- planner limits for maximum stage count
+- guarded `findMany` or `findManyPaginated` auto-include
+
+Unguarded auto-include falls back when a request uses an unsupported streaming form, including:
 
 - `_count` in `select` or `include`
 - implicit many-to-many relations
@@ -3140,7 +3276,7 @@ E2E=true
 
 ### E2E scalar-list support
 
-E2E SQLite scalar-list support is intentionally narrow in phase 1.
+E2E SQLite scalar-list support is intentionally narrow.
 
 Supported:
 
@@ -3178,7 +3314,7 @@ basePrisma
 
 Guard extension remains in the chain, but generated routers do not pass guard shapes when `E2E=true`.
 
-### Phase 1 scope
+### Supported E2E scalar-list scope
 
 Supported:
 
@@ -3215,7 +3351,7 @@ Do not depend on SQLite-generated guard output for this path.
 
 The SQLite schema is a derived test schema. It may intentionally erase Postgres-only field information such as scalar-list types. Guard correctness belongs to the production schema, not the SQLite test schema.
 
-For phase 1, global E2E guard drop is simpler:
+Global E2E guard drop keeps this path simple:
 
 ```text
 production keeps guard
