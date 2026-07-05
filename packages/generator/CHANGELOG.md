@@ -1,3 +1,10 @@
+# [1.61.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.60.0...v1.61.0) (2026-07-05)
+
+
+### Features
+
+* implement guarded auto-include functionality ([e10b22d](https://github.com/multipliedtwice/prisma-generator-express/commit/e10b22d94b56c7bd110f37f768238e50112a4983))
+
 # [1.60.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.59.0...v1.60.0) (2026-07-04)
 
 
