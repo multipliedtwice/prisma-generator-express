@@ -24,7 +24,9 @@ const SHARED_FILES = [
 
 const EXPRESS_ONLY_FILES = [
   'autoIncludePlanner.ts',
+  'autoIncludePlannerGuarded.ts',
   'autoIncludeRuntime.ts',
+  'autoIncludeRuntimeGuarded.ts',
   'materializedRouter.ts',
 ]
 
