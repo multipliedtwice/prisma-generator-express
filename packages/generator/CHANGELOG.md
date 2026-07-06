@@ -1,3 +1,10 @@
+## [1.62.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.62.0...v1.62.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* add logging for featureFlags and companies relation paths in runStage function ([5dd821c](https://github.com/multipliedtwice/prisma-generator-express/commit/5dd821c518fa34af97c68e105da18ea7aa54ba48))
+
 # [1.62.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.61.0...v1.62.0) (2026-07-06)
 
 
