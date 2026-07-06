@@ -1,3 +1,10 @@
+# [1.62.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.61.0...v1.62.0) (2026-07-06)
+
+
+### Features
+
+* add guarded auto-include files to EXPRESS_ONLY_FILES ([413c73d](https://github.com/multipliedtwice/prisma-generator-express/commit/413c73d6942fa12ddcc864ed578457f366a7ed45))
+
 # [1.61.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.60.0...v1.61.0) (2026-07-05)
 
 
