@@ -1,3 +1,10 @@
+## [1.62.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.62.2...v1.62.3) (2026-07-07)
+
+
+### Bug Fixes
+
+* implement opKindFor function to map operation names to OpKind and update related handlers in Fastify and Hono routers ([5d60d14](https://github.com/multipliedtwice/prisma-generator-express/commit/5d60d14f3b2a13fa58ac894e7c0f3a70cc5c9b70))
+
 ## [1.62.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.62.1...v1.62.2) (2026-07-07)
 
 
