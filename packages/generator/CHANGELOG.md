@@ -1,3 +1,10 @@
+## [1.62.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.62.3...v1.62.4) (2026-07-07)
+
+
+### Bug Fixes
+
+* implement opKindFor function to map operation names to OpKind and update related handlers in generateRouter ([59bc809](https://github.com/multipliedtwice/prisma-generator-express/commit/59bc809a9b87341f50aaedaf683c9cc5dcf64806))
+
 ## [1.62.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.62.2...v1.62.3) (2026-07-07)
 
 
