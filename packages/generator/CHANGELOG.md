@@ -1,3 +1,10 @@
+## [1.62.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.62.1...v1.62.2) (2026-07-07)
+
+
+### Bug Fixes
+
+* rename parameter 'extended' to 'base' in runStage function and clean up related code ([16c296e](https://github.com/multipliedtwice/prisma-generator-express/commit/16c296e274b20ebf4913b84e64437b71b3d18e6d))
+
 ## [1.62.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.62.0...v1.62.1) (2026-07-06)
 
 
