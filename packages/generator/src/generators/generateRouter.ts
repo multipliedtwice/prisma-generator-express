@@ -11,6 +11,40 @@ function pathExpr(basePath: string, suffix: string): string {
   return `\`\${basePath}${suffix}\``
 }
 
+function opKindFor(opName: string): string {
+  switch (opName) {
+    case 'findUnique':
+    case 'findUniqueOrThrow':
+      return 'readUnique'
+    case 'findMany':
+    case 'findFirst':
+    case 'findFirstOrThrow':
+    case 'findManyPaginated':
+    case 'count':
+    case 'aggregate':
+    case 'groupBy':
+      return 'read'
+    case 'create':
+      return 'create'
+    case 'createMany':
+    case 'createManyAndReturn':
+      return 'createMany'
+    case 'update':
+      return 'update'
+    case 'updateMany':
+    case 'updateManyAndReturn':
+      return 'updateMany'
+    case 'upsert':
+      return 'upsert'
+    case 'delete':
+      return 'delete'
+    case 'deleteMany':
+      return 'deleteMany'
+    default:
+      return 'noop'
+  }
+}
+
 function emitReadOp(
   meta: (typeof OPERATION_METADATA)[number],
   modelName: string,
@@ -18,11 +52,12 @@ function emitReadOp(
   const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
   const handlerName = `${modelName}${c}`
   const pathValue = pathExpr('basePath', meta.pathSuffix)
+  const opKind = opKindFor(meta.name)
 
   const postReadBlock = meta.supportsPostRead
     ? `    if (postReadsEnabled) {
       const postPath = ${meta.name === 'findMany' ? "basePath ? `${basePath}/read` : '/read'" : `path`}
-      router.post(postPath, parseBodyAsQuery, setShape(opConfig, 'read'), ...before, ${handlerName} as RequestHandler, ...after, respond)
+      router.post(postPath, parseBodyAsQuery, setShape(opConfig, '${opKind}'), ...before, ${handlerName} as RequestHandler, ...after, respond)
     }`
     : ''
 
@@ -30,7 +65,7 @@ function emitReadOp(
     const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = ${pathValue}
-    router.get(path, parseQuery, setShape(opConfig, 'read'), ...before, maybeProgressiveSSE(opConfig, core.${meta.coreName}, '${meta.name}'), ${handlerName} as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig, '${opKind}'), ...before, maybeProgressiveSSE(opConfig, core.${meta.coreName}, '${meta.name}'), ${handlerName} as RequestHandler, ...after, respond)
 ${postReadBlock}
   }`
 }
@@ -43,12 +78,13 @@ function emitWriteOp(
   const handlerName = `${modelName}${c}`
   const pathValue = pathExpr('basePath', meta.pathSuffix)
   const respondFn = meta.successStatus === 201 ? 'respondCreated' : 'respond'
+  const opKind = opKindFor(meta.name)
 
   return `  if (isEnabled(config.${meta.configKey})) {
     const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = ${pathValue}
-    router.${meta.method}(path, setShape(opConfig, 'write'), ...before, ${handlerName} as RequestHandler, ...after, ${respondFn})
+    router.${meta.method}(path, setShape(opConfig, '${opKind}'), ...before, ${handlerName} as RequestHandler, ...after, ${respondFn})
   }`
 }
 
@@ -124,10 +160,8 @@ import {
 } from '../sse${ext}'
 import { relationModels } from '../relationModels${ext}'
 import { runAutoIncludeProgressive } from '../autoIncludeRuntime${ext}'
-import {
-  resolveDroppedGuardProjection,
-  applyProjectionToTarget,
-} from '../projectionDefaults${ext}'
+import { applyDroppedGuard } from '../projectionDefaults${ext}'
+import type { OpKind } from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'RequestHandler', guardShapesImport, importStyle, 'express')}
@@ -278,7 +312,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
     next()
   }
 
-  const setShape = (opConfig: OperationConfigLike, kind: 'read' | 'write'): RequestHandler => {
+  const setShape = (opConfig: OperationConfigLike, opKind: OpKind): RequestHandler => {
     return async (req, res, next) => {
       try {
         const locals = readLocals(res)
@@ -294,25 +328,28 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
           if (!DROP_GUARD) {
             locals.guardShape = opConfig.shape
           } else {
-            const projection = await resolveDroppedGuardProjection(
+            await applyDroppedGuard(
               opConfig.shape,
               caller,
               buildResolveContext(req),
-            )
-            if (projection) {
-              if (kind === 'read') {
+              opKind,
+              {
+                readQuery: locals.parsedQuery,
+                writeBody: isPlainObject(req.body)
+                  ? (req.body as Record<string, unknown>)
+                  : undefined,
+              },
+              () => {
                 if (!locals.parsedQuery) locals.parsedQuery = {}
-                applyProjectionToTarget(locals.parsedQuery, projection)
-              } else {
+                return locals.parsedQuery
+              },
+              () => {
                 if (!isPlainObject(req.body)) {
                   req.body = {}
                 }
-                applyProjectionToTarget(
-                  req.body as Record<string, unknown>,
-                  projection,
-                )
-              }
-            }
+                return req.body as Record<string, unknown>
+              },
+            )
           }
         }
         next()
@@ -473,7 +510,7 @@ ${writeOpBlocks}
     const path = basePath ? \`\${basePath}/each\` : '/each'
     router.post(
       path,
-      setShape(opConfig, 'write'),
+      setShape(opConfig, 'noop'),
       ...before,
       async (req: Request, res: Response, next: NextFunction) => {
         try {
