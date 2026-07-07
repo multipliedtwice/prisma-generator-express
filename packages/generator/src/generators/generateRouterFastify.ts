@@ -10,37 +10,79 @@ function pathExpr(suffix: string): string {
   return `\`\${basePath}${suffix}\``
 }
 
-function emitReadOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+function opKindFor(opName: string): string {
+  switch (opName) {
+    case 'findUnique':
+    case 'findUniqueOrThrow':
+      return 'readUnique'
+    case 'findMany':
+    case 'findFirst':
+    case 'findFirstOrThrow':
+    case 'findManyPaginated':
+    case 'count':
+    case 'aggregate':
+    case 'groupBy':
+      return 'read'
+    case 'create':
+      return 'create'
+    case 'createMany':
+    case 'createManyAndReturn':
+      return 'createMany'
+    case 'update':
+      return 'update'
+    case 'updateMany':
+    case 'updateManyAndReturn':
+      return 'updateMany'
+    case 'upsert':
+      return 'upsert'
+    case 'delete':
+      return 'delete'
+    case 'deleteMany':
+      return 'deleteMany'
+    default:
+      return 'noop'
+  }
+}
+
+function emitReadOp(
+  meta: (typeof OPERATION_METADATA)[number],
+  modelName: string,
+): string {
   const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
   const handlerName = `${modelName}${c}`
   const pathValue = pathExpr(meta.pathSuffix)
+  const opKind = opKindFor(meta.name)
 
   const postReadLine = meta.supportsPostRead
     ? meta.name === 'findMany'
       ? `      if (postReadsEnabled) {
         const postPath = basePath ? \`\${basePath}/read\` : '/read'
-        instance.post(postPath, handleRead(opConfig, ${handlerName}, parseBodyAsQueryHook))
+        instance.post(postPath, handleRead(opConfig, ${handlerName}, parseBodyAsQueryHook, '${opKind}'))
       }`
-      : `      if (postReadsEnabled) instance.post(path, handleRead(opConfig, ${handlerName}, parseBodyAsQueryHook))`
+      : `      if (postReadsEnabled) instance.post(path, handleRead(opConfig, ${handlerName}, parseBodyAsQueryHook, '${opKind}'))`
     : ''
 
   return `    if (isEnabled(config.${meta.configKey})) {
       const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
       const path = ${pathValue}
-      instance.get(path, handleRead(opConfig, ${handlerName}, parseQueryHook))
+      instance.get(path, handleRead(opConfig, ${handlerName}, parseQueryHook, '${opKind}'))
 ${postReadLine}
     }`
 }
 
-function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+function emitWriteOp(
+  meta: (typeof OPERATION_METADATA)[number],
+  modelName: string,
+): string {
   const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
   const handlerName = `${modelName}${c}`
   const pathValue = pathExpr(meta.pathSuffix)
+  const opKind = opKindFor(meta.name)
 
   return `    if (isEnabled(config.${meta.configKey})) {
       const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
       const path = ${pathValue}
-      instance.${meta.method}(path, handleWrite(opConfig, ${handlerName}))
+      instance.${meta.method}(path, handleWrite(opConfig, ${handlerName}, '${opKind}'))
     }`
 }
 
@@ -96,10 +138,8 @@ import type { OperationContext } from '../operationRuntime${ext}'
 import { transformResult } from '../operationRuntime${ext}'
 import { HttpError, mapError } from '../errorMapper${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
-import {
-  resolveDroppedGuardProjection,
-  applyProjectionToTarget,
-} from '../projectionDefaults${ext}'
+import { applyDroppedGuard } from '../projectionDefaults${ext}'
+import type { OpKind } from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, importStyle, 'fastify')}
@@ -171,45 +211,46 @@ function buildResolveContext(
 function makeShapeHook(
   config: ${modelName}RouteConfig,
   opConfig: OperationConfigLike,
-  kind: 'read' | 'write',
+  opKind: OpKind,
 ): (request: FastifyRequest) => Promise<void> {
   return async (request: FastifyRequest) => {
     const fx = request as FastifyExtended
     const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
-    if (merged) {
-      fx.routeConfig = { pagination: merged }
-    }
+    if (merged) fx.routeConfig = { pagination: merged }
+
     const headerName = (config.guard?.variantHeader || 'x-api-variant').toLowerCase()
     const headerValue = request.headers[headerName]
     const caller = config.guard?.resolveVariant?.(request)
       ?? (Array.isArray(headerValue) ? headerValue[0] : headerValue)
       ?? undefined
-    if (caller) {
-      fx.guardCaller = caller
-    }
+    if (caller) fx.guardCaller = caller
+
     if (opConfig.shape) {
       if (!DROP_GUARD) {
         fx.guardShape = opConfig.shape
       } else {
-        const projection = await resolveDroppedGuardProjection(
+        await applyDroppedGuard(
           opConfig.shape,
           caller,
           buildResolveContext(config, request),
-        )
-        if (projection) {
-          if (kind === 'read') {
+          opKind,
+          {
+            readQuery: fx.parsedQuery,
+            writeBody: isPlainObject(request.body)
+              ? (request.body as Record<string, unknown>)
+              : undefined,
+          },
+          () => {
             if (!fx.parsedQuery) fx.parsedQuery = {}
-            applyProjectionToTarget(fx.parsedQuery, projection)
-          } else {
+            return fx.parsedQuery
+          },
+          () => {
             if (!isPlainObject(request.body)) {
               ;(request as unknown as { body: unknown }).body = {}
             }
-            applyProjectionToTarget(
-              request.body as Record<string, unknown>,
-              projection,
-            )
-          }
-        }
+            return request.body as Record<string, unknown>
+          },
+        )
       }
     }
   }
@@ -337,10 +378,11 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
       opConfig: OperationConfigLike,
       handlerFn: (req: FastifyRequest, reply: FastifyReply) => Promise<void>,
       parseFn: (req: FastifyRequest) => void,
+      opKind: OpKind,
     ) => async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         parseFn(request)
-        await makeShapeHook(config, opConfig, 'read')(request)
+        await makeShapeHook(config, opConfig, opKind)(request)
         const { before = [], after = [] } = opConfig
         if (await runHooks(before, request, reply)) return
         await handlerFn(request, reply)
@@ -354,9 +396,10 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
     const handleWrite = (
       opConfig: OperationConfigLike,
       handlerFn: (req: FastifyRequest, reply: FastifyReply) => Promise<void>,
+      opKind: OpKind,
     ) => async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        await makeShapeHook(config, opConfig, 'write')(request)
+        await makeShapeHook(config, opConfig, opKind)(request)
         const { before = [], after = [] } = opConfig
         if (await runHooks(before, request, reply)) return
         await handlerFn(request, reply)
@@ -385,7 +428,7 @@ ${writeOpBlocks}
           if (!Array.isArray(request.body)) {
             throw new HttpError(400, 'updateEach body must be an array of { where, data } items')
           }
-          await makeShapeHook(config, opConfig, 'write')(request)
+          await makeShapeHook(config, opConfig, 'noop')(request)
           const { before = [], after = [] } = opConfig
           if (await runHooks(before, request, reply)) return
           await ${modelName}UpdateEach(request, reply)

@@ -10,24 +10,59 @@ function pathExpr(suffix: string): string {
   return `\`\${basePath}${suffix}\``
 }
 
+function opKindFor(opName: string): string {
+  switch (opName) {
+    case 'findUnique':
+    case 'findUniqueOrThrow':
+      return 'readUnique'
+    case 'findMany':
+    case 'findFirst':
+    case 'findFirstOrThrow':
+    case 'findManyPaginated':
+    case 'count':
+    case 'aggregate':
+    case 'groupBy':
+      return 'read'
+    case 'create':
+      return 'create'
+    case 'createMany':
+    case 'createManyAndReturn':
+      return 'createMany'
+    case 'update':
+      return 'update'
+    case 'updateMany':
+    case 'updateManyAndReturn':
+      return 'updateMany'
+    case 'upsert':
+      return 'upsert'
+    case 'delete':
+      return 'delete'
+    case 'deleteMany':
+      return 'deleteMany'
+    default:
+      return 'noop'
+  }
+}
+
 function emitReadOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
   const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
   const handlerName = `${modelName}${c}`
   const pathValue = pathExpr(meta.pathSuffix)
+  const opKind = opKindFor(meta.name)
 
   const postReadLine = meta.supportsPostRead
     ? meta.name === 'findMany'
       ? `    if (postReadsEnabled) {
       const postPath = basePath ? \`\${basePath}/read\` : '/read'
-      app.post(postPath, handleRead(opConfig, ${handlerName}, parseBodyAsQueryMiddleware))
+      app.post(postPath, handleRead(opConfig, ${handlerName}, parseBodyAsQueryMiddleware, '${opKind}'))
     }`
-      : `    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${handlerName}, parseBodyAsQueryMiddleware))`
+      : `    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${handlerName}, parseBodyAsQueryMiddleware, '${opKind}'))`
     : ''
 
   return `  if (isEnabled(config.${meta.configKey})) {
     const opConfig = opFor('${meta.configKey}')
     const path = ${pathValue}
-    app.get(path, handleRead(opConfig, ${handlerName}, parseQueryMiddleware))
+    app.get(path, handleRead(opConfig, ${handlerName}, parseQueryMiddleware, '${opKind}'))
 ${postReadLine}
   }`
 }
@@ -36,11 +71,12 @@ function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: strin
   const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
   const handlerName = `${modelName}${c}`
   const pathValue = pathExpr(meta.pathSuffix)
+  const opKind = opKindFor(meta.name)
 
   return `  if (isEnabled(config.${meta.configKey})) {
     const opConfig = opFor('${meta.configKey}')
     const path = ${pathValue}
-    app.${meta.method}(path, handleWrite(opConfig, ${handlerName}))
+    app.${meta.method}(path, handleWrite(opConfig, ${handlerName}, '${opKind}'))
   }`
 }
 
@@ -98,10 +134,8 @@ import { validateCountSourceWhere } from '../routeConfig${ext}'
 import { transformResult } from '../operationRuntime${ext}'
 import { mapError } from '../errorMapper${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
-import {
-  resolveDroppedGuardProjection,
-  applyProjectionToTarget,
-} from '../projectionDefaults${ext}'
+import { applyDroppedGuard } from '../projectionDefaults${ext}'
+import type { OpKind } from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'HonoBeforeHook', guardShapesImport, importStyle, 'hono')}
@@ -180,17 +214,17 @@ async function parseUpdateEachBodyMiddleware(c: HandlerContext): Promise<void> {
 function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
   config: ${modelName}RouteConfig<TCtx, TPrisma, TEnv>,
   opConfig: OperationConfigLike<TEnv>,
-  kind: 'read' | 'write',
+  opKind: OpKind,
 ) {
   return async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<void> => {
     const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
-    if (merged) {
-      c.set('routeConfig', { pagination: merged })
-    }
+    if (merged) c.set('routeConfig', { pagination: merged })
+
     const headerName = config.guard?.variantHeader || 'x-api-variant'
     const headerValue = c.req.header(headerName)
     const caller = config.guard?.resolveVariant?.(c) ?? headerValue ?? undefined
     if (caller) c.set('guardCaller', caller)
+
     if (opConfig.shape) {
       if (!DROP_GUARD) {
         c.set('guardShape', opConfig.shape)
@@ -198,31 +232,35 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
         const resolveCtx = typeof config.resolveContext === 'function'
           ? () => (config.resolveContext as (ctx: Context<GeneratedHonoEnv<TEnv>>) => unknown | Promise<unknown>)(c)
           : undefined
-        const projection = await resolveDroppedGuardProjection(
+
+        await applyDroppedGuard(
           opConfig.shape,
           caller,
           resolveCtx,
-        )
-        if (projection) {
-          if (kind === 'read') {
+          opKind,
+          {
+            readQuery: c.get('parsedQuery'),
+            writeBody: isPlainObject(c.get('body'))
+              ? (c.get('body') as Record<string, unknown>)
+              : undefined,
+          },
+          () => {
             let target = c.get('parsedQuery')
             if (!target) {
               target = {}
               c.set('parsedQuery', target)
             }
-            applyProjectionToTarget(target, projection)
-          } else {
+            return target
+          },
+          () => {
             let target = c.get('body')
             if (!isPlainObject(target)) {
               target = {}
               c.set('body', target)
             }
-            applyProjectionToTarget(
-              target as Record<string, unknown>,
-              projection,
-            )
-          }
-        }
+            return target as Record<string, unknown>
+          },
+        )
       }
     }
   }
@@ -342,10 +380,11 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
     opConfig: OperationConfigLike<TEnv>,
     handlerFn: (c: HandlerContext) => Promise<void>,
     parseFn: (c: HandlerContext) => Promise<void>,
+    opKind: OpKind,
   ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
     try {
       await parseFn(c as unknown as HandlerContext)
-      await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, 'read')(c)
+      await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
       const { before = [], after = [] } = opConfig
       const beforeResp = await runBeforeHooks<TEnv>(before, c)
       if (beforeResp) return beforeResp
@@ -361,10 +400,11 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
   const handleWrite = (
     opConfig: OperationConfigLike<TEnv>,
     handlerFn: (c: HandlerContext) => Promise<void>,
+    opKind: OpKind,
   ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
     try {
       await parseWriteBodyMiddleware(c as unknown as HandlerContext)
-      await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, 'write')(c)
+      await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
       const { before = [], after = [] } = opConfig
       const beforeResp = await runBeforeHooks<TEnv>(before, c)
       if (beforeResp) return beforeResp
@@ -398,7 +438,7 @@ ${writeOpBlocks}
     app.post(path, async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
       try {
         await parseUpdateEachBodyMiddleware(c as unknown as HandlerContext)
-        await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, 'write')(c)
+        await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, 'noop')(c)
         const { before = [], after = [] } = opConfig
         const beforeResp = await runBeforeHooks<TEnv>(before, c)
         if (beforeResp) return beforeResp

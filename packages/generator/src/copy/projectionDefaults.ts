@@ -377,4 +377,97 @@ function applyForcedWhere(opts: WhereMergeOptions): void {
 export async function applyDroppedGuard(
   shape: unknown,
   caller: string | undefined,
-  resolveContext: ContextResolver |
+  resolveContext: ContextResolver | undefined,
+  opKind: OpKind,
+  targets: {
+    readQuery?: Record<string, unknown>
+    writeBody?: Record<string, unknown>
+  },
+  ensureReadTarget: () => Record<string, unknown>,
+  ensureWriteTarget: () => Record<string, unknown>,
+): Promise<void> {
+  const resolved = await resolveShape(shape, caller, resolveContext)
+  if (!resolved) return
+
+  const projection = buildDefaultProjectionBody(resolved)
+
+  if (opKind === 'read' || opKind === 'readUnique') {
+    const isUnique = opKind === 'readUnique'
+    const shapeWhere = isPlainObject(resolved.where)
+      ? extractForcedFromWhereConfig(resolved.where)
+      : emptyForced()
+
+    if (projection || hasForced(shapeWhere)) {
+      const target = targets.readQuery ?? ensureReadTarget()
+      if (projection) applyProjectionToTarget(target, projection)
+      if (hasForced(shapeWhere)) {
+        applyForcedWhere({
+          targetContainer: target,
+          whereKey: 'where',
+          forced: shapeWhere,
+          isUnique,
+        })
+      }
+    }
+    return
+  }
+
+  if (opKind === 'noop') return
+
+  const shapeWhere = isPlainObject(resolved.where)
+    ? extractForcedFromWhereConfig(resolved.where)
+    : emptyForced()
+
+  const forcedData =
+    opKind === 'create' || opKind === 'createMany' || opKind === 'update' || opKind === 'updateMany'
+      ? isPlainObject(resolved.data)
+        ? extractForcedFromDataConfig(resolved.data)
+        : {}
+      : {}
+
+  const forcedCreate =
+    opKind === 'upsert' && isPlainObject(resolved.create)
+      ? extractForcedFromDataConfig(resolved.create)
+      : {}
+
+  const forcedUpdate =
+    opKind === 'upsert' && isPlainObject(resolved.update)
+      ? extractForcedFromDataConfig(resolved.update)
+      : {}
+
+  const needsBody =
+    projection !== null ||
+    hasForced(shapeWhere) ||
+    Object.keys(forcedData).length > 0 ||
+    Object.keys(forcedCreate).length > 0 ||
+    Object.keys(forcedUpdate).length > 0
+
+  if (!needsBody) return
+
+  const target = targets.writeBody ?? ensureWriteTarget()
+
+  if (projection) applyProjectionToTarget(target, projection)
+
+  if (hasForced(shapeWhere)) {
+    const isUnique =
+      opKind === 'update' || opKind === 'delete' || opKind === 'upsert'
+    applyForcedWhere({
+      targetContainer: target,
+      whereKey: 'where',
+      forced: shapeWhere,
+      isUnique,
+    })
+  }
+
+  if (Object.keys(forcedData).length > 0) {
+    target.data = mergeForcedData(target.data, forcedData)
+  }
+
+  if (Object.keys(forcedCreate).length > 0) {
+    target.create = mergeForcedData(target.create, forcedCreate)
+  }
+
+  if (Object.keys(forcedUpdate).length > 0) {
+    target.update = mergeForcedData(target.update, forcedUpdate)
+  }
+}
