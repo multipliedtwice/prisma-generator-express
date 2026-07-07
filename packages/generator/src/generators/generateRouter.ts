@@ -5,12 +5,6 @@ import { importExt } from '../utils/importExt'
 import { WriteStrategy, FindManyPaginatedMode } from '../constants'
 import { OPERATION_METADATA } from '../copy/operationDefinitions'
 
-interface OpEmitContext {
-  modelName: string
-  basePath: string
-  postReadsEnabled: string
-}
-
 function pathExpr(basePath: string, suffix: string): string {
   if (!suffix) return basePath || '/'
   if (!basePath) return `'${suffix}'`
@@ -28,7 +22,7 @@ function emitReadOp(
   const postReadBlock = meta.supportsPostRead
     ? `    if (postReadsEnabled) {
       const postPath = ${meta.name === 'findMany' ? "basePath ? `${basePath}/read` : '/read'" : `path`}
-      router.post(postPath, parseBodyAsQuery, setShape(opConfig), ...before, ${handlerName} as RequestHandler, ...after, respond)
+      router.post(postPath, parseBodyAsQuery, setShape(opConfig, 'read'), ...before, ${handlerName} as RequestHandler, ...after, respond)
     }`
     : ''
 
@@ -36,7 +30,7 @@ function emitReadOp(
     const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = ${pathValue}
-    router.get(path, parseQuery, setShape(opConfig), ...before, maybeProgressiveSSE(opConfig, core.${meta.coreName}, '${meta.name}'), ${handlerName} as RequestHandler, ...after, respond)
+    router.get(path, parseQuery, setShape(opConfig, 'read'), ...before, maybeProgressiveSSE(opConfig, core.${meta.coreName}, '${meta.name}'), ${handlerName} as RequestHandler, ...after, respond)
 ${postReadBlock}
   }`
 }
@@ -54,7 +48,7 @@ function emitWriteOp(
     const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
     const { before = [], after = [] } = opConfig
     const path = ${pathValue}
-    router.${meta.method}(path, setShape(opConfig), ...before, ${handlerName} as RequestHandler, ...after, ${respondFn})
+    router.${meta.method}(path, setShape(opConfig, 'write'), ...before, ${handlerName} as RequestHandler, ...after, ${respondFn})
   }`
 }
 
@@ -114,7 +108,7 @@ import type {
   PaginationConfig,
 } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
-import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
+import { sanitizeKeys, normalizePrefix, getEnv, isPlainObject } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import { validateCountSourceWhere } from '../routeConfig${ext}'
 import type { OperationContext } from '../operationRuntime${ext}'
@@ -130,6 +124,10 @@ import {
 } from '../sse${ext}'
 import { relationModels } from '../relationModels${ext}'
 import { runAutoIncludeProgressive } from '../autoIncludeRuntime${ext}'
+import {
+  resolveDroppedGuardProjection,
+  applyProjectionToTarget,
+} from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'RequestHandler', guardShapesImport, importStyle, 'express')}
@@ -258,6 +256,11 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
     }
   }
 
+  const buildResolveContext = (req: Request): (() => unknown | Promise<unknown>) | undefined => {
+    if (typeof config.resolveContext !== 'function') return undefined
+    return () => (config.resolveContext as (r: Request) => unknown | Promise<unknown>)(req)
+  }
+
   const parseQuery: RequestHandler = (req, res, next) => {
     const rawQuery = req.query
     if (rawQuery && Object.keys(rawQuery).length > 0) {
@@ -275,19 +278,47 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
     next()
   }
 
-  const setShape = (opConfig: OperationConfigLike): RequestHandler => {
-    return (req, res, next) => {
-      const locals = readLocals(res)
-      const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
-      if (merged) {
-        locals.routeConfig = { pagination: merged }
+  const setShape = (opConfig: OperationConfigLike, kind: 'read' | 'write'): RequestHandler => {
+    return async (req, res, next) => {
+      try {
+        const locals = readLocals(res)
+        const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
+        if (merged) {
+          locals.routeConfig = { pagination: merged }
+        }
+        const headerName = config.guard?.variantHeader || 'x-api-variant'
+        const headerValue = req.get(headerName)
+        const caller = config.guard?.resolveVariant?.(req) ?? headerValue ?? undefined
+        if (caller) locals.guardCaller = caller
+        if (opConfig.shape) {
+          if (!DROP_GUARD) {
+            locals.guardShape = opConfig.shape
+          } else {
+            const projection = await resolveDroppedGuardProjection(
+              opConfig.shape,
+              caller,
+              buildResolveContext(req),
+            )
+            if (projection) {
+              if (kind === 'read') {
+                if (!locals.parsedQuery) locals.parsedQuery = {}
+                applyProjectionToTarget(locals.parsedQuery, projection)
+              } else {
+                if (!isPlainObject(req.body)) {
+                  req.body = {}
+                }
+                applyProjectionToTarget(
+                  req.body as Record<string, unknown>,
+                  projection,
+                )
+              }
+            }
+          }
+        }
+        next()
+      } catch (err) {
+        next(mapError(err))
       }
-      const headerName = config.guard?.variantHeader || 'x-api-variant'
-      const headerValue = req.get(headerName)
-      const caller = config.guard?.resolveVariant?.(req) ?? headerValue ?? undefined
-      if (caller) locals.guardCaller = caller
-      if (opConfig.shape && !DROP_GUARD) locals.guardShape = opConfig.shape
-      next()
     }
   }
 
@@ -442,7 +473,7 @@ ${writeOpBlocks}
     const path = basePath ? \`\${basePath}/each\` : '/each'
     router.post(
       path,
-      setShape(opConfig),
+      setShape(opConfig, 'write'),
       ...before,
       async (req: Request, res: Response, next: NextFunction) => {
         try {

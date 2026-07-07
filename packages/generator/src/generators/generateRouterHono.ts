@@ -92,12 +92,16 @@ import type {
   PaginationConfig,
 } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
-import { normalizePrefix, getEnv, sanitizeKeys } from '../misc${ext}'
+import { normalizePrefix, getEnv, sanitizeKeys, isPlainObject } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import { validateCountSourceWhere } from '../routeConfig${ext}'
 import { transformResult } from '../operationRuntime${ext}'
 import { mapError } from '../errorMapper${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
+import {
+  resolveDroppedGuardProjection,
+  applyProjectionToTarget,
+} from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'HonoBeforeHook', guardShapesImport, importStyle, 'hono')}
@@ -176,8 +180,9 @@ async function parseUpdateEachBodyMiddleware(c: HandlerContext): Promise<void> {
 function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
   config: ${modelName}RouteConfig<TCtx, TPrisma, TEnv>,
   opConfig: OperationConfigLike<TEnv>,
+  kind: 'read' | 'write',
 ) {
-  return (c: Context<GeneratedHonoEnv<TEnv>>): void => {
+  return async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<void> => {
     const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
     if (merged) {
       c.set('routeConfig', { pagination: merged })
@@ -186,8 +191,39 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
     const headerValue = c.req.header(headerName)
     const caller = config.guard?.resolveVariant?.(c) ?? headerValue ?? undefined
     if (caller) c.set('guardCaller', caller)
-    if (opConfig.shape && !DROP_GUARD) {
-      c.set('guardShape', opConfig.shape)
+    if (opConfig.shape) {
+      if (!DROP_GUARD) {
+        c.set('guardShape', opConfig.shape)
+      } else {
+        const resolveCtx = typeof config.resolveContext === 'function'
+          ? () => (config.resolveContext as (ctx: Context<GeneratedHonoEnv<TEnv>>) => unknown | Promise<unknown>)(c)
+          : undefined
+        const projection = await resolveDroppedGuardProjection(
+          opConfig.shape,
+          caller,
+          resolveCtx,
+        )
+        if (projection) {
+          if (kind === 'read') {
+            let target = c.get('parsedQuery')
+            if (!target) {
+              target = {}
+              c.set('parsedQuery', target)
+            }
+            applyProjectionToTarget(target, projection)
+          } else {
+            let target = c.get('body')
+            if (!isPlainObject(target)) {
+              target = {}
+              c.set('body', target)
+            }
+            applyProjectionToTarget(
+              target as Record<string, unknown>,
+              projection,
+            )
+          }
+        }
+      }
     }
   }
 }
@@ -309,7 +345,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
   ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
     try {
       await parseFn(c as unknown as HandlerContext)
-      makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig)(c)
+      await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, 'read')(c)
       const { before = [], after = [] } = opConfig
       const beforeResp = await runBeforeHooks<TEnv>(before, c)
       if (beforeResp) return beforeResp
@@ -328,7 +364,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
   ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
     try {
       await parseWriteBodyMiddleware(c as unknown as HandlerContext)
-      makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig)(c)
+      await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, 'write')(c)
       const { before = [], after = [] } = opConfig
       const beforeResp = await runBeforeHooks<TEnv>(before, c)
       if (beforeResp) return beforeResp
@@ -362,7 +398,7 @@ ${writeOpBlocks}
     app.post(path, async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
       try {
         await parseUpdateEachBodyMiddleware(c as unknown as HandlerContext)
-        makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig)(c)
+        await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, 'write')(c)
         const { before = [], after = [] } = opConfig
         const beforeResp = await runBeforeHooks<TEnv>(before, c)
         if (beforeResp) return beforeResp

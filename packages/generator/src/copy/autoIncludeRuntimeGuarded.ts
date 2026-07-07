@@ -157,7 +157,7 @@ async function runRootQuery(
 }
 
 async function runStage(
-  extended: unknown,
+  base: unknown,
   models: Record<string, ModelRelationMap>,
   stage: GuardedAutoIncludeStage,
   parentValue: unknown,
@@ -196,37 +196,8 @@ async function runStage(
     [childKey]: { in: [linkVal] },
   }
 
-  const stageDelegate = getDelegate(extended, targetModel.delegateKey)
+  const stageDelegate = getDelegate(base, targetModel.delegateKey)
   const g = guarded(stageDelegate, stage.stageShape, caller)
-
-  if (stage.relationPath === 'featureFlags' || stage.relationPath === 'companies') {
-    const raw = rel.isList
-      ? await stageDelegate.findMany(stageArgs)
-      : await stageDelegate.findFirst(stageArgs)
-
-    const guardedResult = rel.isList
-      ? await g.findMany(stageArgs)
-      : await g.findFirst(stageArgs)
-
-    console.dir(
-      {
-        relationPath: stage.relationPath,
-        targetDelegateKey: targetModel.delegateKey,
-        parentKey,
-        childKey,
-        linkVal,
-        stageArgs,
-        stageShape: stage.stageShape,
-        rawCount: Array.isArray(raw) ? raw.length : raw ? 1 : 0,
-        guardedCount: Array.isArray(guardedResult) ? guardedResult.length : guardedResult ? 1 : 0,
-        raw,
-        guardedResult,
-      },
-      { depth: null },
-    )
-
-    return guardedResult
-  }
 
   if (rel.isList) {
     return g.findMany(stageArgs)
@@ -297,7 +268,7 @@ async function runGuardedAutoIncludeSingle(
       if (isAborted()) return
       try {
         const stageResult = await runStage(
-          extended,
+          ctx.prisma,
           models,
           stage,
           internal,

@@ -89,13 +89,17 @@ import type {
   PaginationConfig,
 } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
-import { sanitizeKeys, normalizePrefix, getEnv } from '../misc${ext}'
+import { sanitizeKeys, normalizePrefix, getEnv, isPlainObject } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import { validateCountSourceWhere } from '../routeConfig${ext}'
 import type { OperationContext } from '../operationRuntime${ext}'
 import { transformResult } from '../operationRuntime${ext}'
 import { HttpError, mapError } from '../errorMapper${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
+import {
+  resolveDroppedGuardProjection,
+  applyProjectionToTarget,
+} from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, importStyle, 'fastify')}
@@ -156,11 +160,20 @@ function parseBodyAsQueryHook(request: FastifyRequest): void {
   (request as FastifyExtended).parsedQuery = sanitizeKeys(body as Record<string, unknown>)
 }
 
+function buildResolveContext(
+  config: ${modelName}RouteConfig,
+  request: FastifyRequest,
+): (() => unknown | Promise<unknown>) | undefined {
+  if (typeof config.resolveContext !== 'function') return undefined
+  return () => (config.resolveContext as (r: FastifyRequest) => unknown | Promise<unknown>)(request)
+}
+
 function makeShapeHook(
   config: ${modelName}RouteConfig,
   opConfig: OperationConfigLike,
-): (request: FastifyRequest) => void {
-  return (request: FastifyRequest) => {
+  kind: 'read' | 'write',
+): (request: FastifyRequest) => Promise<void> {
+  return async (request: FastifyRequest) => {
     const fx = request as FastifyExtended
     const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
     if (merged) {
@@ -174,8 +187,30 @@ function makeShapeHook(
     if (caller) {
       fx.guardCaller = caller
     }
-    if (opConfig.shape && !DROP_GUARD) {
-      fx.guardShape = opConfig.shape
+    if (opConfig.shape) {
+      if (!DROP_GUARD) {
+        fx.guardShape = opConfig.shape
+      } else {
+        const projection = await resolveDroppedGuardProjection(
+          opConfig.shape,
+          caller,
+          buildResolveContext(config, request),
+        )
+        if (projection) {
+          if (kind === 'read') {
+            if (!fx.parsedQuery) fx.parsedQuery = {}
+            applyProjectionToTarget(fx.parsedQuery, projection)
+          } else {
+            if (!isPlainObject(request.body)) {
+              ;(request as unknown as { body: unknown }).body = {}
+            }
+            applyProjectionToTarget(
+              request.body as Record<string, unknown>,
+              projection,
+            )
+          }
+        }
+      }
     }
   }
 }
@@ -305,7 +340,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
     ) => async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         parseFn(request)
-        makeShapeHook(config, opConfig)(request)
+        await makeShapeHook(config, opConfig, 'read')(request)
         const { before = [], after = [] } = opConfig
         if (await runHooks(before, request, reply)) return
         await handlerFn(request, reply)
@@ -321,7 +356,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
       handlerFn: (req: FastifyRequest, reply: FastifyReply) => Promise<void>,
     ) => async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        makeShapeHook(config, opConfig)(request)
+        await makeShapeHook(config, opConfig, 'write')(request)
         const { before = [], after = [] } = opConfig
         if (await runHooks(before, request, reply)) return
         await handlerFn(request, reply)
@@ -350,7 +385,7 @@ ${writeOpBlocks}
           if (!Array.isArray(request.body)) {
             throw new HttpError(400, 'updateEach body must be an array of { where, data } items')
           }
-          makeShapeHook(config, opConfig)(request)
+          await makeShapeHook(config, opConfig, 'write')(request)
           const { before = [], after = [] } = opConfig
           if (await runHooks(before, request, reply)) return
           await ${modelName}UpdateEach(request, reply)

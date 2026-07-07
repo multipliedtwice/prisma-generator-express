@@ -20,6 +20,7 @@ const SHARED_FILES = [
   'guardHelpers.ts',
   'scalarTypes.ts',
   'concurrency.ts',
+  'projectionDefaults.ts',
 ]
 
 const EXPRESS_ONLY_FILES = [
