@@ -305,8 +305,12 @@ function runHandlerSequence(
     }
 
     try {
-      const result = handler(req, res, next)
-      if (result && typeof (result as Promise<unknown>).then === 'function') {
+      const result: unknown = handler(req, res, next)
+      if (
+        typeof result === 'object' &&
+        result !== null &&
+        typeof (result as Promise<unknown>).then === 'function'
+      ) {
         void (result as Promise<unknown>).catch((promiseError) => {
           if (settled) return
           settled = true
