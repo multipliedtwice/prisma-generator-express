@@ -21,6 +21,8 @@ const SHARED_FILES = [
   'scalarTypes.ts',
   'concurrency.ts',
   'projectionDefaults.ts',
+  'guardVariantRouting.ts',
+  'guardVariantError.ts',
 ]
 
 const EXPRESS_ONLY_FILES = [

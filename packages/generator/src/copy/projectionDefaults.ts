@@ -88,7 +88,7 @@ async function callShapeFn(
 
 async function resolveShape(
   input: unknown,
-  caller: string | undefined,
+  resolvedKey: string | undefined,
   resolveContext: ContextResolver | undefined,
 ): Promise<Record<string, unknown> | null> {
   if (!input) return null
@@ -100,9 +100,8 @@ async function resolveShape(
   if (!isPlainObject(input)) return null
   if (isDirectGuardShape(input)) return input
 
-  let entry: unknown = undefined
-  if (caller !== undefined && caller in input) entry = input[caller]
-  if (entry === undefined && 'default' in input) entry = input['default']
+  if (resolvedKey === undefined) return null
+  const entry = input[resolvedKey]
   if (entry === undefined) return null
 
   if (typeof entry === 'function') {
@@ -376,7 +375,7 @@ function applyForcedWhere(opts: WhereMergeOptions): void {
 
 export async function applyDroppedGuard(
   shape: unknown,
-  caller: string | undefined,
+  resolvedKey: string | undefined,
   resolveContext: ContextResolver | undefined,
   opKind: OpKind,
   targets: {
@@ -386,7 +385,7 @@ export async function applyDroppedGuard(
   ensureReadTarget: () => Record<string, unknown>,
   ensureWriteTarget: () => Record<string, unknown>,
 ): Promise<void> {
-  const resolved = await resolveShape(shape, caller, resolveContext)
+  const resolved = await resolveShape(shape, resolvedKey, resolveContext)
   if (!resolved) return
 
   const projection = buildDefaultProjectionBody(resolved)

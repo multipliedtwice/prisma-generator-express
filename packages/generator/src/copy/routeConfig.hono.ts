@@ -1,4 +1,5 @@
 import type { Context } from 'hono'
+import type { GuardVariantResolution } from './guardVariantRouting'
 import type {
   BaseOperationConfig,
   BaseRouteConfig,
@@ -35,6 +36,8 @@ export type HonoInternalVariables = {
   routeConfig?: { pagination?: PaginationConfig }
   guardShape?: Record<string, unknown>
   guardCaller?: string
+  guardVariantKey?: string
+  guardVariantFailure?: Extract<GuardVariantResolution, { ok: false }>
   resultData?: unknown
   resultStatus?: number
 }
@@ -58,10 +61,11 @@ export type HonoHookHandler<TEnv extends HonoEnvBase = HonoEnvBase> = HonoBefore
 export type OperationConfig<
   TShape = Record<string, unknown>,
   TEnv extends HonoEnvBase = HonoEnvBase,
-> = Omit<BaseOperationConfig<HonoBeforeHook<TEnv>, TShape>, 'before' | 'after'> & {
-  before?: HonoBeforeHook<TEnv>[]
-  after?: HonoAfterHook<TEnv>[]
-}
+> = BaseOperationConfig<
+  HonoBeforeHook<TEnv>,
+  TShape,
+  HonoAfterHook<TEnv>
+>
 
 export type UpdateEachConfig<TEnv extends HonoEnvBase = HonoEnvBase> = {
   before?: HonoBeforeHook<TEnv>[]
@@ -94,7 +98,13 @@ export type RouteConfig<
   TCtx = unknown,
   TEnv extends HonoEnvBase = HonoEnvBase,
 > = Omit<
-  BaseRouteConfig<HonoBeforeHook<TEnv>, Context<GeneratedHonoEnv<TEnv>>, TShape, TCtx>,
+  BaseRouteConfig<
+    HonoBeforeHook<TEnv>,
+    Context<GeneratedHonoEnv<TEnv>>,
+    TShape,
+    TCtx,
+    HonoAfterHook<TEnv>
+  >,
   HonoOpKeys
 > & {
   findUnique?: OperationConfig<TShape, TEnv> | false

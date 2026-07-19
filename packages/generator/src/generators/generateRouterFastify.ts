@@ -63,7 +63,7 @@ function emitReadOp(
     : ''
 
   return `    if (isEnabled(config.${meta.configKey})) {
-      const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
+      const opConfig = opFor('${meta.configKey}')
       const path = ${pathValue}
       instance.get(path, handleRead(opConfig, ${handlerName}, parseQueryHook, '${opKind}'))
 ${postReadLine}
@@ -80,7 +80,7 @@ function emitWriteOp(
   const opKind = opKindFor(meta.name)
 
   return `    if (isEnabled(config.${meta.configKey})) {
-      const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
+      const opConfig = opFor('${meta.configKey}')
       const path = ${pathValue}
       instance.${meta.method}(path, handleWrite(opConfig, ${handlerName}, '${opKind}'))
     }`
@@ -133,10 +133,19 @@ import type {
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys, normalizePrefix, getEnv, isPlainObject } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
-import { validateCountSourceWhere } from '../routeConfig${ext}'
+import {
+  normalizeOperation,
+  resolveOperationVariantKey,
+  validateCountSourceWhere,
+  validateOperationConfig,
+  validateUpdateEachConfig,
+} from '../routeConfig${ext}'
+import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import type { OperationContext } from '../operationRuntime${ext}'
 import { transformResult } from '../operationRuntime${ext}'
 import { HttpError, mapError } from '../errorMapper${ext}'
+import { formatGuardVariantResolutionError } from '../guardVariantError${ext}'
+import type { GuardVariantResolution } from '../guardVariantRouting${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
 import { applyDroppedGuard } from '../projectionDefaults${ext}'
 import type { OpKind } from '../projectionDefaults${ext}'
@@ -151,9 +160,22 @@ const DROP_GUARD = ${dropGuard} || _env.E2E === 'true'
 type OperationConfigLike = {
   before?: FastifyHookHandler[]
   after?: FastifyHookHandler[]
-  shape?: Record<string, unknown>
+  shape?: unknown
+  variants?: Record<
+    string,
+    {
+      shape?: unknown
+      before?: FastifyHookHandler[]
+      after?: FastifyHookHandler[]
+    }
+  >
   pagination?: Partial<PaginationConfig>
 }
+
+type NormalizedOp = NormalizedOperationConfig<
+  FastifyHookHandler,
+  FastifyHookHandler
+>
 
 type FastifyExtended = FastifyRequest & {
   prisma?: unknown
@@ -163,14 +185,17 @@ type FastifyExtended = FastifyRequest & {
   routeConfig?: { pagination?: PaginationConfig }
   guardShape?: Record<string, unknown>
   guardCaller?: string
+  guardVariantKey?: string
+  guardVariantFailure?: Extract<GuardVariantResolution, { ok: false }>
   resultData?: unknown
   resultStatus?: number
 }
 
-const defaultOpConfig: OperationConfigLike = Object.freeze({
-  before: Object.freeze([]) as unknown as FastifyHookHandler[],
-  after: Object.freeze([]) as unknown as FastifyHookHandler[],
-})
+function normalizeFastifyOperation(
+  config: OperationConfigLike | undefined,
+): NormalizedOp {
+  return normalizeOperation<FastifyHookHandler, FastifyHookHandler>(config)
+}
 
 function isQueryBuilderEnabled(config: RouteConfig): boolean {
   if (config.queryBuilder === false) return false
@@ -210,7 +235,7 @@ function buildResolveContext(
 
 function makeShapeHook(
   config: ${modelName}RouteConfig,
-  opConfig: OperationConfigLike,
+  opConfig: NormalizedOp,
   opKind: OpKind,
 ): (request: FastifyRequest) => Promise<void> {
   return async (request: FastifyRequest) => {
@@ -223,15 +248,27 @@ function makeShapeHook(
     const caller = config.guard?.resolveVariant?.(request)
       ?? (Array.isArray(headerValue) ? headerValue[0] : headerValue)
       ?? undefined
-    if (caller) fx.guardCaller = caller
+    if (typeof caller === 'string') fx.guardCaller = caller
 
-    if (opConfig.shape) {
+    const resolution = resolveOperationVariantKey(opConfig.guardRouting, caller)
+    if (!resolution.ok) {
+      fx.guardVariantFailure = resolution
+      return
+    }
+
+    const resolvedKey =
+      opConfig.guardRouting.kind === 'named'
+        ? resolution.key
+        : undefined
+    if (resolvedKey !== undefined) fx.guardVariantKey = resolvedKey
+
+    if (opConfig.guardShape) {
       if (!DROP_GUARD) {
-        fx.guardShape = opConfig.shape
+        fx.guardShape = opConfig.guardShape
       } else {
         await applyDroppedGuard(
-          opConfig.shape,
-          caller,
+          opConfig.guardShape,
+          resolvedKey,
           buildResolveContext(config, request),
           opKind,
           {
@@ -257,7 +294,7 @@ function makeShapeHook(
 }
 
 async function runHooks(
-  hooks: FastifyHookHandler[],
+  hooks: readonly FastifyHookHandler[],
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<boolean> {
@@ -297,6 +334,12 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
 
   await fastify.register(async (instance) => {
     const isEnabled = (value: unknown): boolean => value !== false && !!(config.enableAll || value)
+
+    const opFor = (key: string): NormalizedOp => {
+      const raw = (config as unknown as Record<string, unknown>)[key] as OperationConfigLike | undefined
+      validateOperationConfig(raw, '${modelName}.' + key)
+      return normalizeFastifyOperation(raw)
+    }
 
     const customPrefix = normalizePrefix(config.customUrlPrefix || '')
     const modelPrefix = config.addModelPrefix !== false ? '/${modelNameLower}' : ''
@@ -375,7 +418,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
     }
 
     const handleRead = (
-      opConfig: OperationConfigLike,
+      opConfig: NormalizedOp,
       handlerFn: (req: FastifyRequest, reply: FastifyReply) => Promise<void>,
       parseFn: (req: FastifyRequest) => void,
       opKind: OpKind,
@@ -383,10 +426,24 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
       try {
         parseFn(request)
         await makeShapeHook(config, opConfig, opKind)(request)
-        const { before = [], after = [] } = opConfig
-        if (await runHooks(before, request, reply)) return
+        if (await runHooks(opConfig.operationBefore, request, reply)) return
+
+        const fx = request as FastifyExtended
+        if (fx.guardVariantFailure) {
+          throw new HttpError(
+            400,
+            formatGuardVariantResolutionError(fx.guardVariantFailure),
+          )
+        }
+
+        const key = fx.guardVariantKey
+        const variantHooks =
+          key !== undefined ? opConfig.variantHooks[key] : undefined
+
+        if (await runHooks(variantHooks?.before ?? [], request, reply)) return
         await handlerFn(request, reply)
-        if (await runHooks(after, request, reply)) return
+        if (await runHooks(variantHooks?.after ?? [], request, reply)) return
+        if (await runHooks(opConfig.operationAfter, request, reply)) return
         sendResult(request, reply)
       } catch (error: unknown) {
         sendError(reply, error)
@@ -394,16 +451,30 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
     }
 
     const handleWrite = (
-      opConfig: OperationConfigLike,
+      opConfig: NormalizedOp,
       handlerFn: (req: FastifyRequest, reply: FastifyReply) => Promise<void>,
       opKind: OpKind,
     ) => async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         await makeShapeHook(config, opConfig, opKind)(request)
-        const { before = [], after = [] } = opConfig
-        if (await runHooks(before, request, reply)) return
+        if (await runHooks(opConfig.operationBefore, request, reply)) return
+
+        const fx = request as FastifyExtended
+        if (fx.guardVariantFailure) {
+          throw new HttpError(
+            400,
+            formatGuardVariantResolutionError(fx.guardVariantFailure),
+          )
+        }
+
+        const key = fx.guardVariantKey
+        const variantHooks =
+          key !== undefined ? opConfig.variantHooks[key] : undefined
+
+        if (await runHooks(variantHooks?.before ?? [], request, reply)) return
         await handlerFn(request, reply)
-        if (await runHooks(after, request, reply)) return
+        if (await runHooks(variantHooks?.after ?? [], request, reply)) return
+        if (await runHooks(opConfig.operationAfter, request, reply)) return
         sendResult(request, reply)
       } catch (error: unknown) {
         sendError(reply, error)
@@ -415,8 +486,10 @@ ${readOpBlocks}
 ${writeOpBlocks}
 
     if (config.updateEach) {
-      const opConfig: OperationConfigLike = (config.updateEach as OperationConfigLike | undefined) ?? defaultOpConfig
-      if ((!opConfig.before || opConfig.before.length === 0) && _env.NODE_ENV !== 'production') {
+      const rawUpdateEach = config.updateEach as unknown as OperationConfigLike
+      validateUpdateEachConfig(rawUpdateEach, '${modelName}.updateEach')
+      const opConfig = normalizeFastifyOperation(rawUpdateEach)
+      if (opConfig.operationBefore.length === 0 && _env.NODE_ENV !== 'production') {
         console.warn(
           '[${modelName}Router] updateEach is enabled without a before hook. ' +
           'This endpoint bypasses guard shapes and should be protected by authentication middleware.',
@@ -429,10 +502,9 @@ ${writeOpBlocks}
             throw new HttpError(400, 'updateEach body must be an array of { where, data } items')
           }
           await makeShapeHook(config, opConfig, 'noop')(request)
-          const { before = [], after = [] } = opConfig
-          if (await runHooks(before, request, reply)) return
+          if (await runHooks(opConfig.operationBefore, request, reply)) return
           await ${modelName}UpdateEach(request, reply)
-          if (await runHooks(after, request, reply)) return
+          if (await runHooks(opConfig.operationAfter, request, reply)) return
           sendResult(request, reply)
         } catch (error: unknown) {
           sendError(reply, error)

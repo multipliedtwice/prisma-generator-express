@@ -1109,6 +1109,7 @@ export function renderDocs(
       escapeHtml(guardVariantHeader) +
       '</span> header or a custom resolver function.',
     'Forced values (literals instead of true) are injected server-side and cannot be overridden by the client.',
+    'Operation hooks run before variant hooks. After the handler, variant hooks run before operation hooks. A terminal response or error stops the remaining hooks in that phase; operation after-hooks are not guaranteed cleanup handlers.',
   ]
 
   const writeStrategyNotes =

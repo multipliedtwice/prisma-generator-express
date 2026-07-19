@@ -12,7 +12,7 @@ Running `npx prisma generate` produces:
 - Handler functions for all Prisma operations (findMany, create, update, delete, etc.)
 - Schema-level `findManyPaginated` execution mode selection (`Promise.all` or interactive transaction)
 - Per-route and per-endpoint pagination config, including optional materialized-view count sources
-- Router generator with middleware support (before/after hooks per operation)
+- Router generator with operation-wide and per-variant before/after hooks
 - POST read endpoints for all read operations (for complex queries exceeding URL length limits)
 - Express-only progressive read streaming over Server-Sent Events (SSE), using manual stages or auto-include splitting for supported relation reads, including unguarded deep `findMany` / `findManyPaginated` auto-include paths and guarded single-record auto-include paths
 - Express-only standalone materialized view router for read-only access to registered PostgreSQL materialized views
@@ -503,13 +503,27 @@ app.route('/', UserRouter(userConfig))
 
 Hono route hooks return `void` to continue. Return a `Response` (e.g. `c.json({...}, 403)`) or throw `HTTPException` to short-circuit — subsequent hooks and the handler will not run.
 
+### Hook execution contract
+
+Operation-level hooks run for every successfully routed variant. Variant hooks run only for the selected declared variant key.
+
+```text
+operation before-hooks
+variant before-hooks
+generated handler
+variant after-hooks
+operation after-hooks
+```
+
+A terminal response or an error stops the remaining hooks in that phase. Operation after-hooks are not cleanup or `finally` handlers and are not guaranteed to run. Caller-routing failures are surfaced after operation before-hooks and before variant before-hooks, preserving operation-wide logging and authentication timing.
+
 Only operations listed in the config (or all when `enableAll: true`) are registered. Operations not listed produce no routes.
 
 ## Guard shapes (prisma-guard integration)
 
-prisma-generator-express integrates with [prisma-guard](https://github.com/multipliedtwice/prisma-guard) to enforce input validation, query shape restrictions, and tenant isolation on generated routes. When a `shape` is configured on an operation, the handler calls `prisma.model.guard(shape, caller).method(args)` instead of `prisma.model.method(args)`.
+prisma-generator-express integrates with [prisma-guard](https://github.com/multipliedtwice/prisma-guard) to enforce input validation, query shape restrictions, and tenant isolation on generated routes. Configure either `shape` for the existing guard API or `variants` to co-locate named shapes with per-variant hooks. The handler passes the extracted guard shape map to `prisma.model.guard(shape, caller).method(args)` instead of calling Prisma directly.
 
-Guard shapes work identically across all three targets. The only difference is the type of the `resolveVariant` callback parameter (`Request` for Express, `FastifyRequest` for Fastify, `Context` for Hono).
+Guard routing works identically across Express, Fastify, and Hono. The only target-specific differences are hook types and the type of the `resolveVariant` callback parameter (`Request` for Express, `FastifyRequest` for Fastify, `Context` for Hono).
 
 ### Guard setup
 
@@ -579,71 +593,81 @@ If prisma-guard is not installed or the client is not extended with the guard ex
 
 ### How guard integration works
 
-Each operation config accepts an optional `shape` property. When present, the generated handler:
+Each operation accepts either the existing `shape` property or the new `variants` property:
 
-1. Stores the shape on the request context via middleware (Express: `res.locals.guardShape = shape`, Fastify: `request.guardShape = shape`, Hono: `c.set('guardShape', shape)`)
-2. Resolves the caller from `config.guard.resolveVariant(req)`, then from the configured header (default `x-api-variant`), falling back to `undefined`
-3. Calls `prisma.model.guard(shape, caller).method(args)` instead of `prisma.model.method(args)`
+- `shape` accepts one direct shape, one context-dependent shape function, or a named shape map.
+- `variants` is a named map whose entries contain one shape plus optional per-variant hooks.
+- `shape` and `variants` cannot both be defined on the same operation.
+- Both may be absent when the operation only needs operation-wide hooks or pagination.
 
-The downstream handler reads these values (`res.locals.guardShape`, `request.guardShape`, `c.get('guardShape')`) when constructing the Prisma call.
+At router construction, the generated router validates and normalizes the descriptor. Variant descriptors are removed before anything reaches prisma-guard, dropped-guard projection logic, progressive planning, or OpenAPI extraction.
 
-When `shape` is absent, the handler calls Prisma directly with no guard enforcement.
+For each request, the generated router:
 
-For Express auto-include SSE on supported single-record reads, the router can also resolve the guard shape before planning the stream. It still executes the root query and every relation-stage query through prisma-guard. See [Guarded auto-include mode](#guarded-auto-include-mode).
+1. Resolves the raw caller from `config.guard.resolveVariant(request)`, then from the configured header (default `x-api-variant`), falling back to `undefined`.
+2. Resolves the declared guard variant key using the same exact/default/parameterized precedence as prisma-guard.
+3. Applies dropped-guard projection defaults immediately for successful routing when guard is globally dropped, preserving what operation before-hooks observe.
+4. Runs operation before-hooks.
+5. Converts a stored routing failure into HTTP 400 before any variant hook or generated handler runs.
+6. Runs hooks for the matched declared key, calls the generated handler, then runs after-hooks in reverse scope order.
 
-Generated route config types treat `shape` as a named shape map. Use `default` for the normal single-shape case, and add other keys only when you need caller-based variants. The runtime still passes the map to `prisma-guard`; the `default` variant is selected when no caller is provided or no variant matches.
+The normalized guard shape is stored on request context (`res.locals.guardShape`, `request.guardShape`, or `c.get('guardShape')`). The declared matched key is stored separately from the raw caller. For example, caller `customer/123` matching `customer/:id` stores `customer/:id` as the variant key.
+
+When neither `shape` nor `variants` is configured, the generated handler calls Prisma directly with no guard enforcement.
 
 ### Default shape per operation
 
-In generated route configs, `shape` is always a named shape map. Use the `default` key when an operation has one normal shape and no caller-specific variants.
-
-`default` is used when no caller is provided or when the caller does not match a named variant. If you do not want fallback behavior, omit `default` and define only explicit variants.
+For one normal shape, use a direct shape object:
 
 ```ts
 const userConfig = {
   findMany: {
     shape: {
-      default: {
+      where: { email: { contains: true }, role: { equals: true } },
+      orderBy: { createdAt: true },
+      take: { max: 100, default: 25 },
+      skip: true,
+    },
+  },
+}
+```
+
+A context-dependent shape function is also valid:
+
+```ts
+const userConfig = {
+  findMany: {
+    shape: (ctx) => ({
+      where: {
+        companyId: { equals: ctx.companyId },
+        name: { contains: true },
+      },
+      take: { max: 50 },
+    }),
+  },
+}
+```
+
+Use a named shape map when only shape routing differs and no per-variant route hooks are needed:
+
+```ts
+const userConfig = {
+  findMany: {
+    shape: {
+      admin: {
         where: { email: { contains: true }, role: { equals: true } },
-        orderBy: { createdAt: true },
-        take: { max: 100, default: 25 },
-        skip: true,
+        take: { max: 100 },
       },
-    },
-  },
-  create: {
-    shape: {
       default: {
-        data: { email: true, name: true, role: 'user' },
-      },
-    },
-  },
-  update: {
-    shape: {
-      default: {
-        data: { name: true },
-        where: { id: { equals: true } },
-      },
-    },
-  },
-  delete: {
-    shape: {
-      default: {
-        where: { id: { equals: true } },
+        where: { name: { contains: true } },
+        take: { max: 20, default: 10 },
       },
     },
   },
 }
-
-app.use('/', UserRouter(userConfig))
 ```
 
-In this example:
-
-- `findMany` allows filtering by `email` (contains) and `role` (equals), sorting by `createdAt`, pagination via `take`/`skip`. All other where fields, orderBy fields, and include/select are rejected.
-- `create` accepts `email` and `name` from the client. `role` is forced to `'user'` regardless of what the client sends.
-- `update` only allows changing `name`, and requires a unique `id` in `where`.
-- `delete` requires a unique `id` in `where`.
+`default` is selected when the caller is missing, blank, or unmatched. Without `default`, the request returns 400. Use `variants` instead when hooks must differ by the matched shape.
 
 ### Shape value types in data
 
@@ -728,6 +752,62 @@ fetch('/user', {
 
 If the caller is missing or doesn't match any key, the request is rejected with 400 (`CallerError`).
 
+### Variant-specific hooks
+
+Use `variants` to keep each named shape beside the hooks that belong to it:
+
+```ts
+const orderConfig = {
+  create: {
+    before: [authenticate],
+    after: [auditOrderCreation],
+
+    variants: {
+      customer: {
+        shape: customerCreateShape,
+        before: [bindCustomer],
+        after: [sendCustomerConfirmation],
+      },
+
+      seller: {
+        shape: sellerCreateShape,
+        before: [bindSeller],
+      },
+
+      default: {
+        shape: internalCreateShape,
+      },
+    },
+  },
+
+  guard: {
+    resolveVariant: (req) => req.user?.role,
+  },
+}
+```
+
+The execution order for `customer` is:
+
+```text
+authenticate
+bindCustomer
+generated create handler
+sendCustomerConfirmation
+auditOrderCreation
+```
+
+Important rules:
+
+- Operation-level `before` and `after` hooks run for every successfully resolved variant.
+- Variant hooks run only for the selected declared key.
+- `variants[key].shape` is one direct operation shape or one context-dependent shape function. It cannot contain another named map.
+- `shape` and `variants` are mutually exclusive on one operation, but both may be absent.
+- `default` is allowed as a variant key and receives its own hooks when fallback selects it.
+- Reserved guard shape keys such as `where`, `data`, `include`, and `select` cannot be variant names.
+- OpenAPI generation extracts only the shapes; hook descriptors are never exposed as guard configuration.
+
+`updateEach` does not support `variants`; it keeps operation-wide hooks only.
+
 ### Custom caller resolution
 
 Use `resolveVariant` for caller logic beyond a simple header. The callback parameter type depends on the target.
@@ -798,14 +878,20 @@ Caller keys support parameterized path patterns:
 ```ts
 const projectConfig = {
   update: {
-    shape: {
+    variants: {
       '/admin/projects/:id': {
-        data: { title: true, status: true, priority: true },
-        where: { id: { equals: true } },
+        shape: {
+          data: { title: true, status: true, priority: true },
+          where: { id: true },
+        },
+        before: [requireAdmin],
       },
       '/editor/projects/:id': {
-        data: { title: true },
-        where: { id: { equals: true } },
+        shape: {
+          data: { title: true },
+          where: { id: true },
+        },
+        before: [requireEditor],
       },
     },
   },
@@ -815,7 +901,7 @@ const projectConfig = {
 }
 ```
 
-The client sends the full path:
+The client sends the concrete caller:
 
 ```ts
 fetch('/project', {
@@ -825,13 +911,39 @@ fetch('/project', {
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
-    where: { id: { equals: 'abc123' } },
+    where: { id: 'abc123' },
     data: { title: 'Updated', status: 'active' },
   }),
 })
 ```
 
-Exact matches are checked first. Parameters (`:id`) are routing-only and are not extracted.
+Exact non-blank keys are checked first. Parameter segments match one path segment and are not extracted. Blank and whitespace-only callers do not exact-match or pattern-match; they use `default` or return 400.
+
+The router stores the declared matched key, not the concrete caller. In this example:
+
+```text
+raw caller:       /admin/projects/abc123
+matched key:      /admin/projects/:id
+selected hooks:   variants['/admin/projects/:id']
+```
+
+Express progressive configuration should also use the declared matched key:
+
+```ts
+update: {
+  variants: {
+    '/admin/projects/:id': { shape: adminShape },
+  },
+  progressive: {
+    '/admin/projects/:id': {
+      enabled: true,
+      mode: 'autoInclude',
+    },
+  },
+}
+```
+
+For backward compatibility, a concrete raw-caller progressive key may be used only when no declared-key entry exists. That fallback emits a deduplicated deprecation warning identifying the declared key to use. Declared-key configuration always takes precedence.
 
 ### Forced where conditions
 
@@ -1181,7 +1293,11 @@ Guard errors are mapped to HTTP status codes by the generated error handler:
 | `CallerError` | 400         | Missing/unknown/ambiguous caller, caller in body                  |
 | `PolicyError` | 403         | Scope denied, missing tenant context, rejected findUnique         |
 
-All errors return `{ "message": "..." }` in the response body.
+Generated caller routing preserves the same 400 messages for existing named `shape` maps. Missing, unknown, ambiguous, and reserved-key routing failures are stored during shape preparation, operation before-hooks run, and the failure is then surfaced before variant hooks and the handler.
+
+The new `variants` descriptor is validated when the router is constructed. Invalid configuration such as an empty variants map, a missing entry shape, a reserved variant name, or defining both `shape` and `variants` throws immediately instead of registering the route.
+
+All request errors return `{ "message": "..." }` in the response body.
 
 ### Complete guard example
 
@@ -2343,17 +2459,26 @@ Auto-include does not require `resolveContext` or `progressiveStages`.
 
 ### Hooks and guard behavior
 
-For SSE requests:
+For SSE requests, routing and before-hooks run in the same order as JSON requests:
 
-- `before` hooks run before streaming starts
-- `after` hooks do not run, because the SSE middleware handles the response and does not continue to the normal handler
+```text
+operation before-hooks
+variant before-hooks
+progressive SSE middleware
+```
+
+If the progressive middleware starts or completes an SSE response, it does not continue to the normal generated handler. Consequently, variant after-hooks and operation after-hooks do not run for that request. They are not cleanup handlers.
+
+Additional behavior:
+
 - manual progressive stages receive `req.prisma` directly
 - manual progressive stages do not automatically use guard shapes
-- auto-include mode does not run when an operation has a guard `shape`; it falls back to single-result SSE or emits an SSE error depending on `fallback`
+- auto-include mode does not run when an operation has a guard shape; it falls back to single-result SSE or emits an SSE error depending on `fallback`
+- variants without progressive config use the single-result SSE fallback through the normal generated core read handler, so guard shape behavior matches the JSON endpoint
+
+Progressive lookup uses the declared matched variant key. A caller such as `/user/123` matched by `/user/:id` should configure `progressive['/user/:id']`. If only a legacy concrete raw-caller key exists, the router may use it as a compatibility fallback and emits a deduplicated deprecation warning.
 
 Manual stage authors are responsible for using the resolved context and enforcing ownership or tenant constraints in their stage queries.
-
-For variants without progressive config, the single-result SSE fallback uses the normal generated core read handler, so guard shape behavior matches the JSON endpoint.
 
 ### Client-side usage
 
@@ -2523,7 +2648,7 @@ app.use('/', UserRouter({
 }))
 ```
 
-Only `before` and `after` hooks are configurable. It has no `shape`, `pagination`, or progressive config. In development, enabling `updateEach` without a `before` hook may print a warning because this route bypasses guard shapes and should be protected explicitly.
+Only operation-wide `before` and `after` hooks are configurable. It has no `shape`, `variants`, pagination, or progressive config. In development, enabling `updateEach` without a `before` hook may print a warning because this route bypasses guard shapes and should be protected explicitly.
 
 When enabled, `updateEach` is included in generated OpenAPI output as `POST /{modelname}/each`. It remains excluded from `enableAll: true`.
 
@@ -2531,7 +2656,7 @@ When enabled, `updateEach` is included in generated OpenAPI output as `POST /{mo
 
 `updateEach` does **not** apply prisma-guard shapes on any target, by design. It is intended as a trusted internal batch path, for example worker-to-backend bulk updates, not a public endpoint. Because it bypasses guard, it can write any field the underlying `update` allows.
 
-Caller resolution still runs before hooks on all three targets, so a `before` hook can read the resolved caller for its own authorization logic. This is separate from guard shapes and does not enable guard enforcement for `updateEach`.
+Raw caller resolution still runs before hooks on all three targets, so a `before` hook can read the caller for its own authorization logic. No variant key is selected and no variant hook gate runs for `updateEach`. This is separate from guard shapes and does not enable guard enforcement.
 
 Protect it yourself with route middleware (`before`) enforcing authentication or network-level restrictions. A guard `variantHeader` such as `x-api-variant` is **not** a security boundary — it only selects a caller value for hooks to read and is trivially spoofable. Do not expose `/each` to untrusted callers.
 
@@ -3055,14 +3180,39 @@ interface RouteConfig<TCtx = unknown> {
   updateEach?: UpdateEachConfig
 }
 
-interface OperationConfig {
-  before?: RequestHandler[]
-  after?: RequestHandler[]
-  shape?: Record<string, any>
-  pagination?: Partial<PaginationConfig>
+type ShapeOrFn<TShape, TCtx> = TShape | ((ctx: TCtx) => TShape)
+
+type VariantEntry<TShape, TCtx, TBefore, TAfter = TBefore> = {
+  shape: ShapeOrFn<TShape, TCtx>
+  before?: TBefore[]
+  after?: TAfter[]
 }
 
-interface ReadOperationConfig<TCtx = unknown> extends OperationConfig {
+type OperationConfig<
+  TShape = Record<string, any>,
+  TCtx = unknown,
+> = {
+  before?: RequestHandler[]
+  after?: RequestHandler[]
+  pagination?: Partial<PaginationConfig>
+} & (
+  | {
+      shape?: ShapeOrFn<TShape, TCtx> | Record<string, ShapeOrFn<TShape, TCtx>>
+      variants?: never
+    }
+  | {
+      shape?: never
+      variants: Record<
+        string,
+        VariantEntry<TShape, TCtx, RequestHandler>
+      >
+    }
+)
+
+type ReadOperationConfig<
+  TCtx = unknown,
+  TShape = Record<string, any>,
+> = OperationConfig<TShape, TCtx> & {
   progressive?: Record<string, ProgressiveVariantConfig>
   progressiveStages?: Record<string, ProgressiveStage<TCtx>>
 }
@@ -3132,12 +3282,14 @@ interface QueryBuilderConfig {
 The Fastify config is identical except for hook and resolver types:
 
 ```ts
-interface OperationConfig {
+type OperationConfig<TShape = Record<string, any>> = {
   before?: FastifyHookHandler[]
   after?: FastifyHookHandler[]
-  shape?: Record<string, any>
   pagination?: Partial<PaginationConfig>
-}
+} & (
+  | { shape?: TShape | ((ctx: unknown) => TShape) | Record<string, TShape | ((ctx: unknown) => TShape)>; variants?: never }
+  | { shape?: never; variants: Record<string, { shape: TShape | ((ctx: unknown) => TShape); before?: FastifyHookHandler[]; after?: FastifyHookHandler[] }> }
+)
 
 type FastifyHookHandler = (
   request: FastifyRequest,
@@ -3152,12 +3304,14 @@ The `guard.resolveVariant` callback receives `FastifyRequest` instead of `Reques
 The Hono config is identical except for hook and resolver types:
 
 ```ts
-interface OperationConfig {
+type OperationConfig<TShape = Record<string, any>> = {
   before?: HonoBeforeHook[]
   after?: HonoAfterHook[]
-  shape?: Record<string, any>
   pagination?: Partial<PaginationConfig>
-}
+} & (
+  | { shape?: TShape | ((ctx: unknown) => TShape) | Record<string, TShape | ((ctx: unknown) => TShape)>; variants?: never }
+  | { shape?: never; variants: Record<string, { shape: TShape | ((ctx: unknown) => TShape); before?: HonoBeforeHook[]; after?: HonoAfterHook[] }> }
+)
 
 type HonoBeforeHook<Env extends { Variables: any } = any> = (
   c: Context<Env>,
@@ -3233,19 +3387,11 @@ Generated routers use this effective guard-drop flag:
 const DROP_GUARD = GENERATOR_DROP_GUARD || process.env.E2E === 'true'
 ```
 
-When `DROP_GUARD` is true:
+When `DROP_GUARD` is true, the generated router calls Prisma directly instead of calling `delegate.guard(...)`. Before doing so, it still applies forced values and default projection behavior using vendored, dependency-free generated runtime helpers.
 
-```ts
-delegate.findMany(args)
-```
+Caller routing is not dropped. Active and dropped modes use the same exact/default/parameterized resolver and the same declared matched key. Missing, unknown, ambiguous, and reserved-key routing failures return 400 after operation before-hooks in both modes.
 
-is used instead of:
-
-```ts
-delegate.guard(shape, caller).findMany(args)
-```
-
-This is global for generated routers. No per-router config is required.
+Generated dropped/E2E router output has no runtime import from `prisma-guard`, the configured guard runtime import path, or a generated guard bridge. Type-only imports of generated guard shape declarations are allowed because they are erased at build time.
 
 ### Production safety
 
@@ -3362,27 +3508,20 @@ SQL extension receives normal id filters
 
 ### Required implementation notes
 
-Generated router code should compute:
+Generated router code computes:
 
 ```ts
-const DROP_GUARD = ${dropGuard} || process.env.E2E === 'true'
+const DROP_GUARD = GENERATOR_DROP_GUARD || process.env.E2E === 'true'
 ```
 
-Then only assign guard shape when guard is not dropped:
+The router always resolves caller routing first. On a successful match:
 
-```ts
-if (opConfig.shape && !DROP_GUARD) {
-  locals.guardShape = opConfig.shape
-}
-```
+- active mode stores the normalized guard shape for `delegate.guard(...)`
+- dropped mode applies the same matched shape locally before operation before-hooks
 
-The same behavior should apply to all generated targets:
+On a routing failure, the router stores the failure, runs operation before-hooks, then returns HTTP 400 before variant hooks or the handler. This ordering is identical across Express, Fastify, and Hono.
 
-```text
-Express
-Fastify
-Hono
-```
+The dropped runtime must remain self-contained. Generated code must not require `prisma-guard` to be installed or resolvable when `dropGuard=true` or `E2E=true`.
 
 ## Environment variables
 

@@ -74,25 +74,55 @@ export function generateRouteConfigType(
 
   const shapeOps = Array.from(new Set(ROUTER_OPERATIONS))
   const opShapeImports = shapeOps
-    .map((op) => `${m}${capitalize(op)}ShapeInput`)
+    .flatMap((op) => {
+      const prefix = `${m}${capitalize(op)}Shape`
+      return [prefix, `${prefix}Input`]
+    })
     .join(',\n  ')
+
+  const shapeOrFnAliases = shapeOps
+    .map((op) => {
+      const prefix = `${m}${capitalize(op)}Shape`
+      return (
+        `type ${prefix}OrFn<TCtx = unknown> =\n` +
+        `  | ${prefix}\n` +
+        `  | ((ctx: TCtx) => ${prefix})`
+      )
+    })
+    .join('\n\n')
 
   const overrides = ROUTER_OPERATIONS.map((routerOp) => {
     const c = capitalize(routerOp)
     const isRead = READ_OPERATION_NAMES.has(routerOp)
-    const lines = [
+    const commonLines = [
       `    before?: ${beforeRef}[]`,
       `    after?: ${afterRef}[]`,
-      `    shape?: ${m}${c}ShapeInput<TCtx>`,
       `    pagination?: Partial<PaginationConfig>`,
     ]
+
     if (isRead && supportsProgressive) {
-      lines.push(`    progressive?: Record<string, ProgressiveVariantConfig>`)
-      lines.push(
+      commonLines.push(
+        `    progressive?: Record<string, ProgressiveVariantConfig>`,
+      )
+      commonLines.push(
         `    progressiveStages?: Record<string, ProgressiveStage<TCtx, TPrisma>>`,
       )
     }
-    return `  ${routerOp}?: {\n${lines.join('\n')}\n  } | false`
+
+    const commonConfig = `{\n${commonLines.join('\n')}\n  }`
+    const variantsConfig =
+      `Record<string, {\n` +
+      `      shape: ${m}${c}ShapeOrFn<TCtx>\n` +
+      `      before?: ${beforeRef}[]\n` +
+      `      after?: ${afterRef}[]\n` +
+      `    }>`
+
+    return (
+      `  ${routerOp}?: (${commonConfig} & (\n` +
+      `    | { shape?: ${m}${c}ShapeInput<TCtx>; variants?: never }\n` +
+      `    | { shape?: never; variants: ${variantsConfig} }\n` +
+      `  )) | false`
+    )
   }).join('\n')
 
   const omitKeys = ROUTER_OPERATIONS.map((k) => `'${k}'`).join('\n  | ')
@@ -100,6 +130,7 @@ export function generateRouteConfigType(
   return (
     progressiveTypeImport +
     `import type {\n  ${opShapeImports}\n} from '${guardShapesImport}${ext}'\n\n` +
+    `${shapeOrFnAliases}\n\n` +
     `export type ${m}RouteConfig${generics} = Omit<\n` +
     `  ${baseConfig},\n` +
     `  | ${omitKeys}\n` +

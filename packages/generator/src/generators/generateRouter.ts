@@ -57,15 +57,37 @@ function emitReadOp(
   const postReadBlock = meta.supportsPostRead
     ? `    if (postReadsEnabled) {
       const postPath = ${meta.name === 'findMany' ? "basePath ? `${basePath}/read` : '/read'" : `path`}
-      router.post(postPath, parseBodyAsQuery, setShape(opConfig, '${opKind}'), ...before, ${handlerName} as RequestHandler, ...after, respond)
+      router.post(
+        postPath,
+        parseBodyAsQuery,
+        setShape(opConfig, '${opKind}'),
+        ...opConfig.operationBefore,
+        requireVariantKey(),
+        variantBeforeDispatcher(opConfig),
+        ${handlerName} as RequestHandler,
+        variantAfterDispatcher(opConfig),
+        ...opConfig.operationAfter,
+        respond,
+      )
     }`
     : ''
 
   return `  if (isEnabled(config.${meta.configKey})) {
-    const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('${meta.configKey}')
     const path = ${pathValue}
-    router.get(path, parseQuery, setShape(opConfig, '${opKind}'), ...before, maybeProgressiveSSE(opConfig, core.${meta.coreName}, '${meta.name}'), ${handlerName} as RequestHandler, ...after, respond)
+    router.get(
+      path,
+      parseQuery,
+      setShape(opConfig, '${opKind}'),
+      ...opConfig.operationBefore,
+      requireVariantKey(),
+      variantBeforeDispatcher(opConfig),
+      maybeProgressiveSSE(opConfig, core.${meta.coreName}, '${meta.name}'),
+      ${handlerName} as RequestHandler,
+      variantAfterDispatcher(opConfig),
+      ...opConfig.operationAfter,
+      respond,
+    )
 ${postReadBlock}
   }`
 }
@@ -81,10 +103,19 @@ function emitWriteOp(
   const opKind = opKindFor(meta.name)
 
   return `  if (isEnabled(config.${meta.configKey})) {
-    const opConfig: OperationConfigLike = (config.${meta.configKey} as OperationConfigLike | undefined) ?? defaultOpConfig
-    const { before = [], after = [] } = opConfig
+    const opConfig = opFor('${meta.configKey}')
     const path = ${pathValue}
-    router.${meta.method}(path, setShape(opConfig, '${opKind}'), ...before, ${handlerName} as RequestHandler, ...after, ${respondFn})
+    router.${meta.method}(
+      path,
+      setShape(opConfig, '${opKind}'),
+      ...opConfig.operationBefore,
+      requireVariantKey(),
+      variantBeforeDispatcher(opConfig),
+      ${handlerName} as RequestHandler,
+      variantAfterDispatcher(opConfig),
+      ...opConfig.operationAfter,
+      ${respondFn},
+    )
   }`
 }
 
@@ -146,10 +177,19 @@ import type {
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys, normalizePrefix, getEnv, isPlainObject } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
-import { validateCountSourceWhere } from '../routeConfig${ext}'
+import {
+  normalizeOperation,
+  resolveOperationVariantKey,
+  validateCountSourceWhere,
+  validateOperationConfig,
+  validateUpdateEachConfig,
+} from '../routeConfig${ext}'
+import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import type { OperationContext } from '../operationRuntime${ext}'
 import { transformResult } from '../operationRuntime${ext}'
 import { HttpError, mapError } from '../errorMapper${ext}'
+import { formatGuardVariantResolutionError } from '../guardVariantError${ext}'
+import type { GuardVariantResolution } from '../guardVariantRouting${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
 import {
   acceptsEventStream,
@@ -173,8 +213,21 @@ const DROP_GUARD = ${dropGuard} || _env.E2E === 'true'
 type OperationConfigLike = {
   before?: RequestHandler[]
   after?: RequestHandler[]
-  shape?: Record<string, unknown>
+  shape?: unknown
+  variants?: Record<
+    string,
+    {
+      shape?: unknown
+      before?: RequestHandler[]
+      after?: RequestHandler[]
+    }
+  >
   pagination?: Partial<PaginationConfig>
+  progressive?: Record<string, ProgressiveVariantConfig>
+  progressiveStages?: Record<string, ProgressiveStage<unknown>>
+}
+
+type NormalizedOp = NormalizedOperationConfig<RequestHandler, RequestHandler> & {
   progressive?: Record<string, ProgressiveVariantConfig>
   progressiveStages?: Record<string, ProgressiveStage<unknown>>
 }
@@ -190,13 +243,20 @@ type LocalsBag = {
   routeConfig?: { pagination?: PaginationConfig }
   guardShape?: Record<string, unknown>
   guardCaller?: string
+  guardVariantKey?: string
+  guardVariantFailure?: Extract<GuardVariantResolution, { ok: false }>
   data?: unknown
 }
 
-const defaultOpConfig: OperationConfigLike = Object.freeze({
-  before: Object.freeze([]) as unknown as RequestHandler[],
-  after: Object.freeze([]) as unknown as RequestHandler[],
-})
+function normalizeExpressOperation(
+  config: OperationConfigLike | undefined,
+): NormalizedOp {
+  return {
+    ...normalizeOperation<RequestHandler, RequestHandler>(config),
+    progressive: config?.progressive,
+    progressiveStages: config?.progressiveStages,
+  }
+}
 
 function isQueryBuilderEnabled(config: { queryBuilder?: QueryBuilderConfig | false }): boolean {
   if (config.queryBuilder === false) return false
@@ -215,6 +275,87 @@ function readLocals(res: Response): LocalsBag {
   return res.locals as LocalsBag
 }
 
+function runHandlerSequence(
+  handlers: readonly RequestHandler[],
+  req: Request,
+  res: Response,
+  done: (error?: unknown) => void,
+): void {
+  let index = 0
+
+  const dispatch = (error?: unknown): void => {
+    if (error !== undefined) {
+      done(error)
+      return
+    }
+
+    if (res.writableEnded || res.destroyed) return
+
+    const handler = handlers[index++]
+    if (!handler) {
+      done()
+      return
+    }
+
+    let settled = false
+    const next = (nextError?: unknown): void => {
+      if (settled) return
+      settled = true
+      dispatch(nextError)
+    }
+
+    try {
+      const result = handler(req, res, next)
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        void (result as Promise<unknown>).catch((promiseError) => {
+          if (settled) return
+          settled = true
+          dispatch(promiseError)
+        })
+      }
+    } catch (handlerError) {
+      if (settled) return
+      settled = true
+      dispatch(handlerError)
+    }
+  }
+
+  dispatch()
+}
+
+function variantBeforeDispatcher(opConfig: NormalizedOp): RequestHandler {
+  return (req, res, next) => {
+    const key = readLocals(res).guardVariantKey
+    const hooks =
+      key !== undefined
+        ? (opConfig.variantHooks[key]?.before ?? [])
+        : []
+    runHandlerSequence(hooks, req, res, next)
+  }
+}
+
+function variantAfterDispatcher(opConfig: NormalizedOp): RequestHandler {
+  return (req, res, next) => {
+    const key = readLocals(res).guardVariantKey
+    const hooks =
+      key !== undefined
+        ? (opConfig.variantHooks[key]?.after ?? [])
+        : []
+    runHandlerSequence(hooks, req, res, next)
+  }
+}
+
+function requireVariantKey(): RequestHandler {
+  return (_req, res, next) => {
+    const failure = readLocals(res).guardVariantFailure
+    if (!failure) {
+      next()
+      return
+    }
+    next(new HttpError(400, formatGuardVariantResolutionError(failure)))
+  }
+}
+
 export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${modelName}RouteConfig<TCtx, TPrisma> = {}) {
   validateCountSourceWhere(config.pagination?.countSource, '${modelName} pagination')
   validateCountSourceWhere(
@@ -225,6 +366,12 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
   const router = express.Router()
 
   const isEnabled = (value: unknown): boolean => value !== false && !!(config.enableAll || value)
+
+  const opFor = (key: string): NormalizedOp => {
+    const raw = (config as unknown as Record<string, unknown>)[key] as OperationConfigLike | undefined
+    validateOperationConfig(raw, '${modelName}.' + key)
+    return normalizeExpressOperation(raw)
+  }
 
   const customPrefix = normalizePrefix(config.customUrlPrefix || '')
   const modelPrefix = config.addModelPrefix !== false ? '/${modelNameLower}' : ''
@@ -312,7 +459,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
     next()
   }
 
-  const setShape = (opConfig: OperationConfigLike, opKind: OpKind): RequestHandler => {
+  const setShape = (opConfig: NormalizedOp, opKind: OpKind): RequestHandler => {
     return async (req, res, next) => {
       try {
         const locals = readLocals(res)
@@ -320,17 +467,32 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
         if (merged) {
           locals.routeConfig = { pagination: merged }
         }
+
         const headerName = config.guard?.variantHeader || 'x-api-variant'
         const headerValue = req.get(headerName)
         const caller = config.guard?.resolveVariant?.(req) ?? headerValue ?? undefined
-        if (caller) locals.guardCaller = caller
-        if (opConfig.shape) {
+        if (typeof caller === 'string') locals.guardCaller = caller
+
+        const resolution = resolveOperationVariantKey(opConfig.guardRouting, caller)
+        if (!resolution.ok) {
+          locals.guardVariantFailure = resolution
+          next()
+          return
+        }
+
+        const resolvedKey =
+          opConfig.guardRouting.kind === 'named'
+            ? resolution.key
+            : undefined
+        if (resolvedKey !== undefined) locals.guardVariantKey = resolvedKey
+
+        if (opConfig.guardShape) {
           if (!DROP_GUARD) {
-            locals.guardShape = opConfig.shape
+            locals.guardShape = opConfig.guardShape
           } else {
             await applyDroppedGuard(
-              opConfig.shape,
-              caller,
+              opConfig.guardShape,
+              resolvedKey,
               buildResolveContext(req),
               opKind,
               {
@@ -352,6 +514,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
             )
           }
         }
+
         next()
       } catch (err) {
         next(mapError(err))
@@ -360,7 +523,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
   }
 
   const maybeProgressiveSSE = (
-    opConfig: OperationConfigLike,
+    opConfig: NormalizedOp,
     coreFn: (ctx: OperationContext) => Promise<unknown>,
     baseOp: string,
   ): RequestHandler => {
@@ -370,8 +533,9 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
       if (!acceptsEventStream(req.headers.accept)) return next()
 
       const locals = readLocals(res)
-      const variant = locals.guardCaller
-      const progressiveConfig = variant ? opConfig.progressive?.[variant] : undefined
+      const variant = locals.guardVariantKey ?? locals.guardCaller
+      const progressiveConfig =
+        variant !== undefined ? opConfig.progressive?.[variant] : undefined
 
       try {
         if (!progressiveConfig || progressiveConfig.enabled === false) {
@@ -499,19 +663,20 @@ ${readOpBlocks}
 ${writeOpBlocks}
 
   if (config.updateEach) {
-    const opConfig: OperationConfigLike = (config.updateEach as OperationConfigLike | undefined) ?? defaultOpConfig
-    if ((!opConfig.before || opConfig.before.length === 0) && _env.NODE_ENV !== 'production') {
+    const rawUpdateEach = config.updateEach as unknown as OperationConfigLike
+    validateUpdateEachConfig(rawUpdateEach, '${modelName}.updateEach')
+    const opConfig = normalizeExpressOperation(rawUpdateEach)
+    if (opConfig.operationBefore.length === 0 && _env.NODE_ENV !== 'production') {
       console.warn(
         '[${modelName}Router] updateEach is enabled without a before hook. ' +
         'This endpoint bypasses guard shapes and should be protected by authentication middleware.',
       )
     }
-    const { before = [], after = [] } = opConfig
     const path = basePath ? \`\${basePath}/each\` : '/each'
     router.post(
       path,
       setShape(opConfig, 'noop'),
-      ...before,
+      ...opConfig.operationBefore,
       async (req: Request, res: Response, next: NextFunction) => {
         try {
           if (!Array.isArray(req.body)) {
@@ -524,7 +689,7 @@ ${writeOpBlocks}
           next(mapError(err))
         }
       },
-      ...after,
+      ...opConfig.operationAfter,
       respond,
     )
   }

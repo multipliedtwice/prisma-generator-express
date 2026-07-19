@@ -130,9 +130,17 @@ import type {
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { normalizePrefix, getEnv, sanitizeKeys, isPlainObject } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
-import { validateCountSourceWhere } from '../routeConfig${ext}'
+import {
+  normalizeOperation,
+  resolveOperationVariantKey,
+  validateCountSourceWhere,
+  validateOperationConfig,
+  validateUpdateEachConfig,
+} from '../routeConfig${ext}'
+import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import { transformResult } from '../operationRuntime${ext}'
 import { mapError } from '../errorMapper${ext}'
+import { formatGuardVariantResolutionError } from '../guardVariantError${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
 import { applyDroppedGuard } from '../projectionDefaults${ext}'
 import type { OpKind } from '../projectionDefaults${ext}'
@@ -154,14 +162,28 @@ type JsonLike =
 type OperationConfigLike<TEnv extends HonoEnvBase> = {
   before?: HonoBeforeHook<TEnv>[]
   after?: HonoAfterHook<TEnv>[]
-  shape?: Record<string, unknown>
+  shape?: unknown
+  variants?: Record<
+    string,
+    {
+      shape?: unknown
+      before?: HonoBeforeHook<TEnv>[]
+      after?: HonoAfterHook<TEnv>[]
+    }
+  >
   pagination?: Partial<PaginationConfig>
 }
 
-const defaultOpConfig = Object.freeze({
-  before: Object.freeze([]),
-  after: Object.freeze([]),
-}) as unknown as OperationConfigLike<HonoEnvBase>
+type NormalizedOp<TEnv extends HonoEnvBase> = NormalizedOperationConfig<
+  HonoBeforeHook<TEnv>,
+  HonoAfterHook<TEnv>
+>
+
+function normalizeHonoOperation<TEnv extends HonoEnvBase>(
+  config: OperationConfigLike<TEnv> | undefined,
+): NormalizedOp<TEnv> {
+  return normalizeOperation<HonoBeforeHook<TEnv>, HonoAfterHook<TEnv>>(config)
+}
 
 type HandlerContext = Context<{ Variables: HonoInternalVariables }>
 
@@ -213,7 +235,7 @@ async function parseUpdateEachBodyMiddleware(c: HandlerContext): Promise<void> {
 
 function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
   config: ${modelName}RouteConfig<TCtx, TPrisma, TEnv>,
-  opConfig: OperationConfigLike<TEnv>,
+  opConfig: NormalizedOp<TEnv>,
   opKind: OpKind,
 ) {
   return async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<void> => {
@@ -223,19 +245,31 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
     const headerName = config.guard?.variantHeader || 'x-api-variant'
     const headerValue = c.req.header(headerName)
     const caller = config.guard?.resolveVariant?.(c) ?? headerValue ?? undefined
-    if (caller) c.set('guardCaller', caller)
+    if (typeof caller === 'string') c.set('guardCaller', caller)
 
-    if (opConfig.shape) {
+    const resolution = resolveOperationVariantKey(opConfig.guardRouting, caller)
+    if (!resolution.ok) {
+      c.set('guardVariantFailure', resolution)
+      return
+    }
+
+    const resolvedKey =
+      opConfig.guardRouting.kind === 'named'
+        ? resolution.key
+        : undefined
+    if (resolvedKey !== undefined) c.set('guardVariantKey', resolvedKey)
+
+    if (opConfig.guardShape) {
       if (!DROP_GUARD) {
-        c.set('guardShape', opConfig.shape)
+        c.set('guardShape', opConfig.guardShape)
       } else {
         const resolveCtx = typeof config.resolveContext === 'function'
           ? () => (config.resolveContext as (ctx: Context<GeneratedHonoEnv<TEnv>>) => unknown | Promise<unknown>)(c)
           : undefined
 
         await applyDroppedGuard(
-          opConfig.shape,
-          caller,
+          opConfig.guardShape,
+          resolvedKey,
           resolveCtx,
           opKind,
           {
@@ -267,7 +301,7 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
 }
 
 async function runBeforeHooks<TEnv extends HonoEnvBase>(
-  hooks: HonoBeforeHook<TEnv>[],
+  hooks: readonly HonoBeforeHook<TEnv>[],
   c: Context<GeneratedHonoEnv<TEnv>>,
 ): Promise<Response | undefined> {
   for (const hook of hooks) {
@@ -278,7 +312,7 @@ async function runBeforeHooks<TEnv extends HonoEnvBase>(
 }
 
 async function runAfterHooks<TEnv extends HonoEnvBase>(
-  hooks: HonoAfterHook<TEnv>[],
+  hooks: readonly HonoAfterHook<TEnv>[],
   c: Context<GeneratedHonoEnv<TEnv>>,
 ): Promise<Response | undefined> {
   for (const hook of hooks) {
@@ -377,7 +411,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
   }
 
   const handleRead = (
-    opConfig: OperationConfigLike<TEnv>,
+    opConfig: NormalizedOp<TEnv>,
     handlerFn: (c: HandlerContext) => Promise<void>,
     parseFn: (c: HandlerContext) => Promise<void>,
     opKind: OpKind,
@@ -385,12 +419,27 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
     try {
       await parseFn(c as unknown as HandlerContext)
       await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
-      const { before = [], after = [] } = opConfig
-      const beforeResp = await runBeforeHooks<TEnv>(before, c)
-      if (beforeResp) return beforeResp
+      const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
+      if (operationBefore) return operationBefore
+
+      const failure = c.get('guardVariantFailure')
+      if (failure) {
+        throw new HTTPException(400, {
+          message: formatGuardVariantResolutionError(failure),
+        })
+      }
+
+      const key = c.get('guardVariantKey')
+      const variantHooks =
+        key !== undefined ? opConfig.variantHooks[key] : undefined
+
+      const variantBefore = await runBeforeHooks<TEnv>(variantHooks?.before ?? [], c)
+      if (variantBefore) return variantBefore
       await handlerFn(c as unknown as HandlerContext)
-      const afterResp = await runAfterHooks<TEnv>(after, c)
-      if (afterResp) return afterResp
+      const variantAfter = await runAfterHooks<TEnv>(variantHooks?.after ?? [], c)
+      if (variantAfter) return variantAfter
+      const operationAfter = await runAfterHooks<TEnv>(opConfig.operationAfter, c)
+      if (operationAfter) return operationAfter
       return sendResult(c as unknown as HandlerContext)
     } catch (error: unknown) {
       return sendError(c as unknown as HandlerContext, error)
@@ -398,28 +447,46 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
   }
 
   const handleWrite = (
-    opConfig: OperationConfigLike<TEnv>,
+    opConfig: NormalizedOp<TEnv>,
     handlerFn: (c: HandlerContext) => Promise<void>,
     opKind: OpKind,
   ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
     try {
       await parseWriteBodyMiddleware(c as unknown as HandlerContext)
       await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
-      const { before = [], after = [] } = opConfig
-      const beforeResp = await runBeforeHooks<TEnv>(before, c)
-      if (beforeResp) return beforeResp
+      const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
+      if (operationBefore) return operationBefore
+
+      const failure = c.get('guardVariantFailure')
+      if (failure) {
+        throw new HTTPException(400, {
+          message: formatGuardVariantResolutionError(failure),
+        })
+      }
+
+      const key = c.get('guardVariantKey')
+      const variantHooks =
+        key !== undefined ? opConfig.variantHooks[key] : undefined
+
+      const variantBefore = await runBeforeHooks<TEnv>(variantHooks?.before ?? [], c)
+      if (variantBefore) return variantBefore
       await handlerFn(c as unknown as HandlerContext)
-      const afterResp = await runAfterHooks<TEnv>(after, c)
-      if (afterResp) return afterResp
+      const variantAfter = await runAfterHooks<TEnv>(variantHooks?.after ?? [], c)
+      if (variantAfter) return variantAfter
+      const operationAfter = await runAfterHooks<TEnv>(opConfig.operationAfter, c)
+      if (operationAfter) return operationAfter
       return sendResult(c as unknown as HandlerContext)
     } catch (error: unknown) {
       return sendError(c as unknown as HandlerContext, error)
     }
   }
 
-  const opFor = <K extends keyof ${modelName}RouteConfig<TCtx, TPrisma, TEnv>>(key: K): OperationConfigLike<TEnv> => {
-    return (config[key] as unknown as OperationConfigLike<TEnv> | undefined)
-      ?? (defaultOpConfig as OperationConfigLike<TEnv>)
+  const opFor = <K extends keyof ${modelName}RouteConfig<TCtx, TPrisma, TEnv>>(
+    key: K,
+  ): NormalizedOp<TEnv> => {
+    const raw = config[key] as unknown as OperationConfigLike<TEnv> | undefined
+    validateOperationConfig(raw, '${modelName}.' + String(key))
+    return normalizeHonoOperation(raw)
   }
 
 ${readOpBlocks}
@@ -427,8 +494,10 @@ ${readOpBlocks}
 ${writeOpBlocks}
 
   if (config.updateEach) {
-    const opConfig = (config.updateEach as unknown as OperationConfigLike<TEnv> | undefined) ?? (defaultOpConfig as OperationConfigLike<TEnv>)
-    if ((!opConfig.before || opConfig.before.length === 0) && _env.NODE_ENV !== 'production') {
+    const rawUpdateEach = config.updateEach as unknown as OperationConfigLike<TEnv>
+    validateUpdateEachConfig(rawUpdateEach, '${modelName}.updateEach')
+    const opConfig = normalizeHonoOperation(rawUpdateEach)
+    if (opConfig.operationBefore.length === 0 && _env.NODE_ENV !== 'production') {
       console.warn(
         '[${modelName}Router] updateEach is enabled without a before hook. ' +
         'This endpoint bypasses guard shapes and should be protected by authentication middleware.',
@@ -439,12 +508,11 @@ ${writeOpBlocks}
       try {
         await parseUpdateEachBodyMiddleware(c as unknown as HandlerContext)
         await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, 'noop')(c)
-        const { before = [], after = [] } = opConfig
-        const beforeResp = await runBeforeHooks<TEnv>(before, c)
-        if (beforeResp) return beforeResp
+        const beforeResponse = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
+        if (beforeResponse) return beforeResponse
         await ${modelName}UpdateEach(c as unknown as HandlerContext)
-        const afterResp = await runAfterHooks<TEnv>(after, c)
-        if (afterResp) return afterResp
+        const afterResponse = await runAfterHooks<TEnv>(opConfig.operationAfter, c)
+        if (afterResponse) return afterResponse
         return sendResult(c as unknown as HandlerContext)
       } catch (error: unknown) {
         return sendError(c as unknown as HandlerContext, error)
