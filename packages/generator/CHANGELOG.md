@@ -1,3 +1,10 @@
+# [1.63.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.62.4...v1.63.0) (2026-07-19)
+
+
+### Features
+
+* enhance router configuration with variant handling and shape input ([db43432](https://github.com/multipliedtwice/prisma-generator-express/commit/db434322f78b7df2d3b0262c84fe49658984edb6))
+
 ## [1.62.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.62.3...v1.62.4) (2026-07-07)
 
 
