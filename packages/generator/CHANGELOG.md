@@ -1,3 +1,10 @@
+## [1.63.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.63.0...v1.63.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* improve result type checking in runHandlerSequence to handle promises correctly ([69e4a2d](https://github.com/multipliedtwice/prisma-generator-express/commit/69e4a2d0ab665cb500194ed10796848d2ffa6815))
+
 # [1.63.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.62.4...v1.63.0) (2026-07-19)
 
 
