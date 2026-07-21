@@ -1,3 +1,11 @@
+## [1.64.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.0...v1.64.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* update build script to set executable permissions for bin.js ([863b94e](https://github.com/multipliedtwice/prisma-generator-express/commit/863b94eed6ac7ef56e4fa4463c8bc271f4cc569b))
+* update build script to set executable permissions for bin.js ([8384560](https://github.com/multipliedtwice/prisma-generator-express/commit/83845607fcbb2d02edcde9113a06c3ab172465a4))
+
 # [1.64.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.63.1...v1.64.0) (2026-07-21)
 
 ## [1.63.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.63.0...v1.63.1) (2026-07-19)
