@@ -10,7 +10,7 @@
     "node": ">=20.0"
   },
   "scripts": {
-    "build": "rm -rf dist && npx tsc",
+    "build": "rm -rf dist && npx tsc && node -e \"require('node:fs').chmodSync('dist/bin.js', 0o755)\"",
     "dev": "npx tsc -w",
     "start": "node dist/bin.js",
     "test": "vitest",
