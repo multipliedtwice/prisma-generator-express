@@ -228,11 +228,80 @@ function classifyGuardRouting(shape: unknown): NormalizedGuardRouting {
   return isSingle ? { kind: 'single' } : { kind: 'named', keys }
 }
 
+/**
+ * A legacy `shape` must be a shape, and must constrain something.
+ *
+ * Two shapes that look configured and are not:
+ *
+ *   - `shape: {}` normalizes to a single shape with no constraints. It reads as
+ *     "guarded" to a reviewer and lets everything through.
+ *   - `shape: { where: …, admin: … }` mixes a reserved shape key with a
+ *     non-reserved one. `classifyGuardRouting` decides by whether EVERY key is
+ *     reserved, so one stray key silently reclassifies the whole operation as
+ *     variant-routed — after which every request that does not name a variant
+ *     gets a 400 for a reason no message explains. The commonest cause is a
+ *     typo: `wheer`, `iclude`, `slect`.
+ *
+ * A function shape is opaque here and is accepted: it is resolved per request
+ * and there is nothing to inspect at construction time.
+ */
+function validateShapeConfig(shape: unknown, location: string): void {
+  if (typeof shape === 'function') return
+
+  if (!isPlainObject(shape)) {
+    throw new Error(
+      location + ': shape must be an object or a function, got ' +
+      (shape === null ? 'null' : Array.isArray(shape) ? 'array' : typeof shape),
+    )
+  }
+
+  const keys = Object.keys(shape)
+  if (keys.length === 0) {
+    throw new Error(
+      location + ': shape is empty, so it constrains nothing. Give it at least ' +
+      'one guard key, or use variants.',
+    )
+  }
+
+  const reserved = keys.filter((key) => GUARD_SHAPE_CONFIG_KEYS.has(key))
+  if (reserved.length > 0 && reserved.length !== keys.length) {
+    const stray = keys.filter((key) => !GUARD_SHAPE_CONFIG_KEYS.has(key))
+    throw new Error(
+      location + ': shape mixes guard keys (' + reserved.join(', ') + ') with ' +
+      'non-guard keys (' + stray.join(', ') + '). A shape whose keys are not all ' +
+      'guard keys is read as a VARIANT MAP, which is rarely intended — check for ' +
+      'a typo, or split them into "variants".',
+    )
+  }
+}
+
+/**
+ * Every emitted operation must carry a guard, and it must be one that constrains
+ * something.
+ *
+ * An absent configuration used to return here silently, and the emitted handler
+ * applies its guard under `if (opConfig.guardShape)` — so an operation nobody
+ * configured reached Prisma with whatever `where`, `select` and `include` the
+ * request supplied. Nothing warned, and the normalized operation was
+ * structurally identical to a configured one apart from an absent shape, so
+ * there was nothing to detect it by either.
+ *
+ * The refusal happens where the configuration is first visible — router
+ * construction, which on a Worker is boot. A deployment that forgot a guard
+ * fails to start instead of serving unguarded routes, which is the trade this
+ * check exists to make.
+ */
 export function validateOperationConfig(
-  config: { shape?: unknown; variants?: unknown } | undefined,
+  config: { shape?: unknown; variants?: unknown; allowDefaultVariant?: unknown } | undefined,
   location: string,
 ): void {
-  if (!config) return
+  if (!config) {
+    throw new Error(
+      location + ': no guard configured. Every generated operation must define ' +
+      '"shape" or "variants"; an unguarded operation would pass the caller\'s ' +
+      'own where/select/include straight to Prisma.',
+    )
+  }
 
   const hasShape = config.shape !== undefined
   const hasVariants = config.variants !== undefined
@@ -241,7 +310,16 @@ export function validateOperationConfig(
     throw new Error(location + ': shape and variants cannot both be defined')
   }
 
-  if (!hasVariants) return
+  if (!hasShape && !hasVariants) {
+    throw new Error(
+      location + ': no guard configured. Define "shape" or "variants".',
+    )
+  }
+
+  if (hasShape) {
+    validateShapeConfig(config.shape, location)
+    return
+  }
 
   const variants = config.variants
   if (!isPlainObject(variants)) {
@@ -251,6 +329,31 @@ export function validateOperationConfig(
   const entries = Object.entries(variants)
   if (entries.length === 0) {
     throw new Error(location + ': variants must contain at least one entry')
+  }
+
+  /**
+   * A variant named `default` catches a missing, blank OR unknown caller, so it
+   * turns three fail-closed paths into a pass at once. That is legitimate when
+   * `default` is the most restrictive variant and dangerous when it is the most
+   * permissive, which is how the word reads — and nothing can tell which from
+   * the shape alone.
+   *
+   * So it must be asked for. `allowDefaultVariant: true` is a sentence the author
+   * writes on purpose; a key called `default` is one they may have typed without
+   * noticing what it catches.
+   */
+  if (Object.prototype.hasOwnProperty.call(variants, 'default')) {
+    if (config.allowDefaultVariant !== true) {
+      throw new Error(
+        location + ': a variant named "default" answers every unrecognised, ' +
+        'blank and missing caller. Set allowDefaultVariant: true to confirm ' +
+        'that is intended, and make sure it is the most restrictive variant.',
+      )
+    }
+  } else if (config.allowDefaultVariant !== undefined) {
+    throw new Error(
+      location + ': allowDefaultVariant is set but no "default" variant exists.',
+    )
   }
 
   for (const [key, rawEntry] of entries) {

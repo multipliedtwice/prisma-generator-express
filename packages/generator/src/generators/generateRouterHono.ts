@@ -80,6 +80,25 @@ function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: strin
   }`
 }
 
+/**
+ * Guard dropping is a GENERATION-TIME decision, never a runtime one.
+ *
+ * The emitted router used to compute `DROP_GUARD = <flag> || _env.E2E === 'true'`,
+ * so setting `E2E=true` in a deployed environment downgraded enforcement even
+ * when the generator had been told to keep the guard. The two modes are not
+ * equivalent: with the guard, the shape goes to prisma-guard; with it dropped,
+ * `applyDroppedGuard` applies projection defaults and forced `where` clauses and
+ * nothing else is validated against the shape.
+ *
+ * On an edge runtime that variable is an ordinary config var — set on a staging
+ * deployment, copied forward, flagged as security-relevant nowhere. A
+ * deployment's guard behaviour has to be a property of the artifact, not of the
+ * environment it happens to land in.
+ *
+ * The rationale lives here rather than in the emitted file on purpose: generated
+ * output is an artifact, and a paragraph about a bypass that no longer exists
+ * would be copied into every router this generator writes.
+ */
 export function generateHonoRouterFunction({
   model,
   enums,
@@ -149,7 +168,9 @@ import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 ${generateRouteConfigType(modelName, 'HonoBeforeHook', guardShapesImport, importStyle, 'hono')}
 const _env = getEnv()
 
-const DROP_GUARD = ${dropGuard} || _env.E2E === 'true'
+// Fixed at generation time. Never read from the environment — see
+// generateRouterHono.ts.
+const DROP_GUARD = ${dropGuard}
 
 type JsonLike =
   | string
@@ -419,15 +440,28 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
     try {
       await parseFn(c as unknown as HandlerContext)
       await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
-      const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
-      if (operationBefore) return operationBefore
 
+      /**
+       * Variant resolution is settled BEFORE any operation hook runs.
+       *
+       * The check used to sit after \`operationBefore\`, so a hook that returned a
+       * Response — an auth gate, a cache, a short-circuit for a known caller —
+       * answered the request before anyone established which guard applied to
+       * it. A cached response served for a request whose variant could not be
+       * resolved is a response served under a guard nobody chose.
+       *
+       * Hooks that must run first belong outside the generated router, where
+       * they are visibly not part of guard resolution.
+       */
       const failure = c.get('guardVariantFailure')
       if (failure) {
         throw new HTTPException(400, {
           message: formatGuardVariantResolutionError(failure),
         })
       }
+
+      const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
+      if (operationBefore) return operationBefore
 
       const key = c.get('guardVariantKey')
       const variantHooks =
@@ -454,15 +488,17 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
     try {
       await parseWriteBodyMiddleware(c as unknown as HandlerContext)
       await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
-      const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
-      if (operationBefore) return operationBefore
 
+      // Settled before any operation hook — see the read handler above.
       const failure = c.get('guardVariantFailure')
       if (failure) {
         throw new HTTPException(400, {
           message: formatGuardVariantResolutionError(failure),
         })
       }
+
+      const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
+      if (operationBefore) return operationBefore
 
       const key = c.get('guardVariantKey')
       const variantHooks =
