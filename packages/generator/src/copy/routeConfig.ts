@@ -1,5 +1,6 @@
 import { GUARD_SHAPE_CONFIG_KEYS } from './guardHelpers'
 import { isPlainObject } from './misc'
+import { resolveShape, type ContextResolver } from './projectionDefaults'
 import {
   resolveGuardVariantKey,
   type GuardVariantResolution,
@@ -489,6 +490,67 @@ export function resolveOperationVariantKey(
     caller,
     reservedKeys: GUARD_SHAPE_CONFIG_KEYS,
   })
+}
+
+export type GuardShapeResolution =
+  | { ok: true; shape: unknown }
+  | { ok: false; problem: string }
+
+/**
+ * Resolve a dynamic guard shape EXACTLY ONCE, and hand back the value that was
+ * validated — never the function that produced it.
+ *
+ * The first version of this check resolved the shape, validated the result, and
+ * then passed the ORIGINAL shape downstream, where prisma-guard resolved it a
+ * second time. That is a time-of-check/time-of-use gap with a trivial exploit: a
+ * shape function that closes over a counter, a cache, a clock or a request
+ * sequence can return `{ where: … }` while it is being inspected and `{}` when
+ * it is enforced. Everything about the request would look guarded, and nothing
+ * would be. The comment claiming it resolved "once" made it worse by asserting
+ * the property it did not have.
+ *
+ * So the resolved value replaces the function:
+ *
+ *   - a top-level function becomes the resolved static shape;
+ *   - a function inside a variant map becomes the resolved static shape AT THAT
+ *     KEY, with the rest of the map untouched — prisma-guard still selects by
+ *     caller, so routing behaves exactly as it did, and the entries this request
+ *     did not select are never called.
+ *
+ * Static shapes are returned as they came: they were validated at construction,
+ * and resolving them here would be work with no answer attached.
+ *
+ * `resolveContext` is invoked by `resolveShape`, once, and only on the dynamic
+ * path — so a deployment with no dynamic shapes never pays for it.
+ */
+export async function resolveGuardShapeOnce(
+  guardShape: unknown,
+  resolvedKey: string | undefined,
+  resolveContext: ContextResolver | undefined,
+): Promise<GuardShapeResolution> {
+  const selected =
+    typeof guardShape === 'function'
+      ? guardShape
+      : resolvedKey !== undefined && isPlainObject(guardShape)
+        ? (guardShape as Record<string, unknown>)[resolvedKey]
+        : undefined
+
+  if (typeof selected !== 'function') return { ok: true, shape: guardShape }
+
+  const resolved = await resolveShape(guardShape, resolvedKey, resolveContext)
+
+  const problem = describeResolvedGuardShape(resolved)
+  if (problem) return { ok: false, problem }
+
+  if (typeof guardShape === 'function') return { ok: true, shape: resolved }
+
+  return {
+    ok: true,
+    shape: {
+      ...(guardShape as Record<string, unknown>),
+      [resolvedKey as string]: resolved,
+    },
+  }
 }
 
 export function validateCountSourceWhere(

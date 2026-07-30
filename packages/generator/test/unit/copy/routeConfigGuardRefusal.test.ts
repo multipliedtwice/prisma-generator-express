@@ -4,6 +4,7 @@ import {
   normalizeOperation,
   resolveOperationVariantKey,
   describeResolvedGuardShape,
+  resolveGuardShapeOnce,
 } from '../../../src/copy/routeConfig'
 
 /**
@@ -199,6 +200,137 @@ describe('a resolved function shape is checked before it is used', () => {
     expect(describeResolvedGuardShape({ select: { id: true }, take: 10 })).toBeNull()
   });
 });
+
+describe('a dynamic shape is resolved exactly once', () => {
+  /**
+   * The time-of-check/time-of-use gap this closes.
+   *
+   * The first version of the dynamic-shape check resolved the function,
+   * validated the result, and then passed the ORIGINAL function downstream for
+   * prisma-guard to resolve a second time. A shape function that closes over a
+   * counter, a cache, a clock or a request sequence could therefore return a
+   * safe shape while being inspected and `{}` while being enforced — every
+   * observable thing about the request looking guarded, and nothing being
+   * guarded.
+   *
+   * The counter below is exactly that function. One call total, and the value
+   * handed onward is the one that was validated.
+   */
+  const safe = { where: { published: true } }
+
+  /** Safe on the first call, wide open on every call after it. */
+  function treacherous() {
+    let calls = 0
+    const fn = () => {
+      calls += 1
+      return calls === 1 ? safe : {}
+    }
+    return { fn, calls: () => calls }
+  }
+
+  const ctx = () => ({ userId: 'u1' })
+
+  it('calls a top-level shape function once, and returns what that call produced', async () => {
+    const { fn, calls } = treacherous()
+
+    const resolution = await resolveGuardShapeOnce(fn, undefined, ctx)
+
+    expect(calls(), 'the shape function was called more than once').toBe(1)
+    expect(resolution.ok).toBe(true)
+    // The VALUE, not the function — a function here would be resolved again by
+    // whatever received it.
+    expect((resolution as { shape: unknown }).shape).toEqual(safe)
+    expect(typeof (resolution as { shape: unknown }).shape).not.toBe('function')
+  })
+
+  it('calls the context resolver once too', async () => {
+    const { fn } = treacherous()
+    let contextCalls = 0
+    const countingCtx = () => {
+      contextCalls += 1
+      return { userId: 'u1' }
+    }
+
+    await resolveGuardShapeOnce(fn, undefined, countingCtx)
+
+    expect(contextCalls, 'the context resolver ran more than once').toBe(1)
+  })
+
+  it('calls a VARIANT shape function once, and substitutes it in the map', async () => {
+    const { fn, calls } = treacherous()
+    const map = { admin: { where: {} }, public: fn }
+
+    const resolution = await resolveGuardShapeOnce(map, 'public', ctx)
+
+    expect(calls()).toBe(1)
+    expect(resolution.ok).toBe(true)
+
+    const shape = (resolution as { shape: Record<string, unknown> }).shape
+    // The selected entry is now the resolved value...
+    expect(shape.public).toEqual(safe)
+    expect(typeof shape.public).not.toBe('function')
+    // ...and the rest of the map is untouched, so prisma-guard still routes by
+    // caller exactly as it did.
+    expect(shape.admin).toBe(map.admin)
+    expect(Object.keys(shape).sort()).toEqual(['admin', 'public'])
+  })
+
+  it('never calls the variants this request did not select', async () => {
+    const selected = treacherous()
+    const other = treacherous()
+
+    await resolveGuardShapeOnce({ public: selected.fn, admin: other.fn }, 'public', ctx)
+
+    expect(selected.calls()).toBe(1)
+    expect(other.calls(), 'an unselected variant shape function was invoked').toBe(0)
+  })
+
+  it('a second resolution of the SAME map re-invokes, which is why one is passed on', async () => {
+    /**
+     * The proof that the double call was exploitable rather than merely wasteful:
+     * resolving the original map twice gets the treacherous second value. The
+     * fix is not to make the function idempotent — it cannot be — but to stop
+     * asking it twice.
+     */
+    const { fn } = treacherous()
+    const map = { public: fn }
+
+    const first = await resolveGuardShapeOnce(map, 'public', ctx)
+    const second = await resolveGuardShapeOnce(map, 'public', ctx)
+
+    expect((first as { shape: Record<string, unknown> }).shape.public).toEqual(safe)
+    expect(second.ok, 'the second resolution returned the wide-open shape').toBe(false)
+    expect((second as { problem: string }).problem).toMatch(/constrains nothing/)
+  })
+
+  it('does not resolve, or call anything, for a static shape', async () => {
+    // Validated at construction; re-resolving would be work with no answer.
+    let contextCalls = 0
+    const resolution = await resolveGuardShapeOnce(safe, undefined, () => {
+      contextCalls += 1
+      return {}
+    })
+
+    expect(contextCalls).toBe(0)
+    expect((resolution as { shape: unknown }).shape).toBe(safe)
+  })
+
+  it('refuses when the function returns something unusable', async () => {
+    for (const bad of [() => ({}), () => undefined, () => ({ wheer: {} }), () => 42]) {
+      const resolution = await resolveGuardShapeOnce(bad, undefined, ctx)
+      expect(resolution.ok, String(bad)).toBe(false)
+    }
+  })
+
+  it('refuses a function shape when no context resolver is configured', async () => {
+    // `callShapeFn` cannot produce a shape without one, so it yields null —
+    // which must be a refusal, not an unguarded request.
+    const resolution = await resolveGuardShapeOnce(() => safe, undefined, undefined)
+
+    expect(resolution.ok).toBe(false)
+    expect((resolution as { problem: string }).problem).toMatch(/returned nothing/)
+  })
+})
 
 describe('a `default` variant must be asked for', () => {
   /**

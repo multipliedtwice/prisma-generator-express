@@ -82,46 +82,54 @@ describe('guard dropping is decided at generation time, never at runtime', () =>
   })
 })
 
-describe('a function shape is resolved and checked before it is used', () => {
+describe('a dynamic shape is resolved once, and the validated value travels on', () => {
   const out = emit(false)
 
-  it('resolves the shape and describes what is wrong with it', () => {
+  it('routes the shape through resolveGuardShapeOnce', () => {
     /**
-     * A function shape is opaque at construction, so the emitted router does the
-     * other half: resolves it once and checks the result before anything uses
-     * it. A function returning `{}`, `undefined` or a map with stray keys would
-     * otherwise recreate the fail-open at request time, once per request, where
-     * no configuration review would ever see it.
+     * The resolution and its validation live in one function so that "resolved
+     * exactly once" is a property something can test, rather than a claim in a
+     * comment. An earlier version made exactly that claim inline while passing
+     * the FUNCTION downstream for prisma-guard to resolve a second time.
      */
-    expect(out).toContain('describeResolvedGuardShape(resolvedShape)')
-    expect(out).toContain('await resolveShape(opConfig.guardShape, resolvedKey, resolveCtxForCheck)')
+    expect(out).toContain(
+      'await resolveGuardShapeOnce(opConfig.guardShape, resolvedKey, resolveCtx)',
+    )
+    expect(out).toContain('const effectiveShape = resolution.shape')
   })
 
-  it('only pays for the check when the shape actually IS a function', () => {
-    // Static shapes were validated at construction; re-resolving them per
-    // request would be cost with no answer attached.
-    expect(out).toContain("if (typeof shapeSource === 'function') {")
+  it('hands prisma-guard the RESOLVED value, never the original shape', () => {
+    // `c.set('guardShape', …)` is what reaches `delegate.guard(ctx.guardShape, …)`.
+    expect(out).toContain("c.set('guardShape', effectiveShape)")
+    expect(out, 'the unresolved shape is still passed downstream').not.toContain(
+      "c.set('guardShape', opConfig.guardShape)",
+    )
   })
 
-  it('checks the SELECTED variant entry, not only a top-level function', () => {
-    // `variants: { admin: { shape: () => … } }` puts the function one level
-    // down; missing that would leave the hole open through variants.
-    expect(out).toContain("typeof opConfig.guardShape === 'function'")
-    expect(out).toContain('(opConfig.guardShape as Record<string, unknown>)[resolvedKey]')
+  it('gives the dropped-guard path the same resolved value', () => {
+    // Otherwise applyDroppedGuard resolves it again, which is the same gap by
+    // another route.
+    expect(out).toContain('applyDroppedGuard(\n          effectiveShape,')
   })
 
-  const handlers = [
+  it('builds the context resolver once and shares it with both branches', () => {
+    const middleware = out.slice(
+      out.indexOf('function makeShapeMiddleware'),
+      out.indexOf('const handleRead ='),
+    )
+    const resolvers = [...middleware.matchAll(/const resolveCtx\b/g)]
+    expect(resolvers, 'more than one context resolver is built per request').toHaveLength(1)
+  })
+
+  for (const { name, from, to } of [
     { name: 'read', from: 'const handleRead =', to: 'const handleWrite =' },
     { name: 'write', from: 'const handleWrite =', to: 'const opFor =' },
-  ]
-
-  for (const { name, from, to } of handlers) {
-    it(`the ${name} handler refuses a bad shape with a 500, before its hooks`, () => {
+  ]) {
+    it(`the ${name} handler refuses an unusable shape with a 500, before its hooks`, () => {
       /**
        * A shape function that returned something unusable is a DEPLOYMENT fault,
        * not a caller fault — 500 — and it must be refused before any hook can
-       * answer the request and before Prisma is reached. Running unguarded
-       * because the guard failed to produce a guard is the outcome this prevents.
+       * answer the request and before Prisma is reached.
        */
       const start = out.indexOf(from)
       const body = out.slice(start, out.indexOf(to, start))

@@ -160,7 +160,7 @@ import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import {
   normalizeOperation,
   resolveOperationVariantKey,
-  describeResolvedGuardShape,
+  resolveGuardShapeOnce,
   validateCountSourceWhere,
   validateOperationConfig,
 } from '../routeConfig${ext}'
@@ -169,7 +169,7 @@ import { transformResult } from '../operationRuntime${ext}'
 import { mapError } from '../errorMapper${ext}'
 import { formatGuardVariantResolutionError } from '../guardVariantError${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
-import { applyDroppedGuard, resolveShape } from '../projectionDefaults${ext}'
+import { applyDroppedGuard } from '../projectionDefaults${ext}'
 import type { OpKind } from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
@@ -276,45 +276,27 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
     if (resolvedKey !== undefined) c.set('guardVariantKey', resolvedKey)
 
     if (opConfig.guardShape) {
-      const resolveCtxForCheck = typeof config.resolveContext === 'function'
+      const resolveCtx = typeof config.resolveContext === 'function'
         ? () => (config.resolveContext as (ctx: Context<GeneratedHonoEnv<TEnv>>) => unknown | Promise<unknown>)(c)
         : undefined
 
       /**
-       * A FUNCTION shape is opaque at construction, so it is checked here —
-       * once, before anything uses it. A function returning {}, undefined or a
-       * map with stray keys would otherwise recreate the fail-open at request
-       * time, where no configuration review will ever see it.
-       *
-       * Static shapes were already validated at construction and are skipped, so
-       * this costs nothing on the common path. For a function shape the extra
-       * call is deliberate: correctness is worth more than one saved invocation,
-       * and a shape function is a mapping from context to shape.
+       * Resolved ONCE, here, and the validated value is what travels onward —
+       * see resolveGuardShapeOnce. Passing the function on would let it return a
+       * different shape when it is enforced than when it was checked.
        */
-      const shapeSource = typeof opConfig.guardShape === 'function'
-        ? opConfig.guardShape
-        : (resolvedKey !== undefined && isPlainObject(opConfig.guardShape)
-            ? (opConfig.guardShape as Record<string, unknown>)[resolvedKey]
-            : undefined)
-
-      if (typeof shapeSource === 'function') {
-        const resolvedShape = await resolveShape(opConfig.guardShape, resolvedKey, resolveCtxForCheck)
-        const problem = describeResolvedGuardShape(resolvedShape)
-        if (problem) {
-          c.set('guardShapeFailure', problem)
-          return
-        }
+      const resolution = await resolveGuardShapeOnce(opConfig.guardShape, resolvedKey, resolveCtx)
+      if (!resolution.ok) {
+        c.set('guardShapeFailure', resolution.problem)
+        return
       }
+      const effectiveShape = resolution.shape
 
       if (!DROP_GUARD) {
-        c.set('guardShape', opConfig.guardShape)
+        c.set('guardShape', effectiveShape)
       } else {
-        const resolveCtx = typeof config.resolveContext === 'function'
-          ? () => (config.resolveContext as (ctx: Context<GeneratedHonoEnv<TEnv>>) => unknown | Promise<unknown>)(c)
-          : undefined
-
         await applyDroppedGuard(
-          opConfig.guardShape,
+          effectiveShape,
           resolvedKey,
           resolveCtx,
           opKind,
