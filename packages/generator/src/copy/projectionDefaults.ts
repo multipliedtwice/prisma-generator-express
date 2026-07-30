@@ -86,7 +86,12 @@ async function callShapeFn(
   return result
 }
 
-async function resolveShape(
+/**
+ * Exported so the router can resolve a function shape and CHECK it before use.
+ * A shape that is only resolved at the point it is applied is a shape nobody
+ * validated.
+ */
+export async function resolveShape(
   input: unknown,
   resolvedKey: string | undefined,
   resolveContext: ContextResolver | undefined,

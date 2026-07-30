@@ -3,6 +3,7 @@ import {
   validateOperationConfig,
   normalizeOperation,
   resolveOperationVariantKey,
+  describeResolvedGuardShape,
 } from '../../../src/copy/routeConfig'
 
 /**
@@ -101,6 +102,103 @@ describe('a shape mixing guard keys with non-guard keys is refused', () => {
     ).not.toThrow()
   })
 })
+
+describe('a variant entry gets the same shape validation as a legacy shape', () => {
+  /**
+   * The hole this closes: `variants: { public: { shape: {} } }` passed every
+   * check and emitted a route that constrains nothing — the top-level refusal,
+   * reachable through a different key. A guard is not more trustworthy for being
+   * written inside a variant.
+   */
+  it('refuses an empty variant shape', () => {
+    expect(() =>
+      validateOperationConfig({ variants: { public: { shape: {} } } }, AT),
+    ).toThrow(/constrains nothing/)
+  });
+
+  it('names the variant, not just the operation', () => {
+    try {
+      validateOperationConfig({ variants: { public: { shape: {} } } }, AT)
+      throw new Error('should have thrown')
+    } catch (error) {
+      expect((error as Error).message).toContain('variant "public"')
+    }
+  });
+
+  it('refuses a variant shape that is not an object or function', () => {
+    for (const bad of [null, 42, 'where', true, []]) {
+      expect(() =>
+        validateOperationConfig({ variants: { public: { shape: bad } } }, AT),
+        String(bad),
+      ).toThrow(/shape must be an object or a function/)
+    }
+  });
+
+  it('refuses a variant shape mixing guard keys with non-guard keys', () => {
+    expect(() =>
+      validateOperationConfig(
+        { variants: { public: { shape: { where: {}, wheer: {} } } } },
+        AT,
+      ),
+    ).toThrow(/mixes guard keys/)
+  });
+
+  it('checks EVERY variant, not only the first', () => {
+    expect(() =>
+      validateOperationConfig(
+        { variants: { admin: { shape }, public: { shape: {} } } },
+        AT,
+      ),
+    ).toThrow(/variant "public"/)
+  });
+
+  it('still accepts real variant shapes, including function ones', () => {
+    expect(() =>
+      validateOperationConfig(
+        { variants: { admin: { shape }, public: { shape: () => shape } } },
+        AT,
+      ),
+    ).not.toThrow()
+  });
+});
+
+describe('a resolved function shape is checked before it is used', () => {
+  /**
+   * A function shape is opaque at construction, so `validateShapeConfig` accepts
+   * it — and this is the other half of that bargain. A function returning `{}`,
+   * `undefined`, or a map with stray keys recreates the fail-open at request
+   * time, once per request, where no configuration review will ever see it.
+   *
+   * Returns a description rather than throwing: the caller is a request handler,
+   * and this is a 500 (the deployment is misconfigured), not a caller error.
+   */
+  it('rejects nothing at all', () => {
+    expect(describeResolvedGuardShape(undefined)).toMatch(/returned nothing/)
+    expect(describeResolvedGuardShape(null)).toMatch(/returned nothing/)
+  });
+
+  it('rejects an empty object, which constrains nothing', () => {
+    expect(describeResolvedGuardShape({})).toMatch(/constrains nothing/)
+  });
+
+  it('rejects a non-object', () => {
+    expect(describeResolvedGuardShape(42)).toMatch(/number/)
+    expect(describeResolvedGuardShape('where')).toMatch(/string/)
+    expect(describeResolvedGuardShape([])).toMatch(/an array/)
+  });
+
+  it('rejects stray keys, and names them', () => {
+    const problem = describeResolvedGuardShape({ where: {}, wheer: {} })
+    expect(problem).toMatch(/non-guard keys/)
+    expect(problem).toContain('wheer')
+    expect(problem).not.toContain('where:')
+  });
+
+  it('accepts a real guard shape', () => {
+    expect(describeResolvedGuardShape({ where: { published: true } })).toBeNull()
+    expect(describeResolvedGuardShape({ select: { id: true }, take: 10 })).toBeNull()
+  });
+});
 
 describe('a `default` variant must be asked for', () => {
   /**

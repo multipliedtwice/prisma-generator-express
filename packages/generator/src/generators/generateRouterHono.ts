@@ -98,6 +98,14 @@ function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: strin
  * The rationale lives here rather than in the emitted file on purpose: generated
  * output is an artifact, and a paragraph about a bypass that no longer exists
  * would be copied into every router this generator writes.
+ *
+ * `updateEach` is refused for the same reason, one step further on. It bypasses
+ * guard shapes by design — the endpoint is a batch of `{ where, data }` items
+ * applied directly — and the only thing between it and an unguarded mass
+ * mutation was a `console.warn` suppressed in production. A warning is not a
+ * security boundary; it is advice to whoever happens to be reading a development
+ * log. Refused at construction rather than silently dropped, so a deployment
+ * expecting the route learns at boot instead of at the first 404.
  */
 export function generateHonoRouterFunction({
   model,
@@ -152,16 +160,16 @@ import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import {
   normalizeOperation,
   resolveOperationVariantKey,
+  describeResolvedGuardShape,
   validateCountSourceWhere,
   validateOperationConfig,
-  validateUpdateEachConfig,
 } from '../routeConfig${ext}'
 import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import { transformResult } from '../operationRuntime${ext}'
 import { mapError } from '../errorMapper${ext}'
 import { formatGuardVariantResolutionError } from '../guardVariantError${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
-import { applyDroppedGuard } from '../projectionDefaults${ext}'
+import { applyDroppedGuard, resolveShape } from '../projectionDefaults${ext}'
 import type { OpKind } from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
@@ -241,19 +249,6 @@ async function parseWriteBodyMiddleware(c: HandlerContext): Promise<void> {
   c.set('body', body)
 }
 
-async function parseUpdateEachBodyMiddleware(c: HandlerContext): Promise<void> {
-  let body: unknown
-  try {
-    body = await c.req.json()
-  } catch {
-    throw new HTTPException(400, { message: 'updateEach body must be an array of { where, data } items' })
-  }
-  if (!Array.isArray(body)) {
-    throw new HTTPException(400, { message: 'updateEach body must be an array of { where, data } items' })
-  }
-  c.set('body', body)
-}
-
 function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
   config: ${modelName}RouteConfig<TCtx, TPrisma, TEnv>,
   opConfig: NormalizedOp<TEnv>,
@@ -281,6 +276,36 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
     if (resolvedKey !== undefined) c.set('guardVariantKey', resolvedKey)
 
     if (opConfig.guardShape) {
+      const resolveCtxForCheck = typeof config.resolveContext === 'function'
+        ? () => (config.resolveContext as (ctx: Context<GeneratedHonoEnv<TEnv>>) => unknown | Promise<unknown>)(c)
+        : undefined
+
+      /**
+       * A FUNCTION shape is opaque at construction, so it is checked here —
+       * once, before anything uses it. A function returning {}, undefined or a
+       * map with stray keys would otherwise recreate the fail-open at request
+       * time, where no configuration review will ever see it.
+       *
+       * Static shapes were already validated at construction and are skipped, so
+       * this costs nothing on the common path. For a function shape the extra
+       * call is deliberate: correctness is worth more than one saved invocation,
+       * and a shape function is a mapping from context to shape.
+       */
+      const shapeSource = typeof opConfig.guardShape === 'function'
+        ? opConfig.guardShape
+        : (resolvedKey !== undefined && isPlainObject(opConfig.guardShape)
+            ? (opConfig.guardShape as Record<string, unknown>)[resolvedKey]
+            : undefined)
+
+      if (typeof shapeSource === 'function') {
+        const resolvedShape = await resolveShape(opConfig.guardShape, resolvedKey, resolveCtxForCheck)
+        const problem = describeResolvedGuardShape(resolvedShape)
+        if (problem) {
+          c.set('guardShapeFailure', problem)
+          return
+        }
+      }
+
       if (!DROP_GUARD) {
         c.set('guardShape', opConfig.guardShape)
       } else {
@@ -460,6 +485,19 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
         })
       }
 
+      /**
+       * A shape function that returned something unusable is a DEPLOYMENT fault,
+       * not a caller fault — 500, and refused here, before any hook can answer
+       * the request and before Prisma is reached. Running unguarded because the
+       * guard failed to produce a guard is the outcome this exists to prevent.
+       */
+      const shapeFailure = c.get('guardShapeFailure')
+      if (shapeFailure) {
+        throw new HTTPException(500, {
+          message: 'guard shape could not be resolved: ' + shapeFailure,
+        })
+      }
+
       const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
       if (operationBefore) return operationBefore
 
@@ -497,6 +535,19 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
         })
       }
 
+      /**
+       * A shape function that returned something unusable is a DEPLOYMENT fault,
+       * not a caller fault — 500, and refused here, before any hook can answer
+       * the request and before Prisma is reached. Running unguarded because the
+       * guard failed to produce a guard is the outcome this exists to prevent.
+       */
+      const shapeFailure = c.get('guardShapeFailure')
+      if (shapeFailure) {
+        throw new HTTPException(500, {
+          message: 'guard shape could not be resolved: ' + shapeFailure,
+        })
+      }
+
       const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
       if (operationBefore) return operationBefore
 
@@ -529,31 +580,14 @@ ${readOpBlocks}
 
 ${writeOpBlocks}
 
+  // Not registered on this target — see generateRouterHono.ts for why.
   if (config.updateEach) {
-    const rawUpdateEach = config.updateEach as unknown as OperationConfigLike<TEnv>
-    validateUpdateEachConfig(rawUpdateEach, '${modelName}.updateEach')
-    const opConfig = normalizeHonoOperation(rawUpdateEach)
-    if (opConfig.operationBefore.length === 0 && _env.NODE_ENV !== 'production') {
-      console.warn(
-        '[${modelName}Router] updateEach is enabled without a before hook. ' +
-        'This endpoint bypasses guard shapes and should be protected by authentication middleware.',
-      )
-    }
-    const path = basePath ? \`\${basePath}/each\` : '/each'
-    app.post(path, async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
-      try {
-        await parseUpdateEachBodyMiddleware(c as unknown as HandlerContext)
-        await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, 'noop')(c)
-        const beforeResponse = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
-        if (beforeResponse) return beforeResponse
-        await ${modelName}UpdateEach(c as unknown as HandlerContext)
-        const afterResponse = await runAfterHooks<TEnv>(opConfig.operationAfter, c)
-        if (afterResponse) return afterResponse
-        return sendResult(c as unknown as HandlerContext)
-      } catch (error: unknown) {
-        return sendError(c as unknown as HandlerContext, error)
-      }
-    })
+    throw new Error(
+      '${modelName}.updateEach: this target does not register updateEach. It bypasses ' +
+      'guard shapes entirely, so there is no configuration that makes it safe to ' +
+      'expose. Perform batch updates through a guarded operation, or behind your own ' +
+      'authenticated route outside the generated router.',
+    )
   }
 
   return app

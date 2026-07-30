@@ -375,7 +375,53 @@ export function validateOperationConfig(
         location + ': variant "' + key + '" is missing "shape"',
       )
     }
+
+    /**
+     * The SAME validation the legacy `shape` gets. Without this,
+     * `variants: { public: { shape: {} } }` emitted a route that constrains
+     * nothing — the exact hole the top-level check closes, reachable through a
+     * different key. A guard is not more trustworthy for being written inside a
+     * variant.
+     */
+    validateShapeConfig(rawEntry.shape, location + ' variant "' + key + '"')
   }
+}
+
+/**
+ * What is wrong with a shape that has just been RESOLVED, or `null` if nothing.
+ *
+ * A function shape is opaque at construction time, so `validateShapeConfig`
+ * accepts it and this is the second half of that bargain: whatever it returns is
+ * checked before it is used. A function returning `{}`, `undefined`, or a map
+ * with stray keys recreates the fail-open at request time, once per request,
+ * where no configuration review will ever see it.
+ *
+ * Returns a description rather than throwing, because the caller is a request
+ * handler: this is a 500 (the deployment is misconfigured), not an exception to
+ * propagate as-is.
+ */
+export function describeResolvedGuardShape(resolved: unknown): string | null {
+  if (resolved === null || resolved === undefined) {
+    return 'the shape function returned nothing, so the operation would run unguarded'
+  }
+
+  if (!isPlainObject(resolved)) {
+    return 'the shape function returned ' +
+      (Array.isArray(resolved) ? 'an array' : typeof resolved) +
+      ', which is not a guard shape'
+  }
+
+  const keys = Object.keys(resolved)
+  if (keys.length === 0) {
+    return 'the shape function returned an empty object, which constrains nothing'
+  }
+
+  const stray = keys.filter((key) => !GUARD_SHAPE_CONFIG_KEYS.has(key))
+  if (stray.length > 0) {
+    return 'the shape function returned non-guard keys (' + stray.join(', ') + ')'
+  }
+
+  return null
 }
 
 export function validateUpdateEachConfig(
