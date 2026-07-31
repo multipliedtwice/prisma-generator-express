@@ -1,3 +1,10 @@
+## [1.64.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.2...v1.64.3) (2026-07-31)
+
+
+### Bug Fixes
+
+* **guard:** seven independent Hono guard controls, with compiled public metadata ([3d4de43](https://github.com/multipliedtwice/prisma-generator-express/commit/3d4de43554154ff96dc8fdf4ed429254caad9857))
+
 ## [1.64.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.1...v1.64.2) (2026-07-31)
 
 
