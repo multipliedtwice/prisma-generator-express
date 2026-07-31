@@ -1,3 +1,12 @@
+## [1.64.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.1...v1.64.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* **guard:** refuse unguarded operations; drop the runtime guard bypass ([73aeacf](https://github.com/multipliedtwice/prisma-generator-express/commit/73aeacf7061a47cf31de95b2537f05d855f1a5f9))
+* **guard:** resolve a dynamic shape exactly once, and pass on what was validated ([1cffd64](https://github.com/multipliedtwice/prisma-generator-express/commit/1cffd6454ce69599cdf567712d563c99b6b8e613))
+* **guard:** validate variant and resolved shapes; drop updateEach on Hono ([e485391](https://github.com/multipliedtwice/prisma-generator-express/commit/e4853913b43de3f9267157ff2f8d7a6133f00070))
+
 ## [1.64.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.0...v1.64.1) (2026-07-21)
 
 
