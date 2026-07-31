@@ -117,10 +117,15 @@ export function generateRouteConfigType(
       `      after?: ${afterRef}[]\n` +
       `    }>`
 
+    // Only consulted when `requireDefaultVariantOptIn` is on; inert otherwise.
+    // Emitted so a TypeScript consumer who opts in can confirm a `default`
+    // variant without a cast — 1.64.2 demanded it and never added it to the type.
+    const allowDefault = `    allowDefaultVariant?: boolean`
+
     return (
       `  ${routerOp}?: (${commonConfig} & (\n` +
       `    | { shape?: ${m}${c}ShapeInput<TCtx>; variants?: never }\n` +
-      `    | { shape?: never; variants: ${variantsConfig} }\n` +
+      `    | { shape?: never; variants: ${variantsConfig}\n${allowDefault} }\n` +
       `  )) | false`
     )
   }).join('\n')

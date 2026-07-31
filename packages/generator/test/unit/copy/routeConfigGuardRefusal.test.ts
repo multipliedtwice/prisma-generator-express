@@ -1,11 +1,30 @@
 import { describe, it, expect } from 'vitest'
 import {
   validateOperationConfig,
+  HARDENED_GUARD_PROFILE,
   normalizeOperation,
   resolveOperationVariantKey,
   describeResolvedGuardShape,
   resolveGuardShapeOnce,
 } from '../../../src/copy/routeConfig'
+
+/**
+ * Every call here runs with ALL SEVEN controls at their most restrictive.
+ *
+ * These refusals are opt-in: each has its own option, all defaulting to the
+ * pre-1.64.2 behaviour. `HARDENED_GUARD_PROFILE` selects them together, which is
+ * what this file wants — it tests that the refusals work, not which option
+ * selects which.
+ *
+ * The other two halves of the contract live elsewhere:
+ * `guardCompatibility.test.ts` proves the defaults changed nothing, and
+ * `guardOptionIndependence.test.ts` proves each option acts ALONE — which is the
+ * property this file cannot show, because it turns everything on at once.
+ */
+const validateStrict = (
+  config: Parameters<typeof validateOperationConfig>[0],
+  location: string,
+) => validateOperationConfig(config, location, HARDENED_GUARD_PROFILE)
 
 /**
  * Guard configuration must be present, meaningful, and deliberate.
@@ -26,42 +45,42 @@ const shape = { where: { published: true } }
 
 describe('an operation with no guard is refused', () => {
   it('refuses an absent configuration', () => {
-    expect(() => validateOperationConfig(undefined, AT)).toThrow(/no guard configured/)
+    expect(() => validateStrict(undefined, AT)).toThrow(/no guard configured/)
   })
 
   it('refuses a configuration carrying neither shape nor variants', () => {
     // `before`/`after` hooks alone are not a guard.
-    expect(() => validateOperationConfig({ before: [] } as never, AT)).toThrow(
+    expect(() => validateStrict({ before: [] } as never, AT)).toThrow(
       /Define "shape" or "variants"/,
     )
   })
 
   it('names the operation, so a large config says which one is wrong', () => {
-    expect(() => validateOperationConfig(undefined, 'Article.findMany')).toThrow(
+    expect(() => validateStrict(undefined, 'Article.findMany')).toThrow(
       /^Article\.findMany:/,
     )
   })
 
   it('accepts a real shape', () => {
-    expect(() => validateOperationConfig({ shape }, AT)).not.toThrow()
+    expect(() => validateStrict({ shape }, AT)).not.toThrow()
   })
 
   it('accepts a function shape, which cannot be inspected here', () => {
     // Resolved per request against the caller's context; there is nothing to
     // check at construction time, and refusing it would ban the useful case.
-    expect(() => validateOperationConfig({ shape: () => shape }, AT)).not.toThrow()
+    expect(() => validateStrict({ shape: () => shape }, AT)).not.toThrow()
   })
 })
 
 describe('a shape that constrains nothing is refused', () => {
   it('refuses an empty shape', () => {
     // Reads as "guarded" to a reviewer and lets everything through.
-    expect(() => validateOperationConfig({ shape: {} }, AT)).toThrow(/constrains nothing/)
+    expect(() => validateStrict({ shape: {} }, AT)).toThrow(/constrains nothing/)
   })
 
   it('refuses a shape that is not an object or function', () => {
     for (const bad of [null, 42, 'where', true, []]) {
-      expect(() => validateOperationConfig({ shape: bad }, AT), String(bad)).toThrow(
+      expect(() => validateStrict({ shape: bad }, AT), String(bad)).toThrow(
         /shape must be an object or a function/,
       )
     }
@@ -77,13 +96,13 @@ describe('a shape mixing guard keys with non-guard keys is refused', () => {
      * explains. `wheer` is the whole bug.
      */
     expect(() =>
-      validateOperationConfig({ shape: { where: { a: 1 }, wheer: { b: 2 } } }, AT),
+      validateStrict({ shape: { where: { a: 1 }, wheer: { b: 2 } } }, AT),
     ).toThrow(/mixes guard keys/)
   })
 
   it('names both sides, so the typo is visible in the message', () => {
     try {
-      validateOperationConfig({ shape: { where: {}, iclude: {} } }, AT)
+      validateStrict({ shape: { where: {}, iclude: {} } }, AT)
       throw new Error('should have thrown')
     } catch (error) {
       expect((error as Error).message).toContain('where')
@@ -93,13 +112,13 @@ describe('a shape mixing guard keys with non-guard keys is refused', () => {
 
   it('still accepts an all-guard-key shape', () => {
     expect(() =>
-      validateOperationConfig({ shape: { where: {}, select: { id: true } } }, AT),
+      validateStrict({ shape: { where: {}, select: { id: true } } }, AT),
     ).not.toThrow()
   })
 
   it('still accepts an all-variant shape, which is the legacy variant form', () => {
     expect(() =>
-      validateOperationConfig({ shape: { admin: {}, public: {} } }, AT),
+      validateStrict({ shape: { admin: {}, public: {} } }, AT),
     ).not.toThrow()
   })
 })
@@ -113,13 +132,13 @@ describe('a variant entry gets the same shape validation as a legacy shape', () 
    */
   it('refuses an empty variant shape', () => {
     expect(() =>
-      validateOperationConfig({ variants: { public: { shape: {} } } }, AT),
+      validateStrict({ variants: { public: { shape: {} } } }, AT),
     ).toThrow(/constrains nothing/)
   });
 
   it('names the variant, not just the operation', () => {
     try {
-      validateOperationConfig({ variants: { public: { shape: {} } } }, AT)
+      validateStrict({ variants: { public: { shape: {} } } }, AT)
       throw new Error('should have thrown')
     } catch (error) {
       expect((error as Error).message).toContain('variant "public"')
@@ -129,7 +148,7 @@ describe('a variant entry gets the same shape validation as a legacy shape', () 
   it('refuses a variant shape that is not an object or function', () => {
     for (const bad of [null, 42, 'where', true, []]) {
       expect(() =>
-        validateOperationConfig({ variants: { public: { shape: bad } } }, AT),
+        validateStrict({ variants: { public: { shape: bad } } }, AT),
         String(bad),
       ).toThrow(/shape must be an object or a function/)
     }
@@ -137,7 +156,7 @@ describe('a variant entry gets the same shape validation as a legacy shape', () 
 
   it('refuses a variant shape mixing guard keys with non-guard keys', () => {
     expect(() =>
-      validateOperationConfig(
+      validateStrict(
         { variants: { public: { shape: { where: {}, wheer: {} } } } },
         AT,
       ),
@@ -146,7 +165,7 @@ describe('a variant entry gets the same shape validation as a legacy shape', () 
 
   it('checks EVERY variant, not only the first', () => {
     expect(() =>
-      validateOperationConfig(
+      validateStrict(
         { variants: { admin: { shape }, public: { shape: {} } } },
         AT,
       ),
@@ -155,7 +174,7 @@ describe('a variant entry gets the same shape validation as a legacy shape', () 
 
   it('still accepts real variant shapes, including function ones', () => {
     expect(() =>
-      validateOperationConfig(
+      validateStrict(
         { variants: { admin: { shape }, public: { shape: () => shape } } },
         AT,
       ),
@@ -342,14 +361,14 @@ describe('a `default` variant must be asked for', () => {
   const variants = { default: { shape }, admin: { shape } }
 
   it('refuses a `default` variant that was not opted into', () => {
-    expect(() => validateOperationConfig({ variants }, AT)).toThrow(
+    expect(() => validateStrict({ variants }, AT)).toThrow(
       /Set allowDefaultVariant: true/,
     )
   })
 
   it('explains what it catches, not just that it is refused', () => {
     try {
-      validateOperationConfig({ variants }, AT)
+      validateStrict({ variants }, AT)
       throw new Error('should have thrown')
     } catch (error) {
       expect((error as Error).message).toMatch(/unrecognised, blank and missing caller/)
@@ -359,7 +378,7 @@ describe('a `default` variant must be asked for', () => {
 
   it('accepts it once opted into', () => {
     expect(() =>
-      validateOperationConfig({ variants, allowDefaultVariant: true }, AT),
+      validateStrict({ variants, allowDefaultVariant: true }, AT),
     ).not.toThrow()
   })
 
@@ -367,7 +386,7 @@ describe('a `default` variant must be asked for', () => {
     // A stale flag left behind after a rename would otherwise sit there
     // suggesting a fallback exists.
     expect(() =>
-      validateOperationConfig(
+      validateStrict(
         { variants: { admin: { shape } }, allowDefaultVariant: true },
         AT,
       ),

@@ -1,0 +1,3 @@
+
+# transient: test/consumer packs the tarball here and removes it afterwards
+.consumer-pack-*

@@ -1,3 +1,22 @@
+/**
+ * Public, compiled configuration metadata (M8.7).
+ *
+ * Re-exported here because `src/copy/**` is excluded from the build, so anything
+ * defined only there never reaches `dist` and cannot be imported from an
+ * installed package. See src/guardOptions.ts.
+ *
+ * Authoritative for the seven Hono guard controls only — `GUARD_METADATA_SCOPE`
+ * lists what is not described yet.
+ */
+export {
+  GUARD_OPTION_METADATA,
+  GUARD_METADATA_SCOPE,
+  UPSTREAM_GUARD_DEFAULTS,
+  HARDENED_GUARD_PROFILE,
+  resolveGuardPolicy,
+} from './guardOptions'
+export type { GuardPolicy, GuardOptionMetadata, GuardResolutionOrder } from './guardOptions'
+
 import {
   generatorHandler,
   GeneratorOptions,

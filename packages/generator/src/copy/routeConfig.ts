@@ -119,6 +119,14 @@ export type BaseOperationConfig<
   before?: TBefore[]
   after?: TAfter[]
   pagination?: Partial<PaginationConfig>
+  /**
+   * Confirms that a variant literally named `default` is meant to answer every
+   * unrecognised, blank and missing caller.
+   *
+   * Only consulted when `requireDefaultVariantOptIn` is on. Otherwise the key
+   * behaves as it always has, so this is inert for existing configurations.
+   */
+  allowDefaultVariant?: boolean
 }
 
 export interface BaseUpdateEachConfig<TBefore, TAfter = TBefore> {
@@ -216,6 +224,77 @@ type OperationConfigInput<TBefore, TAfter> = {
   pagination?: Partial<PaginationConfig>
 }
 
+/**
+ * The seven guard controls, resolved — the RUNTIME half.
+ *
+ * This lives here, not in the compiled `src/guardOptions.ts`, because a generated
+ * project gets these files copied in and must run with no dependency on this
+ * package. The two cannot import each other across that boundary, so the values
+ * appear twice and `guardOptionIndependence.test.ts` asserts they agree — against
+ * this resolver, which is the one the router actually runs.
+ *
+ * The machine-readable METADATA is compiled and public: see src/guardOptions.ts.
+ * Defining it here would put it in a file that never reaches `dist`.
+ */
+export type GuardPolicy = {
+  requireGuardShape: boolean
+  validateGuardShapes: boolean
+  requireDefaultVariantOptIn: boolean
+  enableUpdateEach: boolean
+  guardResolutionOrder: 'after-hooks' | 'before-hooks'
+  allowE2EGuardBypass: boolean
+  validateResolvedShapes: boolean
+}
+
+/**
+ * PRE-1.64.2 BEHAVIOUR, exactly. Changing any value here changes what an
+ * unconfigured consumer gets on upgrade, which is the thing that must not happen.
+ */
+export const UPSTREAM_GUARD_DEFAULTS: Readonly<GuardPolicy> = Object.freeze({
+  requireGuardShape: false,
+  validateGuardShapes: false,
+  requireDefaultVariantOptIn: false,
+  enableUpdateEach: true,
+  guardResolutionOrder: 'after-hooks',
+  allowE2EGuardBypass: true,
+  validateResolvedShapes: false,
+})
+
+/**
+ * Every control at its most restrictive — a SHORTCUT, not a mode.
+ *
+ * Spread it, edit what you disagree with, and store the result. There is
+ * deliberately no `preset: 'hardened'` option: a stored preset name would mean a
+ * future version of this package could silently change what a consumer's
+ * configuration does, which is the same class of mistake as 1.64.2 itself.
+ */
+export const HARDENED_GUARD_PROFILE: Readonly<GuardPolicy> = Object.freeze({
+  requireGuardShape: true,
+  validateGuardShapes: true,
+  requireDefaultVariantOptIn: true,
+  enableUpdateEach: false,
+  guardResolutionOrder: 'before-hooks',
+  allowE2EGuardBypass: false,
+  validateResolvedShapes: true,
+})
+
+/** Fill in the defaults. Absent means upstream, never an opinion. */
+export function resolveGuardPolicy(config: Partial<GuardPolicy> | undefined): GuardPolicy {
+  return {
+    requireGuardShape: config?.requireGuardShape ?? UPSTREAM_GUARD_DEFAULTS.requireGuardShape,
+    validateGuardShapes: config?.validateGuardShapes ?? UPSTREAM_GUARD_DEFAULTS.validateGuardShapes,
+    requireDefaultVariantOptIn:
+      config?.requireDefaultVariantOptIn ?? UPSTREAM_GUARD_DEFAULTS.requireDefaultVariantOptIn,
+    enableUpdateEach: config?.enableUpdateEach ?? UPSTREAM_GUARD_DEFAULTS.enableUpdateEach,
+    guardResolutionOrder:
+      config?.guardResolutionOrder ?? UPSTREAM_GUARD_DEFAULTS.guardResolutionOrder,
+    allowE2EGuardBypass:
+      config?.allowE2EGuardBypass ?? UPSTREAM_GUARD_DEFAULTS.allowE2EGuardBypass,
+    validateResolvedShapes:
+      config?.validateResolvedShapes ?? UPSTREAM_GUARD_DEFAULTS.validateResolvedShapes,
+  }
+}
+
 function classifyGuardRouting(shape: unknown): NormalizedGuardRouting {
   if (shape === undefined) return { kind: 'none' }
   if (typeof shape === 'function') return { kind: 'single' }
@@ -295,34 +374,79 @@ function validateShapeConfig(shape: unknown, location: string): void {
 export function validateOperationConfig(
   config: { shape?: unknown; variants?: unknown; allowDefaultVariant?: unknown } | undefined,
   location: string,
+  policy: Partial<GuardPolicy> = {},
 ): void {
+  const { requireGuardShape, validateGuardShapes, requireDefaultVariantOptIn } =
+    resolveGuardPolicy(policy)
+
+  /**
+   * THE CHECKS THAT PREDATE 1.64.2 RUN UNCONDITIONALLY.
+   *
+   * Everything below them is gated per option. Note each gate stands alone: a
+   * consumer who enables `validateGuardShapes` gets shape validation and NOT a
+   * missing-guard refusal, and vice versa. That independence is the point, and
+   * `guardOptionIndependence.test.ts` asserts it option by option.
+   */
   if (!config) {
-    throw new Error(
-      location + ': no guard configured. Every generated operation must define ' +
-      '"shape" or "variants"; an unguarded operation would pass the caller\'s ' +
-      'own where/select/include straight to Prisma.',
-    )
+    if (requireGuardShape) {
+      throw new Error(
+        location + ': no guard configured. Every generated operation must define ' +
+        '"shape" or "variants"; an unguarded operation would pass the caller\'s ' +
+        'own where/select/include straight to Prisma.',
+      )
+    }
+    return
   }
 
   const hasShape = config.shape !== undefined
   const hasVariants = config.variants !== undefined
 
+  // Pre-1.64.2. Not gated.
   if (hasShape && hasVariants) {
     throw new Error(location + ': shape and variants cannot both be defined')
   }
 
   if (!hasShape && !hasVariants) {
-    throw new Error(
-      location + ': no guard configured. Define "shape" or "variants".',
-    )
-  }
-
-  if (hasShape) {
-    validateShapeConfig(config.shape, location)
+    if (requireGuardShape) {
+      throw new Error(
+        location + ': no guard configured. Define "shape" or "variants".',
+      )
+    }
     return
   }
 
-  const variants = config.variants
+  if (hasShape) {
+    if (validateGuardShapes) validateShapeConfig(config.shape, location)
+    return
+  }
+
+  validateVariantMap(
+    config.variants,
+    location,
+    { validateGuardShapes, requireDefaultVariantOptIn },
+    config.allowDefaultVariant,
+  )
+}
+
+/**
+ * The variant-map checks.
+ *
+ * The four that predate 1.64.2 — non-array object, at least one entry, no
+ * reserved-key collision, every entry an object carrying a `shape` — run
+ * ALWAYS, because they are not new and removing them would be its own breaking
+ * change.
+ *
+ * The two the hardening added are gated on their OWN options, independently:
+ * `requireDefaultVariantOptIn` confirms a `default` variant,
+ * `validateGuardShapes` validates each variant's shape the way a top-level
+ * `shape` is validated. Enabling either does not enable the other.
+ */
+function validateVariantMap(
+  variants: unknown,
+  location: string,
+  flags: { validateGuardShapes: boolean; requireDefaultVariantOptIn: boolean },
+  allowDefaultVariant?: unknown,
+): void {
   if (!isPlainObject(variants)) {
     throw new Error(location + ': variants must be a non-array object')
   }
@@ -343,18 +467,20 @@ export function validateOperationConfig(
    * writes on purpose; a key called `default` is one they may have typed without
    * noticing what it catches.
    */
-  if (Object.prototype.hasOwnProperty.call(variants, 'default')) {
-    if (config.allowDefaultVariant !== true) {
+  if (flags.requireDefaultVariantOptIn) {
+    if (Object.prototype.hasOwnProperty.call(variants, 'default')) {
+      if (allowDefaultVariant !== true) {
+        throw new Error(
+          location + ': a variant named "default" answers every unrecognised, ' +
+          'blank and missing caller. Set allowDefaultVariant: true to confirm ' +
+          'that is intended, and make sure it is the most restrictive variant.',
+        )
+      }
+    } else if (allowDefaultVariant !== undefined) {
       throw new Error(
-        location + ': a variant named "default" answers every unrecognised, ' +
-        'blank and missing caller. Set allowDefaultVariant: true to confirm ' +
-        'that is intended, and make sure it is the most restrictive variant.',
+        location + ': allowDefaultVariant is set but no "default" variant exists.',
       )
     }
-  } else if (config.allowDefaultVariant !== undefined) {
-    throw new Error(
-      location + ': allowDefaultVariant is set but no "default" variant exists.',
-    )
   }
 
   for (const [key, rawEntry] of entries) {
@@ -384,7 +510,9 @@ export function validateOperationConfig(
      * different key. A guard is not more trustworthy for being written inside a
      * variant.
      */
-    validateShapeConfig(rawEntry.shape, location + ' variant "' + key + '"')
+    if (flags.validateGuardShapes) {
+      validateShapeConfig(rawEntry.shape, location + ' variant "' + key + '"')
+    }
   }
 }
 

@@ -46,7 +46,7 @@ const emit = (dropGuard: boolean) =>
     dropGuard,
   })
 
-describe('guard dropping is decided at generation time, never at runtime', () => {
+describe('guard dropping is decided at generation time — under allowE2EGuardBypass', () => {
   /**
    * The emitted router computed
    *
@@ -71,14 +71,39 @@ describe('guard dropping is decided at generation time, never at runtime', () =>
     }
   })
 
+  it('reaches the E2E bypass only through its OWN control', () => {
+    /**
+     * 1.64.2 removed the bypass outright, which broke consumers who relied on it.
+     * It is back, gated on `allowE2EGuardBypass` alone — not on a shared switch,
+     * so turning off the bypass does not also change hook ordering or refuse a
+     * route.
+     */
+    const out = emit(false)
+    const line = out.split('\n').find((l) => l.includes("_env.E2E === 'true'"))
+
+    expect(line, 'the E2E bypass is gone entirely').toBeDefined()
+    expect(line, 'the bypass is not gated on its own control').toContain(
+      'policy.allowE2EGuardBypass',
+    )
+  })
+
   it('emits the generation-time decision verbatim', () => {
     expect(emit(false)).toContain('const DROP_GUARD = false')
     expect(emit(true)).toContain('const DROP_GUARD = true')
   })
 
-  it('mentions E2E nowhere in the emitted router', () => {
-    // Belt and braces: no other path may reintroduce it under another name.
-    expect(emit(false)).not.toMatch(/\bE2E\b/)
+  it('mentions E2E in exactly one place, behind its control', () => {
+    /**
+     * Was "nowhere at all" in 1.64.2. The bypass is upstream behaviour that has to
+     * keep working, so the assertion is that EVERY code mention sits behind
+     * `allowE2EGuardBypass` — one occurrence, gated.
+     */
+    const mentions = emit(false)
+      .split('\n')
+      .filter((l) => /\bE2E\b/.test(l))
+      .filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l))
+    expect(mentions, 'E2E appears in code in more than one place').toHaveLength(1)
+    expect(mentions[0]).toContain('policy.allowE2EGuardBypass')
   })
 })
 
@@ -95,7 +120,12 @@ describe('a dynamic shape is resolved once, and the validated value travels on',
     expect(out).toContain(
       'await resolveGuardShapeOnce(opConfig.guardShape, resolvedKey, resolveCtx)',
     )
-    expect(out).toContain('const effectiveShape = resolution.shape')
+    expect(out).toContain('effectiveShape = resolution.shape')
+
+    // Resolution is the OPT-IN path, on its own control. Without it the raw shape
+    // is passed through as upstream does, so nothing resolves twice there either.
+    expect(out).toContain('if (policy.validateResolvedShapes) {')
+    expect(out).toContain('let effectiveShape: unknown = opConfig.guardShape')
   })
 
   it('hands prisma-guard the RESOLVED value, never the original shape', () => {
@@ -134,19 +164,23 @@ describe('a dynamic shape is resolved once, and the validated value travels on',
       const start = out.indexOf(from)
       const body = out.slice(start, out.indexOf(to, start))
 
-      const shapeFailure = body.indexOf("c.get('guardShapeFailure')")
+      const settled = body.indexOf('if (SETTLE_BEFORE_HOOKS) settleGuard(c)')
       const hooks = body.indexOf('runBeforeHooks<TEnv>(opConfig.operationBefore')
 
-      expect(shapeFailure, `${name}: no shape-failure check`).toBeGreaterThan(-1)
-      expect(body).toContain('new HTTPException(500')
-      expect(shapeFailure, `${name}: a hook can answer despite an unusable guard`).toBeLessThan(
-        hooks,
-      )
+      expect(settled, `${name}: no before-hooks guard settlement`).toBeGreaterThan(-1)
+      expect(settled, `${name}: a hook can answer despite an unusable guard`).toBeLessThan(hooks)
+
+      // ...and the legacy ordering is still emitted, after the hooks.
+      const legacy = body.indexOf('if (!SETTLE_BEFORE_HOOKS) settleGuard(c)')
+      expect(legacy, `${name}: no after-hooks ordering`).toBeGreaterThan(hooks)
+
+      // The 500 itself lives in settleGuard, raised once for both handlers.
+      expect(out).toContain('new HTTPException(500')
     })
   }
 })
 
-describe('updateEach is not registered on this target', () => {
+describe('updateEach is refused — but only when enableUpdateEach is false', () => {
   const out = emit(false)
 
   it('refuses at construction rather than dropping it silently', () => {
@@ -160,23 +194,39 @@ describe('updateEach is not registered on this target', () => {
      * boot, not at the first 404 in a batch job nobody is watching.
      */
     expect(out).toContain('does not register updateEach')
-    expect(out).toMatch(/if \(config\.updateEach\) \{\s*\n\s*throw new Error\(/)
+    // Gated: the throw is reached only when the route is switched off.
+    expect(out).toMatch(/if \(!POLICY\.enableUpdateEach\) \{\s*\n\s*throw new Error\(/)
   })
 
-  it('registers no route for it', () => {
-    expect(out, 'an updateEach route is still mounted').not.toContain("'/each'")
-    expect(out).not.toContain('UpdateEach(c as unknown as HandlerContext)')
+  it('still registers the route when the flag is absent', () => {
+    /**
+     * The 1.64.2 regression, stated as a test: removing the endpoint outright
+     * broke every consumer using it. It is back on the default path, warning
+     * and all, and unreachable only for those who opted in.
+     */
+    expect(out, 'the updateEach route was not restored').toContain("'/each'")
+    expect(out).toContain('UpdateEach(c as unknown as HandlerContext)')
+    expect(out).toContain('should be protected by authentication middleware')
   })
 
-  it('carries no development-only warning in place of a guard control', () => {
+  it('keeps the development-only warning on the legacy path, where it belongs', () => {
     /**
      * Scoped to GUARD warnings deliberately. The router still warns about the
      * query-builder UI not auto-starting, which is a developer notice about
      * tooling and not a control standing in for one — the distinction being the
      * whole point of this test.
      */
-    expect(out).not.toContain('should be protected by authentication middleware')
-    expect(out).not.toContain('bypasses guard shapes')
+    /**
+     * The warning is not a security control and never was — that is why
+     * requireGuard refuses the route outright. But on the default path it is the
+     * behaviour consumers have, so it stays, and it is unreachable for anyone who
+     * opted in because the throw precedes it.
+     */
+    const block = out.slice(out.indexOf('if (config.updateEach) {'))
+    expect(block).toContain('should be protected by authentication middleware')
+    expect(block.indexOf('if (!POLICY.enableUpdateEach)')).toBeLessThan(
+      block.indexOf('should be protected by authentication middleware'),
+    )
 
     const warnings = [...out.matchAll(/console\.warn\(\s*\n?\s*'([^']*)/g)].map((m) => m[1])
     for (const warning of warnings) {
@@ -208,14 +258,23 @@ describe('variant resolution is settled before any operation hook runs', () => {
       expect(start, `${from} not found — this test is checking nothing`).toBeGreaterThan(-1)
       const body = out.slice(start, out.indexOf(to, start))
 
-      const failure = body.indexOf("c.get('guardVariantFailure')")
+      const strict = body.indexOf('if (SETTLE_BEFORE_HOOKS) settleGuard(c)')
+      const legacy = body.indexOf('if (!SETTLE_BEFORE_HOOKS) settleGuard(c)')
       const hooks = body.indexOf('runBeforeHooks<TEnv>(opConfig.operationBefore')
 
-      expect(failure, 'no variant failure check in this handler').toBeGreaterThan(-1)
       expect(hooks, 'no operation before-hooks in this handler').toBeGreaterThan(-1)
-      expect(failure, `${name}: a hook can answer before the variant is resolved`).toBeLessThan(
+      expect(strict, 'no before-hooks settlement in this handler').toBeGreaterThan(-1)
+      expect(strict, `${name}: a hook can answer before the variant is resolved`).toBeLessThan(
         hooks,
       )
+
+      /**
+       * ...and the 1.64.1 ordering is preserved for everyone else. Moving the
+       * check earlier for all consumers is what made 1.64.2 a breaking change:
+       * a before-hook that legitimately answered first — an auth gate, a cache —
+       * stopped being reached.
+       */
+      expect(legacy, `${name}: the legacy ordering was not preserved`).toBeGreaterThan(hooks)
     })
   }
 
@@ -226,7 +285,7 @@ describe('variant resolution is settled before any operation hook runs', () => {
     const body = out.slice(start, out.indexOf('const handleWrite =', start))
 
     expect(body.indexOf("c.get('guardVariantKey')")).toBeGreaterThan(
-      body.indexOf("c.get('guardVariantFailure')"),
+      body.indexOf('if (SETTLE_BEFORE_HOOKS) settleGuard(c)'),
     )
     expect(body).toContain('variantHooks')
   })

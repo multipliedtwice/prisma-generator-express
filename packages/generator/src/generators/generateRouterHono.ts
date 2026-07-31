@@ -81,7 +81,28 @@ function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: strin
 }
 
 /**
- * Guard dropping is a GENERATION-TIME decision, never a runtime one.
+ * Guard behaviour is SEVEN INDEPENDENT OPT-IN CONTROLS on the route config.
+ *
+ * 1.64.2 shipped all of it as the default, which was a breaking change to a
+ * published package. The first correction put all of it behind one `requireGuard`
+ * switch, which was also wrong: these are unrelated decisions, and one switch
+ * forces a consumer who wants a missing-guard refusal to also accept a
+ * hook-ordering change and lose a route they may be using.
+ *
+ * Each is now its own option, each defaulting to the pre-1.64.2 behaviour:
+ *
+ *   - `requireGuardShape`           refuse an operation with no guard
+ *   - `validateGuardShapes`         refuse an empty or key-mixing shape
+ *   - `requireDefaultVariantOptIn`  confirm a `default` variant
+ *   - `enableUpdateEach`            register the batch route (default true)
+ *   - `guardResolutionOrder`        settle the guard before or after hooks
+ *   - `allowE2EGuardBypass`         honour E2E=true (default true)
+ *   - `validateResolvedShapes`      check what a shape function returned
+ *
+ * `HARDENED_GUARD_PROFILE` selects all seven, as values to spread rather than a
+ * mode to store. See routeConfig.ts.
+ *
+ * Guard dropping is then a GENERATION-TIME decision, never a runtime one.
  *
  * The emitted router used to compute `DROP_GUARD = <flag> || _env.E2E === 'true'`,
  * so setting `E2E=true` in a deployed environment downgraded enforcement even
@@ -99,13 +120,14 @@ function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: strin
  * output is an artifact, and a paragraph about a bypass that no longer exists
  * would be copied into every router this generator writes.
  *
- * `updateEach` is refused for the same reason, one step further on. It bypasses
- * guard shapes by design — the endpoint is a batch of `{ where, data }` items
- * applied directly — and the only thing between it and an unguarded mass
- * mutation was a `console.warn` suppressed in production. A warning is not a
- * security boundary; it is advice to whoever happens to be reading a development
- * log. Refused at construction rather than silently dropped, so a deployment
- * expecting the route learns at boot instead of at the first 404.
+ * `updateEach` is refused for the same reason, one step further on — and, again,
+ * only under the flag. It bypasses guard shapes by design — the endpoint is a
+ * batch of `{ where, data }` items applied directly — and the only thing between
+ * it and an unguarded mass mutation is a `console.warn` suppressed in
+ * production. A warning is not a security boundary; it is advice to whoever
+ * happens to be reading a development log. Refused at construction rather than
+ * silently dropped, so a deployment expecting the route learns at boot instead
+ * of at the first 404.
  */
 export function generateHonoRouterFunction({
   model,
@@ -160,9 +182,11 @@ import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import {
   normalizeOperation,
   resolveOperationVariantKey,
+  resolveGuardPolicy,
   resolveGuardShapeOnce,
   validateCountSourceWhere,
   validateOperationConfig,
+  validateUpdateEachConfig,
 } from '../routeConfig${ext}'
 import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import { transformResult } from '../operationRuntime${ext}'
@@ -176,8 +200,9 @@ import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 ${generateRouteConfigType(modelName, 'HonoBeforeHook', guardShapesImport, importStyle, 'hono')}
 const _env = getEnv()
 
-// Fixed at generation time. Never read from the environment — see
-// generateRouterHono.ts.
+// Fixed at generation time. The \`allowE2EGuardBypass\` control decides whether the
+// environment can additionally drop the guard at runtime; it defaults to true,
+// which is upstream behaviour. See generateRouterHono.ts.
 const DROP_GUARD = ${dropGuard}
 
 type JsonLike =
@@ -236,6 +261,19 @@ async function parseBodyAsQueryMiddleware(c: HandlerContext): Promise<void> {
   c.set('parsedQuery', sanitizeKeys(body as Record<string, unknown>))
 }
 
+async function parseUpdateEachBodyMiddleware(c: HandlerContext): Promise<void> {
+  let body: unknown
+  try {
+    body = await c.req.json()
+  } catch {
+    throw new HTTPException(400, { message: 'updateEach body must be an array of { where, data } items' })
+  }
+  if (!Array.isArray(body)) {
+    throw new HTTPException(400, { message: 'updateEach body must be an array of { where, data } items' })
+  }
+  c.set('body', body)
+}
+
 async function parseWriteBodyMiddleware(c: HandlerContext): Promise<void> {
   let body: unknown
   try {
@@ -254,6 +292,17 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
   opConfig: NormalizedOp<TEnv>,
   opKind: OpKind,
 ) {
+  const policy = resolveGuardPolicy(config)
+
+  /**
+   * The environment bypass, honoured unless the consumer turned it off.
+   *
+   * \`E2E=true\` downgrading enforcement in a deployed environment is a real
+   * hazard, and it is also upstream behaviour — so it is a control, not a
+   * decision made here.
+   */
+  const dropGuard = DROP_GUARD || (policy.allowE2EGuardBypass && _env.E2E === 'true')
+
   return async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<void> => {
     const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
     if (merged) c.set('routeConfig', { pagination: merged })
@@ -281,18 +330,26 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
         : undefined
 
       /**
-       * Resolved ONCE, here, and the validated value is what travels onward —
-       * see resolveGuardShapeOnce. Passing the function on would let it return a
-       * different shape when it is enforced than when it was checked.
+       * With \`validateResolvedShapes\`, resolved ONCE here and the validated value
+       * is what travels onward — see resolveGuardShapeOnce. Passing the function
+       * on would let it return a different shape when it is enforced than when it
+       * was checked.
+       *
+       * Without it the raw shape is passed through untouched, which is upstream
+       * behaviour: it is resolved at the point of use, and a function returning
+       * something unusable is not this router's business to refuse.
        */
-      const resolution = await resolveGuardShapeOnce(opConfig.guardShape, resolvedKey, resolveCtx)
-      if (!resolution.ok) {
-        c.set('guardShapeFailure', resolution.problem)
-        return
+      let effectiveShape: unknown = opConfig.guardShape
+      if (policy.validateResolvedShapes) {
+        const resolution = await resolveGuardShapeOnce(opConfig.guardShape, resolvedKey, resolveCtx)
+        if (!resolution.ok) {
+          c.set('guardShapeFailure', resolution.problem)
+          return
+        }
+        effectiveShape = resolution.shape
       }
-      const effectiveShape = resolution.shape
 
-      if (!DROP_GUARD) {
+      if (!dropGuard) {
         c.set('guardShape', effectiveShape)
       } else {
         await applyDroppedGuard(
@@ -438,6 +495,38 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
     })
   }
 
+  const POLICY = resolveGuardPolicy(config)
+  const SETTLE_BEFORE_HOOKS = POLICY.guardResolutionOrder === 'before-hooks'
+
+  /**
+   * The guard-resolution failures, raised in one place so both handlers and both
+   * orderings share exactly one definition of what a failure is.
+   *
+   * WHERE it is called is the behavioural difference, and it is the
+   * \`guardResolutionOrder\` control. \`'before-hooks'\` runs it before any operation
+   * hook, because a hook that returns a Response — an auth gate, a cache, a
+   * short-circuit for a known caller — would otherwise answer a request whose
+   * guard was never established. \`'after-hooks'\` is upstream behaviour.
+   *
+   * \`guardShapeFailure\` is only ever set when \`validateResolvedShapes\` is on, so
+   * that branch is inert rather than merely unreached when it is off.
+   */
+  const settleGuard = (c: Context<GeneratedHonoEnv<TEnv>>): void => {
+    const failure = c.get('guardVariantFailure')
+    if (failure) {
+      throw new HTTPException(400, {
+        message: formatGuardVariantResolutionError(failure),
+      })
+    }
+
+    const shapeFailure = c.get('guardShapeFailure')
+    if (shapeFailure) {
+      throw new HTTPException(500, {
+        message: 'guard shape could not be resolved: ' + shapeFailure,
+      })
+    }
+  }
+
   const handleRead = (
     opConfig: NormalizedOp<TEnv>,
     handlerFn: (c: HandlerContext) => Promise<void>,
@@ -448,40 +537,14 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
       await parseFn(c as unknown as HandlerContext)
       await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
 
-      /**
-       * Variant resolution is settled BEFORE any operation hook runs.
-       *
-       * The check used to sit after \`operationBefore\`, so a hook that returned a
-       * Response — an auth gate, a cache, a short-circuit for a known caller —
-       * answered the request before anyone established which guard applied to
-       * it. A cached response served for a request whose variant could not be
-       * resolved is a response served under a guard nobody chose.
-       *
-       * Hooks that must run first belong outside the generated router, where
-       * they are visibly not part of guard resolution.
-       */
-      const failure = c.get('guardVariantFailure')
-      if (failure) {
-        throw new HTTPException(400, {
-          message: formatGuardVariantResolutionError(failure),
-        })
-      }
-
-      /**
-       * A shape function that returned something unusable is a DEPLOYMENT fault,
-       * not a caller fault — 500, and refused here, before any hook can answer
-       * the request and before Prisma is reached. Running unguarded because the
-       * guard failed to produce a guard is the outcome this exists to prevent.
-       */
-      const shapeFailure = c.get('guardShapeFailure')
-      if (shapeFailure) {
-        throw new HTTPException(500, {
-          message: 'guard shape could not be resolved: ' + shapeFailure,
-        })
-      }
+      // Settled BEFORE any hook can answer the request, when asked for.
+      if (SETTLE_BEFORE_HOOKS) settleGuard(c)
 
       const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
       if (operationBefore) return operationBefore
+
+      // Upstream order: hooks first, guard failure after.
+      if (!SETTLE_BEFORE_HOOKS) settleGuard(c)
 
       const key = c.get('guardVariantKey')
       const variantHooks =
@@ -509,29 +572,14 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
       await parseWriteBodyMiddleware(c as unknown as HandlerContext)
       await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
 
-      // Settled before any operation hook — see the read handler above.
-      const failure = c.get('guardVariantFailure')
-      if (failure) {
-        throw new HTTPException(400, {
-          message: formatGuardVariantResolutionError(failure),
-        })
-      }
-
-      /**
-       * A shape function that returned something unusable is a DEPLOYMENT fault,
-       * not a caller fault — 500, and refused here, before any hook can answer
-       * the request and before Prisma is reached. Running unguarded because the
-       * guard failed to produce a guard is the outcome this exists to prevent.
-       */
-      const shapeFailure = c.get('guardShapeFailure')
-      if (shapeFailure) {
-        throw new HTTPException(500, {
-          message: 'guard shape could not be resolved: ' + shapeFailure,
-        })
-      }
+      // Settled BEFORE any hook can answer the request, when asked for.
+      if (SETTLE_BEFORE_HOOKS) settleGuard(c)
 
       const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
       if (operationBefore) return operationBefore
+
+      // Upstream order: hooks first, guard failure after.
+      if (!SETTLE_BEFORE_HOOKS) settleGuard(c)
 
       const key = c.get('guardVariantKey')
       const variantHooks =
@@ -554,7 +602,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
     key: K,
   ): NormalizedOp<TEnv> => {
     const raw = config[key] as unknown as OperationConfigLike<TEnv> | undefined
-    validateOperationConfig(raw, '${modelName}.' + String(key))
+    validateOperationConfig(raw, '${modelName}.' + String(key), POLICY)
     return normalizeHonoOperation(raw)
   }
 
@@ -562,14 +610,50 @@ ${readOpBlocks}
 
 ${writeOpBlocks}
 
-  // Not registered on this target — see generateRouterHono.ts for why.
   if (config.updateEach) {
-    throw new Error(
-      '${modelName}.updateEach: this target does not register updateEach. It bypasses ' +
-      'guard shapes entirely, so there is no configuration that makes it safe to ' +
-      'expose. Perform batch updates through a guarded operation, or behind your own ' +
-      'authenticated route outside the generated router.',
-    )
+    /**
+     * Refused only when \`enableUpdateEach\` is false. It bypasses guard shapes by design — the
+     * endpoint is a batch of { where, data } applied directly — and the only thing
+     * between it and an unguarded mass mutation is a console.warn suppressed in
+     * production. A warning is not a security boundary.
+     *
+     * Removing the route outright was a breaking change to a published package,
+     * so by default it registers exactly as it did, warning and all.
+     */
+    if (!POLICY.enableUpdateEach) {
+      throw new Error(
+        '${modelName}.updateEach: enableUpdateEach is false, so this router ' +
+        'does not register updateEach. It bypasses guard shapes entirely, so ' +
+        'there is no configuration that makes it safe to expose. Perform batch ' +
+        'updates through a guarded operation, or behind your own authenticated ' +
+        'route outside the generated router.',
+      )
+    }
+
+    const rawUpdateEach = config.updateEach as unknown as OperationConfigLike<TEnv>
+    validateUpdateEachConfig(rawUpdateEach, '${modelName}.updateEach')
+    const opConfig = normalizeHonoOperation(rawUpdateEach)
+    if (opConfig.operationBefore.length === 0 && _env.NODE_ENV !== 'production') {
+      console.warn(
+        '[${modelName}Router] updateEach is enabled without a before hook. ' +
+        'This endpoint bypasses guard shapes and should be protected by authentication middleware.',
+      )
+    }
+    const path = basePath ? \`\${basePath}/each\` : '/each'
+    app.post(path, async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
+      try {
+        await parseUpdateEachBodyMiddleware(c as unknown as HandlerContext)
+        await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, 'noop')(c)
+        const beforeResponse = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
+        if (beforeResponse) return beforeResponse
+        await ${modelName}UpdateEach(c as unknown as HandlerContext)
+        const afterResponse = await runAfterHooks<TEnv>(opConfig.operationAfter, c)
+        if (afterResponse) return afterResponse
+        return sendResult(c as unknown as HandlerContext)
+      } catch (error: unknown) {
+        return sendError(c as unknown as HandlerContext, error)
+      }
+    })
   }
 
   return app
