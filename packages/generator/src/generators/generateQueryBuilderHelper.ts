@@ -1,6 +1,8 @@
 import { GeneratorOptions } from '@prisma/generator-helper'
 
-export function generateQueryBuilderHelper(options: GeneratorOptions): string {
+export function generateQueryBuilderHelper(
+  options: Pick<GeneratorOptions, 'schemaPath'>,
+): string {
   const schemaPath = options.schemaPath
     ? JSON.stringify(options.schemaPath)
     : "resolve(process.cwd(), 'prisma/schema.prisma')"
@@ -52,7 +54,7 @@ export function startQueryBuilder(options: QueryBuilderOptions = {}): void {
 
 function doStart(options: QueryBuilderOptions): Promise<void> {
   return new Promise<void>((resolvePromise) => {
-    const env = typeof process !== 'undefined' && process.env ? process.env : {} as Record<string, string | undefined>
+    const env = process.env
 
     if (env.NODE_ENV === 'production') {
       resolvePromise()
@@ -97,7 +99,7 @@ function doStart(options: QueryBuilderOptions): Promise<void> {
 
     const schemaCwd = dirname(resolve(schemaPath))
 
-    _process = spawn(process.execPath, [cliPath], {
+    const child = spawn(process.execPath, [cliPath], {
       stdio: 'inherit',
       env: {
         ...env,
@@ -110,14 +112,15 @@ function doStart(options: QueryBuilderOptions): Promise<void> {
         DATABASE_URL: databaseUrl,
       },
     })
+    _process = child
 
-    _process.on('error', (err) => {
+    child.on('error', (err) => {
       console.error('[query-builder] Failed to start:', err.message)
       _process = null
       resolvePromise()
     })
 
-    _process.on('exit', (code) => {
+    child.on('exit', (code) => {
       const wasStopping = _stopping
       _stopping = false
       _process = null
