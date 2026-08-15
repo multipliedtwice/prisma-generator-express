@@ -1,3 +1,10 @@
+## [1.64.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.3...v1.64.4) (2026-08-15)
+
+
+### Bug Fixes
+
+* **generator:** update generateQueryBuilderHelper to use schemaPath type and improve process handling ([867a40e](https://github.com/multipliedtwice/prisma-generator-express/commit/867a40eab75438c37a63f1fe8318baf0b1b25d3a))
+
 ## [1.64.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.2...v1.64.3) (2026-07-31)
 
 
