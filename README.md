@@ -1,15 +1,25 @@
-# Prisma Generator Express
+<p align="center">
+  <img src="docs/assets/favicon.svg" width="88" height="88" alt="Prisma Generator Express logo">
+</p>
 
-[![npm version](https://badge.fury.io/js/prisma-generator-express.svg)](https://badge.fury.io/js/prisma-generator-express)
-[![npm](https://img.shields.io/npm/dt/prisma-generator-express.svg)](https://www.npmjs.com/package/prisma-generator-express)
-[![Coverage](https://img.shields.io/codecov/c/github/multipliedtwice/prisma-generator-express/main.svg)](https://codecov.io/gh/multipliedtwice/prisma-generator-express)
-[![npm](https://img.shields.io/npm/l/prisma-generator-express.svg)](LICENSE)
+<h1 align="center">Prisma Generator Express</h1>
 
-Prisma generator that creates Express, Fastify, or Hono CRUD API routes with OpenAPI documentation from your Prisma schema.
+<p align="center"><strong>Prisma generator that creates Express, Fastify, or Hono CRUD API routes with OpenAPI documentation from your Prisma schema.</strong></p>
 
-**Guides:** [Prisma Generator Express Series](https://multipliedtwice.github.io/prisma-generator-express/) — verified tutorials, deep dives, and troubleshooting references.
+<p align="center">
+  <a href="https://www.npmjs.com/package/prisma-generator-express"><img src="https://badge.fury.io/js/prisma-generator-express.svg" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/prisma-generator-express"><img src="https://img.shields.io/npm/dt/prisma-generator-express.svg" alt="npm downloads"></a>
+  <a href="https://codecov.io/gh/multipliedtwice/prisma-generator-express"><img src="https://img.shields.io/codecov/c/github/multipliedtwice/prisma-generator-express/master.svg" alt="Coverage"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/npm/l/prisma-generator-express.svg" alt="License"></a>
+</p>
 
-**Article evidence:** [guard lab](article-labs/guard/) and [HTTP/PostgreSQL lab](article-labs/http/).
+<p align="center">
+  <a href="https://multipliedtwice.github.io/prisma-generator-express/">Field Guide</a> ·
+  <a href="https://www.npmjs.com/package/prisma-generator-express">npm</a> ·
+  <a href="article-labs/guard/">Guard Evidence</a> ·
+  <a href="article-labs/http/">HTTP/PostgreSQL Evidence</a> ·
+  <a href="#documentation-endpoints">API Documentation</a>
+</p>
 
 Running `npx prisma generate` produces:
 
