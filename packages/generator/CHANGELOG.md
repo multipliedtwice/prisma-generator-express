@@ -1,3 +1,10 @@
+## [1.65.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.65.1...v1.65.2) (2026-08-16)
+
+
+### Bug Fixes
+
+* **docs:** highlight npx shell commands ([31f1540](https://github.com/multipliedtwice/prisma-generator-express/commit/31f1540fb3879c3354ade1cb260e5922879c7db2))
+
 ## [1.65.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.65.0...v1.65.1) (2026-08-16)
 
 
