@@ -3,8 +3,8 @@ layout: default
 ---
 <section class="hero" aria-labelledby="series-title">
   <div class="hero__copy">
-    <p class="eyebrow"><span>Field guide</span> · 10 verified articles</p>
-    <h1 id="series-title">Build generated Prisma APIs you can actually trust.</h1>
+    <p class="eyebrow"><span>Field guide</span> · 10 practical articles</p>
+    <h1 id="series-title">Ship Prisma APIs faster. Generate the repetitive parts.</h1>
     <p class="hero__lede">{{ page.description }}</p>
     <div class="hero__actions">
       <a class="button" href="{{ site.data.series.first.url | relative_url }}">Start reading <span aria-hidden="true">→</span></a>
@@ -12,8 +12,8 @@ layout: default
     </div>
   </div>
   <aside class="hero__note" aria-label="Series scope">
-    <p class="hero__note-label">What this covers</p>
-    <p>Shapes. Tenant scope. Caller routing. Hooks. Projection. Pagination. SSE. Writes. Failure diagnosis.</p>
+    <p class="hero__note-label">What gets generated</p>
+    <p>CRUD routes. OpenAPI. Pagination. Hooks. POST reads. SSE. Guard shapes. Framework adapters.</p>
     <dl>
       <div><dt>Articles</dt><dd>10</dd></div>
       <div><dt>Generator</dt><dd>v{{ site.generator_version }}</dd></div>
@@ -25,9 +25,9 @@ layout: default
 <section class="series-intro" aria-labelledby="articles-heading">
   <div>
     <p class="eyebrow">The reading path</p>
-    <h2 id="articles-heading">From generated route to production boundary</h2>
+    <h2 id="articles-heading">From Prisma schema to working API</h2>
   </div>
-  <p>Read front to back for the complete system, or jump directly to the boundary you are reviewing.</p>
+  <p>Start with generated routes, then add the features your product needs: callers, guards, hooks, pagination, streaming, and writes.</p>
 </section>
 
 <section aria-label="Articles">

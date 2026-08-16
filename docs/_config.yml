@@ -1,6 +1,6 @@
-title: Prisma Generator Express Series
+title: Prisma Generator Express Field Guide
 short_title: Prisma Express Series
-description: Verified guides to prisma-generator-express and prisma-guard.
+description: Practical guides to shipping Prisma APIs faster with generated routes, OpenAPI, pagination, hooks, and guard features.
 url: https://multipliedtwice.github.io
 baseurl: /prisma-generator-express
 repository: multipliedtwice/prisma-generator-express
