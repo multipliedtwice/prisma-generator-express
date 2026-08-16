@@ -1,3 +1,10 @@
+# [1.65.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.5...v1.65.0) (2026-08-16)
+
+
+### Features
+
+* **docs:** add Prism code highlighting ([8588077](https://github.com/multipliedtwice/prisma-generator-express/commit/85880777778948a2cff948ada02ad9da02a115c8))
+
 ## [1.64.5](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.4...v1.64.5) (2026-08-16)
 
 
