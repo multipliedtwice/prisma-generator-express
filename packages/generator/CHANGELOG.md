@@ -1,3 +1,10 @@
+## [1.64.5](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.4...v1.64.5) (2026-08-16)
+
+
+### Bug Fixes
+
+* **docs:** version static assets ([b9ed5be](https://github.com/multipliedtwice/prisma-generator-express/commit/b9ed5beaa70b710dea94afbadaafb2ba2669271c))
+
 ## [1.64.4](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.3...v1.64.4) (2026-08-15)
 
 
