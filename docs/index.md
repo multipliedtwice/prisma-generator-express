@@ -1,6 +1,6 @@
 ---
 layout: home
-title: Prisma Generator Express Series
-description: Ten verified guides to generated Prisma HTTP APIs, guarded query shapes, tenant scope, projections, writes, pagination, SSE, and failure diagnosis.
+title: Prisma Generator Express Field Guide
+description: Ten practical guides to shipping Prisma APIs faster with generated CRUD routes, OpenAPI, pagination, hooks, guarded shapes, tenant scope, and SSE.
 permalink: /
 ---

@@ -4,7 +4,7 @@
 
 <h1 align="center">Prisma Generator Express</h1>
 
-<p align="center"><strong>Prisma generator that creates Express, Fastify, or Hono CRUD API routes with OpenAPI documentation from your Prisma schema.</strong></p>
+<p align="center"><strong>Ship Prisma APIs faster by generating Express, Fastify, or Hono CRUD routes, OpenAPI, pagination, hooks, and guard integration directly from your schema.</strong></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/prisma-generator-express"><img src="https://badge.fury.io/js/prisma-generator-express.svg" alt="npm version"></a>
