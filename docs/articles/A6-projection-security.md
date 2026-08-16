@@ -4,8 +4,6 @@ article_id: A6
 permalink: /articles/projection-security/
 ---
 
-# Projection is a security boundary: `select`, `include`, and the relation that carries no scope
-
 A query can have a perfect tenant filter and still return a private field. Filtering decides which records qualify. Projection decides which fields and related records leave the server. They are separate boundaries.
 
 This distinction matters in a generated API because clients can request native Prisma arguments. A response shape that accidentally exposes an internal note, an agent email, or an unrestricted relation is not repaired by a correct root `where` clause.

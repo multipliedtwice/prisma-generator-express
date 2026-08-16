@@ -1,18 +1,36 @@
 ---
 layout: default
 ---
-<section class="hero">
-  <p class="eyebrow">10 verified articles</p>
-  <h1>{{ page.title }}</h1>
-  <p class="hero__lede">{{ page.description }}</p>
-  <div class="hero__actions">
-    <a class="button" href="{{ site.data.series.first.url | relative_url }}">Start with article 1</a>
-    <a class="button button--secondary" href="https://github.com/multipliedtwice/prisma-generator-express">View the generator</a>
+<section class="hero" aria-labelledby="series-title">
+  <div class="hero__copy">
+    <p class="eyebrow"><span>Field guide</span> · 10 verified articles</p>
+    <h1 id="series-title">Build generated Prisma APIs you can actually trust.</h1>
+    <p class="hero__lede">{{ page.description }}</p>
+    <div class="hero__actions">
+      <a class="button" href="{{ site.data.series.first.url | relative_url }}">Start reading <span aria-hidden="true">→</span></a>
+      <a class="text-link" href="https://github.com/multipliedtwice/prisma-generator-express">View the generator <span aria-hidden="true">↗</span></a>
+    </div>
   </div>
+  <aside class="hero__note" aria-label="Series scope">
+    <p class="hero__note-label">What this covers</p>
+    <p>Shapes. Tenant scope. Caller routing. Hooks. Projection. Pagination. SSE. Writes. Failure diagnosis.</p>
+    <dl>
+      <div><dt>Articles</dt><dd>10</dd></div>
+      <div><dt>Evidence labs</dt><dd>2</dd></div>
+      <div><dt>Dependencies</dt><dd>Version-pinned</dd></div>
+    </dl>
+  </aside>
 </section>
 
-<section aria-labelledby="articles-heading">
-  <h2 id="articles-heading">The series</h2>
+<section class="series-intro" aria-labelledby="articles-heading">
+  <div>
+    <p class="eyebrow">The reading path</p>
+    <h2 id="articles-heading">From generated route to production boundary</h2>
+  </div>
+  <p>Read front to back for the complete system, or jump directly to the boundary you are reviewing.</p>
+</section>
+
+<section aria-label="Articles">
   <ol class="article-list">
     {% for article in site.data.series %}
       <li>
@@ -22,6 +40,7 @@ layout: default
             <strong>{{ article.title }}</strong>
             <span>{{ article.description }}</span>
           </span>
+          <span class="article-list__arrow" aria-hidden="true">→</span>
         </a>
       </li>
     {% endfor %}
@@ -29,6 +48,9 @@ layout: default
 </section>
 
 <section class="evidence" aria-labelledby="evidence-heading">
-  <h2 id="evidence-heading">Evidence policy</h2>
-  <p>Claims trace to the two project READMEs, the reproducible <a href="https://github.com/multipliedtwice/prisma-generator-express/tree/master/article-labs/guard">guard lab</a>, or the <a href="https://github.com/multipliedtwice/prisma-generator-express/tree/master/article-labs/http">HTTP/PostgreSQL lab</a>. Error text and runtime results are version-pinned.</p>
+  <div>
+    <p class="eyebrow">Evidence, not folklore</p>
+    <h2 id="evidence-heading">Every runtime claim has a trail.</h2>
+  </div>
+  <p>Claims trace to the project READMEs, the reproducible <a href="https://github.com/multipliedtwice/prisma-generator-express/tree/master/article-labs/guard">guard lab</a>, or the <a href="https://github.com/multipliedtwice/prisma-generator-express/tree/master/article-labs/http">HTTP/PostgreSQL lab</a>. Error text and runtime results are version-pinned.</p>
 </section>

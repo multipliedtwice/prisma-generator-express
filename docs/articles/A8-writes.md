@@ -4,8 +4,6 @@ article_id: A8
 permalink: /articles/writes/
 ---
 
-# Writes: forced data, upserts, relation writes, and not deleting the table
-
 Generated write endpoints accept Prisma-shaped arguments. A guard shape then decides which values the client may provide, which values the server pins, which nested operations exist, and whether a bulk request is constrained enough to run.
 
 Those rules deliberately fail closed. A create shape must account for every required field. A bulk mutation needs `where` in two different places. An upsert is not a create or update shape with a different method name. A nested relation write does not inherit top-level tenant scope.

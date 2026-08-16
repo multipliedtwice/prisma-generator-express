@@ -4,8 +4,6 @@ article_id: A7
 permalink: /articles/reads-at-scale/
 ---
 
-# Reads at scale: pagination totals, POST reads, and streaming a page before it is complete
-
 Generated reads are not one mechanism. A normal `findMany` has one database result. `findManyPaginated` combines rows with a total. A POST read changes how arguments cross HTTP without changing the operation. Progressive Server-Sent Events change when parts of one response reach the browser. Each choice has a separate correctness boundary.
 
 This article uses `prisma-generator-express` 1.64.4, `prisma-guard` 1.33.0, Prisma 6.19.3, Node 22.14.0, and PostgreSQL 16.6. The HTTP examples are reproduced by `article-labs/http/`, which generates real Express routers and runs them through the normal Prisma query engine against PostgreSQL. The source READMEs define the supported contract; the lab records the concrete output used below.

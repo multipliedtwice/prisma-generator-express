@@ -4,8 +4,6 @@ article_id: A3
 permalink: /articles/force-and-boundaries/
 ---
 
-# `force()`, `true`, and the difference between a default and a boundary
-
 A guard shape looks like a description of a query. It is closer to a description of *who decides what*. Every leaf in it answers one question — does the client choose this value, or does the server?
 
 ```ts
@@ -550,7 +548,7 @@ Assert `where` and `take` through `parse()`; assert projection through the deleg
 
 ---
 
-# Rules
+## Rules
 
 1. In a shape, `true` is a permission, not a value.
 2. `force()` is only *required* for a literal `true`; use it anyway on security-relevant fields for readability.
@@ -571,7 +569,7 @@ Assert `where` and `take` through `parse()`; assert projection through the deleg
 
 ---
 
-# Appendix: reproducing every claim here
+## Appendix: reproducing every claim here
 
 ```ts
 import { force } from 'prisma-guard'

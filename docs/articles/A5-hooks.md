@@ -4,8 +4,6 @@ article_id: A5
 permalink: /articles/hooks/
 ---
 
-# When configuration runs out: hooks that narrow, hooks that enrich, hooks that must not exist
-
 Generated routes remove repeated request plumbing. They do not remove the need for application decisions. A warehouse API still has to decide whether an operator may count stock in a location, whether a transfer crosses a boundary that needs approval, and whether a completed write should trigger a downstream action.
 
 The first question is where that decision belongs. A shape describes the Prisma arguments a caller may express. A variant chooses a shape and a set of hooks. Scope injects top-level tenant conditions. A hook runs application code before or after the generated handler. Those are different jobs.
