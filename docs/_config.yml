@@ -10,7 +10,7 @@ guard_version: "1.33.0"
 prism_version: "1.30.0"
 verified_on: "2026-08-16"
 social_image: /assets/images/series-card.png
-assets_version: "20260816.2"
+assets_version: "20260816.3"
 markdown: kramdown
 highlighter: rouge
 permalink: pretty

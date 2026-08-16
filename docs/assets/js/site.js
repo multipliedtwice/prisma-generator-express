@@ -40,6 +40,13 @@
       return;
     }
 
+    window.Prism.languages.insertBefore("bash", "function", {
+      "package-runner": {
+        pattern: /(^[\t ]*|[;&|][\t ]*)npx(?=\s|$)/m,
+        lookbehind: true,
+        alias: "function",
+      },
+    });
     window.Prism.languages.ts = window.Prism.languages.typescript;
     window.Prism.languages.sh = window.Prism.languages.bash;
     window.Prism.languages.prisma = {
