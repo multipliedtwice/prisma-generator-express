@@ -1,3 +1,10 @@
+## [1.65.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.65.0...v1.65.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **docs:** distinguish homepage metadata ([93d0d9a](https://github.com/multipliedtwice/prisma-generator-express/commit/93d0d9a1879e70981a0c8fe8b7a39511ec745fa8))
+
 # [1.65.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.64.5...v1.65.0) (2026-08-16)
 
 
