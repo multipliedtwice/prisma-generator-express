@@ -9,6 +9,7 @@ generator_version: "1.64.4"
 guard_version: "1.33.0"
 verified_on: "2026-08-16"
 social_image: /assets/images/series-card.png
+assets_version: "20260816.1"
 markdown: kramdown
 highlighter: rouge
 permalink: pretty
