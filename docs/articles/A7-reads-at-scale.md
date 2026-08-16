@@ -366,7 +366,7 @@ Each event is one SSE `data:` line containing JSON. The important event types ar
 
 The client must parse every `data:` line and accumulate supported patches. It should still treat the terminal `result` as the final reconciliation value. A progressive UI that ignores `result` can retain a partially applied tree after a stage or client-side patch bug.
 
-For the tested `findManyPaginated` auto-include, `pageMeta` arrives before `rootArray`, and the terminal `result` data has outer keys `data`, `hasMore`, and `total`. The lab does not record the `pageMeta` payload itself, so the verified contract here is event order and terminal shape, not the metadata event's field list.
+For the tested `findManyPaginated` auto-include, `pageMeta` arrives before `rootArray`. Its recorded payload is `{ "type": "pageMeta", "total": 6, "hasMore": true }`, and the terminal `result` data has outer keys `data`, `hasMore`, and `total`. The values belong to the six-row fixture; the verified payload fields are `total` and `hasMore`.
 
 SSE uses a different terminal error channel from ordinary JSON. The lab's second manual stage throws after earlier events have been sent; the last event is `{ "type": "error", "message": "stage failed" }`. A generic fetch wrapper that checks only the initial response cannot identify that terminal event. The SSE consumer must parse the stream through `result` or `error`.
 
@@ -466,15 +466,18 @@ The successful and fallback sequences answer different questions:
 ```text
 SSE auto-types: ["rootArray","progress","relationBatch","progress","relationBatch","progress","result"]
 SSE paginated-auto-types: ["pageMeta","rootArray","progress","relationBatch","progress","result"]
+SSE paginated-auto-page-meta: {"type":"pageMeta","total":6,"hasMore":true}
 SSE fallback-error: ["error"]
 SSE fallback-single: ["result"]
+SSE fallback-single-matches-json: true
+SSE fallback-single-has-stops: true
 ```
 
 The first line proves that the exercised non-paginated include is actually split: root rows precede two direct relation batches. The second proves that paginated streaming adds `pageMeta` before root rows and still ends in `result`. The last two prove that the same unsupported relation plan follows the configured branch instead of one universal fallback.
 
 Do not replace those sequence assertions with “the response eventually emits `result`.” The tested single-result fallback also emits one `result` event and would make that assertion green without progressive loading. Conversely, do not assert only that an `error` event exists: the successful streams must prove their root, relation, and terminal phases in order.
 
-The terminal-shape checks complete the sequence evidence. The non-paginated result has both `courier` and `stops` on every returned row. The paginated result has exactly `data`, `hasMore`, and `total` at its outer level. Together they show that staged delivery did not remove the requested direct relations or replace the normal paginated envelope.
+The terminal-shape checks complete the sequence evidence. The non-paginated result has both `courier` and `stops` on every returned row. The paginated result has exactly `data`, `hasMore`, and `total` at its outer level, and every returned row has the requested `courier`. The single-result fallback is byte-equivalent to the ordinary JSON response and every returned row has `stops`. Together they show that staged delivery and the tested fallback preserve their requested direct relations and the normal response envelopes.
 
 The lab attaches an operation after-hook counter. One ordinary JSON request increments it to one. The following progressive manual request leaves it at one. Generated after-hooks therefore do not run after the tested progressive middleware owns the response. They are not cleanup handlers.
 

@@ -32,6 +32,10 @@ SSE failure-last: {"type":"error","message":"stage failed"}
 SSE auto-types: ["rootArray","progress","relationBatch","progress","relationBatch","progress","result"]
 SSE auto-result-has-relations: true
 SSE paginated-auto-types: ["pageMeta","rootArray","progress","relationBatch","progress","result"]
+SSE paginated-auto-page-meta: {"type":"pageMeta","total":6,"hasMore":true}
 SSE paginated-auto-result-shape: ["data","hasMore","total"]
+SSE paginated-auto-result-has-courier: true
 SSE fallback-error: ["error"]
 SSE fallback-single: ["result"]
+SSE fallback-single-matches-json: true
+SSE fallback-single-has-stops: true
