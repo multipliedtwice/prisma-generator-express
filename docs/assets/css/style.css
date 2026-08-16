@@ -723,24 +723,61 @@ button:focus-visible {
 .article-body .code-block {
   position: relative;
   margin-block: 1.3rem;
+  overflow: hidden;
+  border: 1px solid #31403b;
+  border-radius: 0.45rem;
+  background: var(--code-bg);
+  box-shadow: var(--shadow-sm);
 }
 
 .article-body .code-block > pre,
 .article-body .code-block > .highlight {
   margin-block: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.code-toolbar {
+  display: flex;
+  min-height: 2.35rem;
+  align-items: stretch;
+  justify-content: space-between;
+  border-bottom: 1px solid #31403b;
+  background: #18231f;
+}
+
+.code-language {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.9rem;
+  color: #a9b8b3;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.075em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.code-language::before {
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-right: 0.55rem;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 0 0.18rem rgba(231, 173, 74, 0.12);
+  content: "";
 }
 
 .copy-button {
-  position: absolute;
-  top: 0.55rem;
-  right: 0.55rem;
-  z-index: 1;
-  min-width: 4.5rem;
-  padding: 0.38rem 0.55rem;
-  border: 1px solid #687974;
-  border-radius: 0.22rem;
-  background: #1c2925;
-  color: #f3f6f4;
+  min-width: 4.8rem;
+  padding: 0.35rem 0.85rem;
+  border: 0;
+  border-left: 1px solid #31403b;
+  border-radius: 0;
+  background: transparent;
+  color: #c6d2ce;
   font-family: var(--sans);
   font-size: 0.68rem;
   font-weight: 750;
@@ -749,8 +786,8 @@ button:focus-visible {
 }
 
 .copy-button:hover {
-  border-color: var(--signal);
-  background: #263832;
+  background: #24332e;
+  color: #fff;
 }
 
 .copy-button[disabled] {
@@ -769,7 +806,7 @@ button:focus-visible {
   border: 0;
 }
 
-/* Restrained Rouge token palette for the dark code surface. */
+/* Rouge is the no-JavaScript fallback; Prism re-tokenizes supported blocks. */
 .highlight .c,
 .highlight .c1,
 .highlight .cm,
@@ -835,6 +872,78 @@ button:focus-visible {
   color: #ffb9af;
 }
 
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #849690;
+  font-style: italic;
+}
+
+.token.punctuation {
+  color: #b7c4c0;
+}
+
+.token.namespace {
+  opacity: 0.78;
+}
+
+.token.property,
+.token.tag,
+.token.constant,
+.token.symbol,
+.token.deleted,
+.token.attr-name {
+  color: #ffad9f;
+}
+
+.token.boolean,
+.token.number {
+  color: #d8b4f1;
+}
+
+.token.selector,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #9fddbf;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string,
+.token.variable {
+  color: #f3cd7b;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.function,
+.token.class-name {
+  color: #8dcde7;
+}
+
+.token.keyword {
+  color: #f1a7d2;
+}
+
+.token.regex,
+.token.important {
+  color: #f5bd78;
+}
+
+.token.important,
+.token.bold {
+  font-weight: 700;
+}
+
+.token.italic {
+  font-style: italic;
+}
+
 .article-body .highlight pre {
   margin: 0;
   border: 0;
@@ -850,16 +959,9 @@ button:focus-visible {
   tab-size: 2;
 }
 
-.article-body .code-block > pre,
-.article-body .code-block > .highlight > pre {
-  padding-top: 2.75rem;
-}
-
 .article-body .code-block--compact > pre,
 .article-body .code-block--compact > .highlight > pre {
-  min-height: 3.2rem;
-  padding-top: 1.25rem;
-  padding-right: 5.7rem;
+  min-height: 3rem;
 }
 
 .article-body pre code {
@@ -1171,10 +1273,6 @@ button:focus-visible {
     border-radius: 0;
   }
 
-  .copy-button {
-    right: 0.35rem;
-  }
-
   .article-nav {
     grid-template-columns: 1fr;
   }
@@ -1229,7 +1327,7 @@ button:focus-visible {
   .article-tools,
   .article-nav,
   .skip-link,
-  .copy-button,
+  .code-toolbar,
   .heading-anchor {
     display: none;
   }
@@ -1259,7 +1357,8 @@ button:focus-visible {
   }
 
   .article-body pre,
-  .article-body .highlight {
+  .article-body .highlight,
+  .article-body .code-block {
     border-color: #777;
     background: #fff;
     color: #000;
