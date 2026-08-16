@@ -4,8 +4,6 @@ article_id: A9
 permalink: /articles/error-reference/
 ---
 
-# Every error this stack throws, and what actually caused it
-
 A symptom index for Prisma + `prisma-generator-express` + `prisma-guard`. No architecture argument here — just the message you got, the thing that produced it, and the fix.
 
 Every guard message quoted here was produced by running the code against `prisma-guard` 1.33.0 / `zod` 4.4.3 / Prisma 6.19.3, not read from documentation. One exception, marked where it starts: **§6** (transport layer) comes from the `prisma-generator-express` README, because reproducing it needs a running router and a database.
@@ -104,9 +102,9 @@ If you are searching a codebase for a message you saw in production, search for 
 
 ---
 
-# 1. Caller routing (`CallerError`, 400)
+## 1. Caller routing (`CallerError`, 400)
 
-## `Missing caller. This query uses named shape routing with keys: "storefront", "backoffice". Provide caller via opts.caller.`
+### `Missing caller. This query uses named shape routing with keys: "storefront", "backoffice". Provide caller via opts.caller.`
 
 **Cause.** The shape config is a named map and the request produced no caller. In a generated route that means: `resolveVariant` returned `undefined` *and* the variant header was absent, and the map has no `default` key.
 
@@ -130,7 +128,7 @@ guard: { variantHeader: 'x-caller' }
 
 **Rule.** A named shape map without `default` is a closed set. Every caller must be enumerated, or the request is a 400.
 
-## `Unknown caller: "nope". Allowed: "storefront", "backoffice"`
+### `Unknown caller: "nope". Allowed: "storefront", "backoffice"`
 
 **Cause.** A caller arrived and matched nothing. Blank and whitespace-only callers land here too — `"   "` produces exactly the same message with the whitespace preserved in the quotes.
 
@@ -138,7 +136,7 @@ guard: { variantHeader: 'x-caller' }
 
 **Rule.** Read the allowed list in the message. It is the complete set of variants that operation exposes.
 
-## `Unknown caller: "/shop/ferns/extra". Allowed: "/shop/:slug"`
+### `Unknown caller: "/shop/ferns/extra". Allowed: "/shop/:slug"`
 
 **Cause.** Parameterized patterns match **one path segment per parameter**. `/shop/:slug` matches `/shop/ferns` and does not match `/shop/ferns/extra`.
 
@@ -153,7 +151,7 @@ variants: {
 
 **Rule.** One variant key per distinct frontend path shape, including its depth.
 
-## `Pass caller via opts.caller, not in the request body.`
+### `Pass caller via opts.caller, not in the request body.`
 
 (Extension wording: `Pass caller via the guard(input, caller) argument, not in the request body.`)
 
@@ -163,13 +161,13 @@ variants: {
 
 **Rule.** The caller is transport metadata, not data.
 
-## `Ambiguous caller "/shop/ferns" matches multiple patterns: "/shop/:slug", "/:section/ferns"`
+### `Ambiguous caller "/shop/ferns" matches multiple patterns: "/shop/:slug", "/:section/ferns"`
 
 **Cause.** Two parameterized patterns match the same concrete caller.
 
 **Fix.** Make one of them exact, or rename so the patterns cannot overlap. Exact non-blank keys are checked before patterns, so an exact key is the cheapest disambiguation.
 
-## `Caller key "where" collides with reserved shape config key. Rename the caller path.`
+### `Caller key "where" collides with reserved shape config key. Rename the caller path.`
 
 (Extension entry point: `Caller key "where" collides with reserved guard shape key. Rename the caller path.`)
 
@@ -189,7 +187,7 @@ prisma.plant.guard({ data: { name: true }, where: { id: true } }).update(body)
 
 **Rule.** `guard.query()` is for reads. Everything else goes through the guarded delegate.
 
-## `Unknown shape config key "name"`
+### `Unknown shape config key "name"`
 
 **Cause.** Same mistake, seen from the other side: a `data` shape's *fields* were interpreted as top-level shape keys. You are one nesting level short.
 
@@ -203,21 +201,21 @@ prisma.plant.guard({ data: { name: true, priceCents: true } }).create(body)
 
 ---
 
-# 2. Shape construction (`ShapeError`, 400)
+## 2. Shape construction (`ShapeError`, 400)
 
 These fire the first time the shape is built. A unit test that builds the shape catches all of them before deploy.
 
-## `Empty "AND" combinator in where shape for model "Plant". Define at least one field.`
+### `Empty "AND" combinator in where shape for model "Plant". Define at least one field.`
 
 **Cause.** `where: { AND: {} }`. An empty combinator looks restrictive and contributes nothing.
 
 **Rule.** A combinator with no fields is a config bug, not a no-op.
 
-## `Empty select config on model "Plant". Define at least one field.`
+### `Empty select config on model "Plant". Define at least one field.`
 
 **Cause.** `select: {}`. Same reasoning: an empty projection would silently mean "everything" or "nothing" depending on how you read it, so it is rejected.
 
-## `orderBy config for "name" on model "Plant" must be true or a relation config object`
+### `orderBy config for "name" on model "Plant" must be true or a relation config object`
 
 **Cause.** A shape config value that is not exactly `true`:
 
@@ -235,7 +233,7 @@ The same strictness applies to `cursor`, `having`, `_count` in object form, `_av
 
 **Rule.** In a shape, `true` is the only affirmative value. `false` is never "off" — it is either a forced literal (in `where`/`data`) or an error (in config keys).
 
-## `Conflicting forced where values for "isPublished.equals": shape defines both true and false`
+### `Conflicting forced where values for "isPublished.equals": shape defines both true and false`
 
 **Cause.** The same field and operator carry different forced values in two places in one shape — typically a top-level force plus a force inside a combinator.
 
@@ -249,7 +247,7 @@ where: {
 
 **Why it is fatal rather than "last one wins".** Silent overwrite of a forced value is exactly how a security rule disappears.
 
-## `Guard shape requires "where" for updateMany to prevent unconstrained bulk mutations`
+### `Guard shape requires "where" for updateMany to prevent unconstrained bulk mutations`
 
 The other two operations produce the same sentence with their own name: `Guard shape requires "where" for updateManyAndReturn to prevent unconstrained bulk mutations` and `Guard shape requires "where" for deleteMany to prevent unconstrained bulk mutations`.
 
@@ -263,7 +261,7 @@ updateMany: { shape: { data: { isPublished: true } } }
 updateMany: { shape: { data: { isPublished: true }, where: { isDeleted: { equals: true } } } }
 ```
 
-## `Guard shape "data" is not valid for upsert. Use "create" and "update" instead.`
+### `Guard shape "data" is not valid for upsert. Use "create" and "update" instead.`
 
 **Cause.** Upsert shapes use three keys: `where`, `create`, `update`. All three are required.
 
@@ -277,7 +275,7 @@ upsert: {
 }
 ```
 
-## `Required field "tags" on model "Plant" is missing from create data shape, has no default, is not a scope FK, and is not covered by a relation write in the shape`
+### `Required field "tags" on model "Plant" is missing from create data shape, has no default, is not a scope FK, and is not covered by a relation write in the shape`
 
 **Cause.** A create shape must be able to produce a valid row. The check accounts for four sources of a value: the client (field listed in `data`), a schema `@default`, the scope extension (the tenant FK), or a relation write in the shape.
 
@@ -289,7 +287,7 @@ If `tags` should never be client-supplied, force it: `tags: force([])`. If it co
 
 **Rule.** A create shape is a completeness contract, not just an allowlist.
 
-## `connect config on "Order.customer" must be an object of unique selectors`
+### `connect config on "Order.customer" must be an object of unique selectors`
 
 **Cause.** `connect: true` is not a valid relation-write config. Name the unique selector fields:
 
@@ -301,13 +299,13 @@ data: { status: true, customer: { connect: true } }
 data: { status: true, customer: { connect: { id: true } } }
 ```
 
-## `findUnique on model "Plant" requires unique where shape to cover a unique constraint using Prisma unique selector syntax: id`
+### `findUnique on model "Plant" requires unique where shape to cover a unique constraint using Prisma unique selector syntax: id`
 
 **Cause.** `findUnique` needs a `where` that covers a real unique constraint. `where: { name: true }` on a non-unique column cannot be a unique lookup. The message lists the constraints available on that model.
 
 Note the shape syntax difference: unique `where` shapes use `{ id: true }`, not `{ id: { equals: true } }`.
 
-## `groupBy shape must define "by"`
+### `groupBy shape must define "by"`
 
 **Cause.** `by` is required in the shape, not just in the request.
 
@@ -317,11 +315,11 @@ groupBy: { shape: { by: ['isPublished'], _count: { _all: true } } }
 
 ---
 
-# 3. Request validation on reads (`ShapeError`, 400)
+## 3. Request validation on reads (`ShapeError`, 400)
 
 All of these start with `Invalid query on model "X":` and end with a Zod-derived detail.
 
-## `Invalid query on model "Plant": where: Unrecognized key(s): priceCents`
+### `Invalid query on model "Plant": where: Unrecognized key(s): priceCents`
 
 **Cause.** The client filtered on a field the shape does not expose. This is the single most common 400 in normal operation, and it is the system working.
 
@@ -329,23 +327,23 @@ All of these start with `Invalid query on model "X":` and end with a Zod-derived
 
 **Rule.** The shape is an allowlist. A field's absence is a 400, never a silent drop.
 
-## `Invalid query on model "Plant": select: Unrecognized key(s): priceCents`
+### `Invalid query on model "Plant": select: Unrecognized key(s): priceCents`
 
 **Cause.** Same rule applied to projection. The shape's `select` is the complete set of fields a client may ask for.
 
-## `Invalid query on model "Plant": Unrecognized key(s): skip`
+### `Invalid query on model "Plant": Unrecognized key(s): skip`
 
 **Cause.** `skip` is a permission flag. It must be `skip: true` in the shape before a client may send it. `distinct` behaves the same way in practice — a client `distinct` against a shape that does not list it produces `Unrecognized key(s): distinct`.
 
-## `Invalid query on model "Plant": take: Number must be <= 50`
+### `Invalid query on model "Plant": take: Number must be <= 50`
 
 **Cause.** `take: { max: 50 }` in the shape, `take: 5000` in the request.
 
-## `Invalid query on model "Plant": take: Number must be >= 1`
+### `Invalid query on model "Plant": take: Number must be >= 1`
 
 **Cause.** Negative `take`. Prisma supports negative `take` for backward cursor pagination; the guard does not — `take` is restricted to positive integers. If you need reverse pagination, build it server-side in a context-dependent shape.
 
-## `Invalid query on model "Plant": take: Expected number`
+### `Invalid query on model "Plant": take: Expected number`
 
 **Cause.** `take: "10"` — a string. This is the classic GET-versus-POST trap. Scalar coercion is uneven by design, and it is worth knowing exactly where it applies:
 
@@ -361,15 +359,15 @@ All of these start with `Invalid query on model "X":` and end with a Zod-derived
 
 **Rule.** Never hand-assemble a query string for these endpoints.
 
-## `Invalid query on model "Plant": where.isPublished: No matching variant (branch 1: [equals: Expected boolean] | branch 2: [Expected boolean])`
+### `Invalid query on model "Plant": where.isPublished: No matching variant (branch 1: [equals: Expected boolean] | branch 2: [Expected boolean])`
 
 **Cause.** Zod union failure, most often a string where a scalar belongs. Read the branches as "the two shapes this value could have had": the operator-object form (`{ equals: true }`) and the shorthand form (`true`).
 
-## `Invalid query on model "Plant": orderBy: No matching variant (branch 1: [Unrecognized key(s): priceCents] | branch 2: [Expected array])`
+### `Invalid query on model "Plant": orderBy: No matching variant (branch 1: [Unrecognized key(s): priceCents] | branch 2: [Expected array])`
 
 **Cause.** Ordering by a field the shape does not list. Branch 2 exists because `orderBy` may also be an array.
 
-## `Invalid query on model "Plant": where.name: Unrecognized key(s): mode`
+### `Invalid query on model "Plant": where.name: Unrecognized key(s): mode`
 
 **Cause.** The shape wrote `mode` as a **forced literal**:
 
@@ -394,19 +392,19 @@ So forcing it guarantees case-insensitive matching and forbids the client from m
 
 This is the strict half of the forced-value rule: `mode` is a forced key sharing an object with a client-controlled operator, so it is removed from the client-facing schema. That is *not* how a wholly-forced field like `isPublished: { equals: force(true) }` behaves — that one accepts client input and silently discards it, which is the [companion article's]({{ '/articles/silent-behaviors/' | relative_url }}) first entry.
 
-## `Request cannot define both "include" and "select"`
+### `Request cannot define both "include" and "select"`
 
 **Cause.** Mutually exclusive at the same level, in the request and in the shape. `omit` may be combined with `include`, but not with `select`. `omit` also requires Prisma 6.2.0+; on 6.0.x–6.1.x it is a 400.
 
-## `Invalid query on model "Nursery": include.plants.take: Number must be <= 20`
+### `Invalid query on model "Nursery": include.plants.take: Number must be <= 20`
 
 **Cause.** Nested pagination limits apply to nested includes exactly as top-level ones do. A client cannot widen a nested `take`.
 
 ---
 
-# 4. Request validation on writes (`ShapeError`, 400)
+## 4. Request validation on writes (`ShapeError`, 400)
 
-## `Invalid data for create on model "Plant": Unrecognized key(s): isPublished`
+### `Invalid data for create on model "Plant": Unrecognized key(s): isPublished`
 
 **Cause.** `isPublished` is **forced** in the data shape, and forced fields are removed from the client-facing schema. The client may not send them at all — not even the same value the server would have used.
 
@@ -414,57 +412,57 @@ This is worth internalizing, because the behavior is *not* symmetric with `where
 
 **Fix.** Delete the field from the client payload. If the client legitimately decides it, it is `true` in the shape, not forced.
 
-## `Invalid data for create on model "Plant": Unrecognized key(s): nurseryId`
+### `Invalid data for create on model "Plant": Unrecognized key(s): nurseryId`
 
 **Cause.** The client sent the tenant foreign key. Under `@scope-root`, the scope extension injects it — that is why the FK does not appear in the data shape, and why sending it is rejected.
 
 **Rule.** Never send a scope FK from a client. It is server-owned by construction.
 
-## `Invalid data for create on model "Plant": priceCents: No matching variant (branch 1: [Expected number] | branch 2: [Expected string])`
+### `Invalid data for create on model "Plant": priceCents: No matching variant (branch 1: [Expected number] | branch 2: [Expected string])`
 
 **Cause.** A required field is missing from the body. The union branches are the accepted forms for that field's type, so the same shape of message appears for a type mismatch.
 
-## `Invalid data for create on model "Customer": email: Invalid email format`
+### `Invalid data for create on model "Customer": email: Invalid email format`
 
 **Cause.** A `@zod .email()` directive in the Prisma schema, enforced at the boundary. Business validation lives in three places, all opt-in: `@zod` in the schema, an inline refine in the shape (`description: (base) => base.max(20)`, which produces `Invalid data for create on model "Plant": description: String must contain at most 20 character(s)`), or `guard.input({ refine })`.
 
 **Rule.** Defaults are permissive on scalars, strict on structure. If exact scalar rules matter, say so explicitly.
 
-## `Invalid data for update on model "Plant": Unrecognized key(s): priceCents`
+### `Invalid data for update on model "Plant": Unrecognized key(s): priceCents`
 
 **Cause.** Update data shapes are allowlists too. A field that is writable on create is not writable on update unless you list it there.
 
-## `Invalid unique "where" on model "Plant". Allowed fields: id: id: No matching variant (branch 1: [Expected string] | branch 2: [Expected number]); Unrecognized key(s): name`
+### `Invalid unique "where" on model "Plant". Allowed fields: id: id: No matching variant (branch 1: [Expected string] | branch 2: [Expected number]); Unrecognized key(s): name`
 
 **Cause.** Single-record `update`/`delete` use unique selector syntax. Filtering by a non-unique field there is not a narrower query, it is a different operation — use `updateMany`.
 
-## `updateMany requires at least one where condition`
+### `updateMany requires at least one where condition`
 
 **Cause.** The *shape* has a `where`, but the resolved runtime `where` is empty. Distinct from the router-level check: the generated route rejects a body with no `where` key at all, and the guard rejects a `where` that resolves to nothing.
 
 Note the interaction: if your shape forces a condition, `{ "where": {} }` in the body is fine — the forced condition satisfies the requirement. A `deleteMany` shape of `where: { isDeleted: { equals: force(true) } }` with body `{ "where": {} }` resolves to `{ where: { isDeleted: { equals: true } } }`.
 
-## `Guard shape where contains only forced conditions. Client where input is not accepted.`
+### `Guard shape where contains only forced conditions. Client where input is not accepted.`
 
 **Cause.** The same shape, but the client sent a *non-empty* `where`. When every condition in a `where` shape is forced, there is nothing left for the client to fill in, so any client `where` content is refused rather than ignored.
 
 **Fix.** Send `{ "where": {} }`, or open one field for the client if it genuinely needs to narrow further.
 
-## `Guard shape does not define "select" or "include" for create return projection`
+### `Guard shape does not define "select" or "include" for create return projection`
 
 **Cause.** The client asked for a projection on a mutation and the shape defines none. Mutation projection is opt-in: without `select`/`include` in the shape, the client cannot request one, and by default Prisma returns the full record when the client asks for nothing.
 
 **Fix.** Add the projection to the shape, and consider `enforceProjection` in the guard generator config if mutations should always return a fixed shape rather than the whole row.
 
-## `createMany` with a single object
+### `createMany` with a single object
 
 **Cause.** In guarded mode, `createMany` and `createManyAndReturn` require `data` to be an array. A single object is not silently wrapped. `skipDuplicates` passes through without shape configuration.
 
 ---
 
-# 5. Scope and policy (`PolicyError`, 403)
+## 5. Scope and policy (`PolicyError`, 403)
 
-## `prisma-guard: Missing scope context for model "Plant": roots "Nursery" not provided. All scope roots must be present.`
+### `prisma-guard: Missing scope context for model "Plant": roots "Nursery" not provided. All scope roots must be present.`
 
 **Cause.** The context function returned nothing for a scope root on a scoped model. Usually one of: the request never entered the `AsyncLocalStorage` scope, an unauthenticated request reached a scoped route, or the context function read a header that was absent.
 
@@ -472,7 +470,7 @@ Note the interaction: if your shape forces a condition, `{ "where": {} }` in the
 
 **Rule.** Keep `onMissingScopeContext = "error"` in production. Fail closed.
 
-## `Context required for shape function`
+### `Context required for shape function`
 
 **Cause.** A context-dependent shape `(ctx) => ({...})` was resolved without a context. Note this arrives as a `PolicyError` — 403, not 400 — which is correct: a scope-derived shape that cannot see its scope is an authorization failure.
 
@@ -490,13 +488,13 @@ const activeNurseryShape = (ctx: Ctx) => {
 
 Dropping the scope filter when context is missing widens the result set to every tenant. Throwing is the only correct branch.
 
-## `findUnique` rejected
+### `findUnique` rejected
 
 **Cause.** `findUniqueMode = "reject"` (the default in a generated config) refuses `findUnique` on scoped models, because Prisma's extension mode cannot safely add a scope condition to a unique lookup. Use `findFirst` with a scoped `where`, or set `findUniqueMode = "verify"` and accept the extra read. (The `"verify"` path is documented in the guard README; unlike the rest of this section it was not exercised in the harness.)
 
 ---
 
-# 6. Transport-level errors from the generated router
+## 6. Transport-level errors from the generated router
 
 These come from the route layer, not the guard, and this whole section is sourced from the `prisma-generator-express` README rather than the harness — reproducing them needs a running router. Exact wording can also differ by target (Express, Fastify, Hono); where a string below is target-specific, it is labelled.
 
@@ -517,7 +515,7 @@ These come from the route layer, not the guard, and this whole section is source
 
 ---
 
-# Rules
+## Rules
 
 1. Read the message opener first — it tells you whether you are in routing, shape construction, or body validation.
 2. `ShapeError` and `CallerError` are 400; `PolicyError` is 403; every error body is `{ "message": "..." }`.
@@ -537,7 +535,7 @@ These come from the route layer, not the guard, and this whole section is source
 
 ---
 
-# Appendix: reproducing any of this in 30 lines
+## Appendix: reproducing any of this in 30 lines
 
 Every guard message quoted above came out of this harness — §6's transport-layer table is the exception, and needs a running router. The harness needs no database and no HTTP server, and it is the same one behind the [companion article]({{ '/articles/silent-behaviors/' | relative_url }}).
 

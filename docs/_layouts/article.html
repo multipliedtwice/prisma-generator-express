@@ -3,15 +3,41 @@ layout: default
 ---
 {% assign article = site.data.series | where: "id", page.article_id | first %}
 {% assign article_count = site.data.series | size %}
-<nav class="series-crumb" aria-label="Series position">
-  <a href="{{ '/' | relative_url }}">Prisma Generator Express Series</a>
+<nav class="series-crumb" aria-label="Breadcrumb">
+  <a href="{{ '/' | relative_url }}">Series</a>
   <span aria-hidden="true">/</span>
   <span>Article {{ article.number }} of {{ article_count }}</span>
 </nav>
 
-<article class="article-body">
-  {{ content }}
-</article>
+<header class="article-header">
+  <p class="eyebrow">{{ article.id }} · Prisma Express field guide</p>
+  <h1>{{ article.title }}</h1>
+  <p class="article-header__deck">{{ article.description }}</p>
+  <div class="article-header__meta">
+    <span>Verified against pinned releases</span>
+    <span>Source-backed examples</span>
+  </div>
+</header>
+
+<div class="article-layout">
+  <aside class="series-rail" aria-label="Articles in this series">
+    <p class="series-rail__title">In this series</p>
+    <ol>
+      {% for item in site.data.series %}
+        <li{% if item.id == article.id %} class="is-current"{% endif %}>
+          <a href="{{ item.url | relative_url }}"{% if item.id == article.id %} aria-current="page"{% endif %}>
+            <span>{{ item.id }}</span>
+            <strong>{{ item.title }}</strong>
+          </a>
+        </li>
+      {% endfor %}
+    </ol>
+  </aside>
+
+  <article class="article-body">
+    {{ content }}
+  </article>
+</div>
 
 <nav class="article-nav" aria-label="Article navigation">
   <div>
@@ -21,7 +47,7 @@ layout: default
       <a rel="prev" href="{{ previous_article.url | relative_url }}">{{ previous_article.title }}</a>
     {% endif %}
   </div>
-  <a class="article-nav__home" href="{{ '/' | relative_url }}">All articles</a>
+  <a class="article-nav__home" href="{{ '/' | relative_url }}">Series index</a>
   <div class="article-nav__next">
     {% if article.next_id %}
       {% assign next_article = site.data.series | where: "id", article.next_id | first %}

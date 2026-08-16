@@ -4,8 +4,6 @@ article_id: A2
 permalink: /articles/tenant-query-leaks/
 ---
 
-# Seven ways to leak a tenant through a query API—and the declarative fix for each
-
 A freight platform exposes `Shipment`, `Carrier`, and `Broker` records. Every request belongs to one broker. Most tenant leaks in a query API do not begin with an exotic database bug. They begin when a rule is expressed in a place that the query executor does not consistently use.
 
 The fixes below prefer guard shapes and automatic scope where those mechanisms cover the rule. Two cases cannot be represented by a shape: genuinely disjunctive ownership and authorization that requires a database read. Those require an application query or database policy. The point is to put each rule in a layer that actually enforces it, not to force every rule into configuration.

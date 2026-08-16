@@ -4,8 +4,6 @@ article_id: A1
 permalink: /articles/generated-prisma-rpc-api/
 ---
 
-# A whole product API without writing an endpoint: Prisma + generated RPC routes
-
 This tutorial builds the API boundary for an online plant nursery. Prisma describes the data. prisma-generator-express emits model routers. prisma-guard emits validation and tenant-scope artifacts. The application still assembles Express, authenticates requests, supplies scope context, and chooses route configuration, but it does not hand-write CRUD endpoint handlers.
 
 The result is a public plant catalog plus a seller API. Both use one generated Plant router and different named shapes. Public callers search published plants and receive a small projection. Sellers see inventory for their nursery and create plants whose publication state is pinned by the server. Tenant identity comes from authenticated request context, not the body.

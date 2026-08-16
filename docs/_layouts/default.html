@@ -14,6 +14,7 @@
     <title>{% if page.url == '/' %}{{ site.title | escape }}{% else %}{{ meta_title | escape }} · {{ site.short_title | escape }}{% endif %}</title>
     <meta name="description" content="{{ meta_description | strip_html | normalize_whitespace | escape }}">
     <meta name="robots" content="index,follow">
+    <meta name="theme-color" content="#14201d">
     <link rel="canonical" href="{{ canonical_url }}">
     <meta property="og:site_name" content="{{ site.title | escape }}">
     <meta property="og:title" content="{{ meta_title | escape }}">
@@ -42,9 +43,15 @@
     <a class="skip-link" href="#content">Skip to content</a>
     <header class="site-header">
       <div class="shell site-header__inner">
-        <a class="site-title" href="{{ '/' | relative_url }}">{{ site.short_title }}</a>
+        <a class="site-title" href="{{ '/' | relative_url }}" aria-label="{{ site.title }} home">
+          <span class="site-title__mark" aria-hidden="true">PGE</span>
+          <span class="site-title__text">
+            <strong>{{ site.short_title }}</strong>
+            <small>Engineering field guide</small>
+          </span>
+        </a>
         <nav class="site-nav" aria-label="Site">
-          <a href="{{ '/' | relative_url }}">Series</a>
+          <a href="{{ '/' | relative_url }}">Read the series</a>
           <a href="https://github.com/multipliedtwice/prisma-generator-express">Generator</a>
           <a href="https://github.com/multipliedtwice/prisma-guard">Guard</a>
         </nav>
@@ -54,8 +61,9 @@
       {{ content }}
     </main>
     <footer class="site-footer">
-      <div class="shell">
-        <p>Verified guides for <a href="https://github.com/multipliedtwice/prisma-generator-express">prisma-generator-express</a> and <a href="https://github.com/multipliedtwice/prisma-guard">prisma-guard</a>.</p>
+      <div class="shell site-footer__inner">
+        <p><strong>Prisma Express Series</strong><br>Verified guides for generated Prisma HTTP APIs.</p>
+        <p><a href="https://github.com/multipliedtwice/prisma-generator-express">prisma-generator-express</a> · <a href="https://github.com/multipliedtwice/prisma-guard">prisma-guard</a></p>
       </div>
     </footer>
   </body>

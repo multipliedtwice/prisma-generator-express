@@ -4,8 +4,6 @@ article_id: A10
 permalink: /articles/silent-behaviors/
 ---
 
-# Silent semantics and testing traps: when no error tells you the shape is wrong
-
 Companion to [the error reference]({{ '/articles/error-reference/' | relative_url }}), which is a lookup for messages that throw. This one collects the opposite: behaviors that produce no message at the point where you would look for one.
 
 They are not all the same failure. Three kinds are mixed here deliberately, because they are found the same way — by reading emitted arguments rather than status codes:
@@ -202,7 +200,7 @@ expect(findPredicate(args.where, 'isPublished')).toEqual({ equals: true })
 
 ---
 
-# Rules
+## Rules
 
 1. A wholly-forced predicate at the top level of `where` accepts client input and silently discards it — the only lenient position of five.
 2. Forced values everywhere else — a modifier beside a client operator, a relation-filter member, a nested `include`'s `where`, a `data` field — are removed from the client-facing schema, and sending them is a 400. The five positions describe shapes that build: under a negative relation operator (`none`, to-one `isNot`) a forced condition is rejected at construction instead.
@@ -222,7 +220,7 @@ expect(findPredicate(args.where, 'isPublished')).toEqual({ equals: true })
 
 ---
 
-# Appendix
+## Appendix
 
 The harness behind the rows marked "run in `article-labs/guard/`" in the provenance table above is described in full in the [error reference appendix]({{ '/articles/error-reference/' | relative_url }}#appendix-reproducing-any-of-this-in-30-lines): `guard.query(...).parse(body)` for read args, a fake delegate for mutations and projection, and the extension's `$allOperations` for scope injection.
 
