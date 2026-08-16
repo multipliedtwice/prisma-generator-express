@@ -7,6 +7,63 @@
     return;
   }
 
+  const codeLanguages = {
+    bash: "Shell",
+    http: "HTTP",
+    json: "JSON",
+    plaintext: "Output",
+    prisma: "Prisma Schema",
+    sh: "Shell",
+    text: "Output",
+    ts: "TypeScript",
+    typescript: "TypeScript",
+  };
+
+  const getCodeLanguage = function (codeBlock) {
+    let element = codeBlock;
+
+    while (element && element !== article) {
+      const match = element.className.match(/(?:^|\s)language-([\w-]+)/);
+
+      if (match) {
+        return match[1].toLowerCase();
+      }
+
+      element = element.parentElement;
+    }
+
+    return "text";
+  };
+
+  const configurePrism = function () {
+    if (!window.Prism) {
+      return;
+    }
+
+    window.Prism.languages.ts = window.Prism.languages.typescript;
+    window.Prism.languages.sh = window.Prism.languages.bash;
+    window.Prism.languages.prisma = {
+      comment: /\/\/.*/,
+      string: {
+        pattern: /(["'])(?:\\[\s\S]|(?!\1)[^\\])*\1/,
+        greedy: true,
+      },
+      annotation: {
+        pattern: /@@?\w+(?:\.\w+)?/,
+        alias: "attr-name",
+      },
+      keyword: /\b(?:datasource|enum|generator|model|type|view)\b/,
+      builtin: /\b(?:BigInt|Boolean|Bytes|DateTime|Decimal|Float|Int|Json|String|Unsupported)\b/,
+      function: /\b(?:env|relation)\b(?=\s*\()/,
+      boolean: /\b(?:false|true)\b/,
+      number: /\b(?:0x[\dA-Fa-f]+|\d+(?:\.\d+)?)\b/,
+      operator: /[=?]|\[\]/,
+      punctuation: /[{}()[\],.:]/,
+    };
+  };
+
+  configurePrism();
+
   const slugify = function (value) {
     return value
       .normalize("NFKD")
@@ -184,6 +241,15 @@
   };
 
   Array.from(article.querySelectorAll("pre")).forEach(function (codeBlock) {
+    const code = codeBlock.querySelector("code");
+    const sourceLanguage = getCodeLanguage(code || codeBlock);
+    const prismLanguage = sourceLanguage === "ts" ? "typescript" : sourceLanguage;
+
+    if (code && window.Prism && window.Prism.languages[prismLanguage]) {
+      code.className = "language-" + prismLanguage;
+      window.Prism.highlightElement(code);
+    }
+
     const highlight = codeBlock.closest(".highlight");
     const codeSurface = highlight || codeBlock;
     const parent = codeSurface.parentNode;
@@ -200,9 +266,14 @@
     parent.insertBefore(container, codeSurface);
     container.appendChild(codeSurface);
 
+    const toolbar = document.createElement("div");
+    const languageLabel = document.createElement("span");
     const button = document.createElement("button");
     const label = document.createElement("span");
     const status = document.createElement("span");
+    toolbar.className = "code-toolbar";
+    languageLabel.className = "code-language";
+    languageLabel.textContent = codeLanguages[sourceLanguage] || sourceLanguage;
     button.className = "copy-button";
     button.type = "button";
     button.setAttribute("aria-label", "Copy code");
@@ -210,7 +281,9 @@
     status.className = "visually-hidden";
     status.setAttribute("aria-live", "polite");
     button.appendChild(label);
-    container.insertBefore(button, container.firstChild);
+    toolbar.appendChild(languageLabel);
+    toolbar.appendChild(button);
+    container.insertBefore(toolbar, container.firstChild);
     container.insertBefore(status, codeSurface);
 
     button.addEventListener("click", async function () {

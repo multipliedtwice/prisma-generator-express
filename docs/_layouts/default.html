@@ -80,6 +80,12 @@
         <p>Verified {{ site.verified_on | date: "%-d %b %Y" }} · <a href="{{ '/feed.xml' | relative_url }}">Atom feed</a><br><a href="https://github.com/multipliedtwice/prisma-generator-express">prisma-generator-express</a> · <a href="https://github.com/multipliedtwice/prisma-guard">prisma-guard</a></p>
       </div>
     </footer>
+    {% if article %}
+      {% assign prism_components = "core,clike,javascript,typescript,json,bash,http" | split: "," %}
+      {% for prism_component in prism_components %}
+        <script src="{{ '/assets/vendor/prism/prism-' | append: prism_component | append: '.min.js' | relative_url }}?v={{ site.prism_version }}"{% if prism_component == "core" %} data-manual{% endif %} defer></script>
+      {% endfor %}
+    {% endif %}
     <script src="{{ '/assets/js/site.js' | relative_url }}?v={{ site.assets_version }}" defer></script>
   </body>
 </html>
