@@ -14,24 +14,29 @@ layout: default
   <h1>{{ article.title }}</h1>
   <p class="article-header__deck">{{ article.description }}</p>
   <div class="article-header__meta">
-    <span>Verified against pinned releases</span>
+    <span>Generator v{{ site.generator_version }}</span>
+    <span>Guard v{{ site.guard_version }}</span>
     <span>Source-backed examples</span>
   </div>
 </header>
 
 <div class="article-layout">
-  <aside class="series-rail" aria-label="Articles in this series">
-    <p class="series-rail__title">In this series</p>
-    <ol>
-      {% for item in site.data.series %}
-        <li{% if item.id == article.id %} class="is-current"{% endif %}>
-          <a href="{{ item.url | relative_url }}"{% if item.id == article.id %} aria-current="page"{% endif %}>
-            <span>{{ item.id }}</span>
-            <strong>{{ item.title }}</strong>
-          </a>
-        </li>
-      {% endfor %}
-    </ol>
+  <aside class="article-tools" aria-label="Article navigation">
+    <div class="series-position">
+      <p>Article <strong>{{ article.number }}</strong> of {{ article_count }}</p>
+      <a href="{{ '/' | relative_url }}">View series index</a>
+    </div>
+
+    <nav class="article-toc" aria-label="On this page" data-article-toc hidden>
+      <button class="article-toc__toggle" type="button" aria-expanded="false" aria-controls="article-toc-list" data-toc-toggle>
+        <span>On this page</span>
+        <span aria-hidden="true">+</span>
+      </button>
+      <div class="article-toc__content">
+        <p class="article-toc__title">On this page</p>
+        <ol id="article-toc-list" data-toc-list></ol>
+      </div>
+    </nav>
   </aside>
 
   <article class="article-body">

@@ -16,12 +16,20 @@
     <meta name="robots" content="index,follow">
     <meta name="theme-color" content="#14201d">
     <link rel="canonical" href="{{ canonical_url }}">
+    <link rel="icon" href="{{ '/assets/favicon.svg' | relative_url }}" type="image/svg+xml">
+    <link rel="alternate" href="{{ '/feed.xml' | absolute_url }}" type="application/atom+xml" title="{{ site.title | escape }}">
     <meta property="og:site_name" content="{{ site.title | escape }}">
     <meta property="og:title" content="{{ meta_title | escape }}">
     <meta property="og:description" content="{{ meta_description | strip_html | normalize_whitespace | escape }}">
     <meta property="og:type" content="{% if article %}article{% else %}website{% endif %}">
     <meta property="og:url" content="{{ canonical_url }}">
-    <meta name="twitter:card" content="summary">
+    <meta property="og:image" content="{{ site.social_image | absolute_url }}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Prisma Express Series — 10 verified engineering articles">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="{{ site.social_image | absolute_url }}">
+    <meta name="twitter:image:alt" content="Prisma Express Series — 10 verified engineering articles">
     <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
     <script type="application/ld+json">
       {
@@ -31,6 +39,12 @@
         "headline": {{ meta_title | jsonify }},
         "description": {{ meta_description | jsonify }},
         "url": {{ canonical_url | jsonify }},
+        "dateModified": {{ site.verified_on | jsonify }},
+        {% if article %}"position": {{ article.number }},{% endif %}
+        "about": [
+          { "@type": "SoftwareSourceCode", "name": "prisma-generator-express", "version": {{ site.generator_version | jsonify }}, "codeRepository": "https://github.com/multipliedtwice/prisma-generator-express" },
+          { "@type": "SoftwareSourceCode", "name": "prisma-guard", "version": {{ site.guard_version | jsonify }}, "codeRepository": "https://github.com/multipliedtwice/prisma-guard" }
+        ],
         "isPartOf": {
           "@type": "CreativeWorkSeries",
           "name": {{ site.title | jsonify }},
@@ -44,7 +58,7 @@
     <header class="site-header">
       <div class="shell site-header__inner">
         <a class="site-title" href="{{ '/' | relative_url }}" aria-label="{{ site.title }} home">
-          <span class="site-title__mark" aria-hidden="true">PGE</span>
+          <img class="site-title__mark" src="{{ '/assets/favicon.svg' | relative_url }}" width="40" height="40" alt="">
           <span class="site-title__text">
             <strong>{{ site.short_title }}</strong>
             <small>Engineering field guide</small>
@@ -63,8 +77,9 @@
     <footer class="site-footer">
       <div class="shell site-footer__inner">
         <p><strong>Prisma Express Series</strong><br>Verified guides for generated Prisma HTTP APIs.</p>
-        <p><a href="https://github.com/multipliedtwice/prisma-generator-express">prisma-generator-express</a> · <a href="https://github.com/multipliedtwice/prisma-guard">prisma-guard</a></p>
+        <p>Verified {{ site.verified_on | date: "%-d %b %Y" }} · <a href="{{ '/feed.xml' | relative_url }}">Atom feed</a><br><a href="https://github.com/multipliedtwice/prisma-generator-express">prisma-generator-express</a> · <a href="https://github.com/multipliedtwice/prisma-guard">prisma-guard</a></p>
       </div>
     </footer>
+    <script src="{{ '/assets/js/site.js' | relative_url }}" defer></script>
   </body>
 </html>

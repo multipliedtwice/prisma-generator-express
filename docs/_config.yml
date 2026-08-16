@@ -5,6 +5,10 @@ url: https://multipliedtwice.github.io
 baseurl: /prisma-generator-express
 repository: multipliedtwice/prisma-generator-express
 lang: en
+generator_version: "1.64.4"
+guard_version: "1.33.0"
+verified_on: "2026-08-16"
+social_image: /assets/images/series-card.png
 markdown: kramdown
 highlighter: rouge
 permalink: pretty

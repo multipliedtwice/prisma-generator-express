@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Prisma Express Series">
+  <circle cx="32" cy="32" r="30" fill="#15201d"/>
+  <path d="M17 19l13 13-13 13" fill="none" stroke="#f4f1e9" stroke-linecap="round" stroke-linejoin="round" stroke-width="6"/>
+  <path d="M35 45h13" fill="none" stroke="#e8b44d" stroke-linecap="round" stroke-width="6"/>
+</svg>

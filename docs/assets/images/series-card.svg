@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <pattern id="grid" width="72" height="72" patternUnits="userSpaceOnUse">
+      <path d="M72 0H0V72" fill="none" stroke="#15201d" stroke-opacity=".07"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="#f4f1e9"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="12" fill="#15201d"/>
+  <circle cx="92" cy="86" r="34" fill="#15201d"/>
+  <path d="M76 70l14 16-14 16" fill="none" stroke="#f4f1e9" stroke-linecap="round" stroke-linejoin="round" stroke-width="6"/>
+  <path d="M95 102h14" fill="none" stroke="#e8b44d" stroke-linecap="round" stroke-width="6"/>
+  <text x="146" y="78" fill="#15201d" font-family="Arial, sans-serif" font-size="24" font-weight="700">PRISMA EXPRESS SERIES</text>
+  <text x="146" y="107" fill="#586560" font-family="Georgia, serif" font-size="19" font-style="italic">Engineering field guide</text>
+  <text x="72" y="198" fill="#0b6e59" font-family="Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="3">10 VERIFIED ARTICLES</text>
+  <text x="72" y="289" fill="#15201d" font-family="Georgia, serif" font-size="70" font-weight="700">Build generated Prisma APIs</text>
+  <text x="72" y="367" fill="#15201d" font-family="Georgia, serif" font-size="70" font-weight="700">you can actually trust.</text>
+  <text x="72" y="432" fill="#36443f" font-family="Georgia, serif" font-size="28">Shapes · tenant scope · projection · writes · pagination · SSE</text>
+  <rect x="72" y="492" width="1056" height="1" fill="#b9b8af"/>
+  <text x="72" y="545" fill="#15201d" font-family="Arial, sans-serif" font-size="20" font-weight="700">prisma-generator-express 1.64.4</text>
+  <text x="470" y="545" fill="#15201d" font-family="Arial, sans-serif" font-size="20" font-weight="700">prisma-guard 1.33.0</text>
+  <rect x="1000" y="511" width="128" height="52" rx="4" fill="#15201d"/>
+  <text x="1064" y="545" fill="#f4f1e9" font-family="Arial, sans-serif" font-size="18" font-weight="700" text-anchor="middle">READ →</text>
+</svg>

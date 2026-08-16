@@ -16,8 +16,8 @@ layout: default
     <p>Shapes. Tenant scope. Caller routing. Hooks. Projection. Pagination. SSE. Writes. Failure diagnosis.</p>
     <dl>
       <div><dt>Articles</dt><dd>10</dd></div>
-      <div><dt>Evidence labs</dt><dd>2</dd></div>
-      <div><dt>Dependencies</dt><dd>Version-pinned</dd></div>
+      <div><dt>Generator</dt><dd>v{{ site.generator_version }}</dd></div>
+      <div><dt>Guard</dt><dd>v{{ site.guard_version }}</dd></div>
     </dl>
   </aside>
 </section>
@@ -37,6 +37,7 @@ layout: default
         <a href="{{ article.url | relative_url }}">
           <span class="article-list__number">{{ article.id }}</span>
           <span class="article-list__content">
+            <span class="article-list__topic">{{ article.topic }}</span>
             <strong>{{ article.title }}</strong>
             <span>{{ article.description }}</span>
           </span>
