@@ -1,7 +1,9 @@
 <!doctype html>
 <html lang="{{ site.lang | default: 'en' }}">
   <head>
-    {% assign article = site.data.series | where: "id", page.article_id | first %}
+    {% if page.article_id %}
+      {% assign article = site.data.series | where: "id", page.article_id | first %}
+    {% endif %}
     {% assign meta_title = page.title | default: site.title %}
     {% assign meta_description = page.description | default: site.description %}
     {% if article %}
