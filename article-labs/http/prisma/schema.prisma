@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator guard {
+  provider = "prisma-guard"
+  output   = "./generated/guard"
+}
+
+generator expressPromise {
+  provider              = "prisma-generator-express"
+  output                = "./generated/promise"
+  target                = "express"
+  findManyPaginatedMode = "promiseAll"
+}
+
+generator expressTransaction {
+  provider              = "prisma-generator-express"
+  output                = "./generated/transaction"
+  target                = "express"
+  findManyPaginatedMode = "transaction"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Courier {
+  id         String     @id
+  name       String
+  deliveries Delivery[]
+}
+
+model Delivery {
+  id        String   @id
+  status    String
+  city      String
+  createdAt DateTime
+  courierId String
+  courier   Courier  @relation(fields: [courierId], references: [id])
+  stops     Stop[]
+}
+
+model Stop {
+  id         String   @id
+  label      String
+  position   Int
+  deliveryId String
+  delivery   Delivery @relation(fields: [deliveryId], references: [id])
+}

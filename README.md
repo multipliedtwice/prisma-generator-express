@@ -7,6 +7,10 @@
 
 Prisma generator that creates Express, Fastify, or Hono CRUD API routes with OpenAPI documentation from your Prisma schema.
 
+**Guides:** [Prisma Generator Express Series](https://multipliedtwice.github.io/prisma-generator-express/) — verified tutorials, deep dives, and troubleshooting references.
+
+**Article evidence:** [guard lab](article-labs/guard/) and [HTTP/PostgreSQL lab](article-labs/http/).
+
 Running `npx prisma generate` produces:
 
 - Handler functions for all Prisma operations (findMany, create, update, delete, etc.)

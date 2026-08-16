@@ -1,0 +1,37 @@
+VERSION: {"generator":"1.64.4","guard":"1.33.0","prisma":"6.19.3","node":"22.14.0","postgres":"16.6"}
+PAGINATION forward-offset: {"status":200,"body":{"data":[{"id":"d2","status":"delivered","city":"Bangkok","createdAt":"2026-01-02T00:00:00.000Z","courierId":"c1"},{"id":"d3","status":"active","city":"Chiang Mai","createdAt":"2026-01-03T00:00:00.000Z","courierId":"c2"}],"total":6,"hasMore":true}}
+PAGINATION cursor: {"status":200,"body":{"data":[{"id":"d2","status":"delivered","city":"Bangkok","createdAt":"2026-01-02T00:00:00.000Z","courierId":"c1"},{"id":"d3","status":"active","city":"Chiang Mai","createdAt":"2026-01-03T00:00:00.000Z","courierId":"c2"}],"total":6,"hasMore":true}}
+PAGINATION negative-take: {"status":200,"body":{"data":[{"id":"d4","status":"active","city":"Bangkok","createdAt":"2026-01-04T00:00:00.000Z","courierId":"c2"},{"id":"d5","status":"cancelled","city":"Phuket","createdAt":"2026-01-05T00:00:00.000Z","courierId":"c1"}],"total":6,"hasMore":true}}
+PAGINATION take-zero: {"status":200,"body":{"data":[],"total":6,"hasMore":false}}
+PAGINATION transaction: {"status":200,"body":{"data":[{"id":"d1","status":"delivered","city":"Bangkok","createdAt":"2026-01-01T00:00:00.000Z","courierId":"c1"},{"id":"d2","status":"delivered","city":"Bangkok","createdAt":"2026-01-02T00:00:00.000Z","courierId":"c1"}],"total":6,"hasMore":true}}
+PAGINATION transaction-missing: {"status":500,"body":{"message":"findManyPaginatedMode=\"transaction\" requires transaction support on the Prisma client"}}
+LIMIT unguarded-default: 2
+LIMIT unguarded-max: 3
+LIMIT guard-default: 4
+LIMIT guard-client-max: 3
+COUNT distinct-within-limit: {"total":3,"rows":3}
+COUNT distinct-over-limit: {"total":6,"rows":3}
+COUNT guarded-distinct: {"total":6,"rows":3}
+COUNT materialized: 99
+COUNT materialized-with-where: 2
+COUNT materialized-with-distinct: 3
+COUNT materialized-with-guard: 6
+POST-READ get-post-equal: true
+POST-READ string-take: {"status":400,"message":"Argument `take`: Invalid value provided. Expected Int, provided String."}
+POST-READ sse-accept: {"status":200,"contentType":"application/json; charset=utf-8","rows":1}
+HOOK mutate-body-post-row-count: 2
+HOOK mutate-body-get-row-count: 6
+HOOK mutate-parsed-query-row-count: 2
+SSE ordinary-json-after-count: {"status":200,"afterCount":1}
+SSE unconfigured-types: ["result"]
+SSE manual-types: ["progress","field","progress","field","progress","result"]
+SSE manual-result: {"type":"result","data":{"summary":{"total":6},"statuses":[{"id":"d1","status":"delivered"},{"id":"d2","status":"delivered"}]}}
+SSE progressive-after-count: 1
+SSE failure-types: ["progress","field","progress","error"]
+SSE failure-last: {"type":"error","message":"stage failed"}
+SSE auto-types: ["rootArray","progress","relationBatch","progress","relationBatch","progress","result"]
+SSE auto-result-has-relations: true
+SSE paginated-auto-types: ["pageMeta","rootArray","progress","relationBatch","progress","result"]
+SSE paginated-auto-result-shape: ["data","hasMore","total"]
+SSE fallback-error: ["error"]
+SSE fallback-single: ["result"]

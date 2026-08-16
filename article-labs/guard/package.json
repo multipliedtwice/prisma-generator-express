@@ -1,0 +1,27 @@
+{
+  "name": "guard-lab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Verification harness for the prisma-guard behavior claims made in the article series",
+  "scripts": {
+    "generate": "node generate.mjs",
+    "verify": "npm run verify:reads && npm run verify:writes && npm run verify:extras && npm run verify:forced && npm run verify:a3 && npm run verify:wrong-api",
+    "results": "node write-results.mjs",
+    "verify:reads": "tsx verify-reads.ts",
+    "verify:writes": "tsx verify-writes-and-scope.mts",
+    "verify:extras": "tsx verify-extras.mts",
+    "verify:forced": "tsx verify-forced-positions.mts",
+    "verify:a3": "tsx verify-a3-ticketing.mts",
+    "verify:wrong-api": "tsx verify-wrong-api.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "prisma": "6.19.3",
+    "prisma-guard": "1.33.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@prisma/internals": "6.19.3",
+    "tsx": "4.23.8"
+  }
+}

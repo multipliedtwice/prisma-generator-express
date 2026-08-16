@@ -1,0 +1,674 @@
+# Verified behavior of prisma-guard, recorded by article-labs/guard/write-results.mjs.
+# Versions (exact, see package.json + package-lock.json): prisma-guard 1.33.0, zod 4.4.3, prisma 6.19.3, @prisma/client 6.19.3
+# Schemas: Nursery(@scope-root) -> Plant, Order; Customer; OrderItem  |  Organizer(@scope-root) -> Event -> Ticket
+# Reproduce from a clean checkout: npm ci && npm run generate && npm run results
+#
+# Read cases in verify-forced-positions and verify-a3-ticketing run through BOTH entry points
+# (guard.query().parse and the guarded delegate) and are labelled AGREE / DIFFER.
+# Mutation cases are labelled DELEGATE-ONLY: guard.query() accepts read methods only.
+# Scope-injection cases are labelled SCOPE: they run through the extension's $allOperations,
+# which is the only entry point where the tenant filter is visible.
+# Four DIFFER lines are expected and are themselves findings — see article-labs/guard/README.md.
+
+########## verify:reads (verify-reads.ts) ##########
+=== ITEM 1 — forced field supplied by the client ===
+PASS  no forced field sent
+      -> {"where":{"AND":[{"name":{"contains":"fern"}},{"isPublished":{"equals":true},"isDeleted":{"equals":false}}]},"take":20}
+PASS  forced boolean sent with the SAME value
+      -> {"take":20,"where":{"isPublished":{"equals":true},"isDeleted":{"equals":false}}}
+PASS  forced boolean sent with a DIFFERENT value
+      -> {"take":20,"where":{"isPublished":{"equals":true},"isDeleted":{"equals":false}}}
+PASS  forced literal false sent with same value
+      -> {"take":20,"where":{"isPublished":{"equals":true},"isDeleted":{"equals":false}}}
+PASS  forced literal false sent with different value
+      -> {"take":20,"where":{"isPublished":{"equals":true},"isDeleted":{"equals":false}}}
+THROW unknown field
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Invalid query on model "Plant": where: Unrecognized key(s): priceCents
+THROW take above max
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Invalid query on model "Plant": take: Number must be <= 50
+
+=== ITEM 1b — forced value inside a relation filter ===
+PASS  relation-forced value, client sends nothing
+      -> {"where":{"status":{"equals":"paid"},"items":{"some":{"plant":{"is":{"nurseryId":{"equals":"nursery-1"}}}}}}}
+THROW relation-forced value, client sends the SAME id
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Invalid query on model "Order": where.items.some.plant.is.nurseryId: Unrecognized key(s): equals
+THROW relation-forced value, client sends ANOTHER id
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Invalid query on model "Order": where.items.some.plant.is.nurseryId: Unrecognized key(s): equals
+
+=== ITEM 2 — caller routing ===
+PASS  known caller
+      -> {}
+THROW missing caller, no default
+      -> CallerError status=400 code=CALLER_UNKNOWN
+      -> Missing caller. This query uses named shape routing with keys: "storefront", "backoffice". Provide caller via opts.caller.
+THROW unknown caller, no default
+      -> CallerError status=400 code=CALLER_UNKNOWN
+      -> Unknown caller: "nope". Allowed: "storefront", "backoffice"
+THROW blank caller, no default
+      -> CallerError status=400 code=CALLER_UNKNOWN
+      -> Unknown caller: "   ". Allowed: "storefront", "backoffice"
+PASS  missing caller, with default
+      -> {}
+PASS  unknown caller, with default
+      -> {}
+THROW caller key in the body
+      -> CallerError status=400 code=CALLER_UNKNOWN
+      -> Pass caller via opts.caller, not in the request body.
+PASS  parameterized caller pattern
+      -> {}
+THROW parameterized pattern, wrong segment count
+      -> CallerError status=400 code=CALLER_UNKNOWN
+      -> Unknown caller: "/shop/ferns/extra". Allowed: "/shop/:slug"
+
+=== ITEM 3 — mode modifier ===
+PASS  forced mode, client sends none
+      -> {"where":{"name":{"contains":"fern","mode":"insensitive"}}}
+THROW forced mode, client sends mode too
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Invalid query on model "Plant": where.name: Unrecognized key(s): mode
+PASS  client-controlled mode, client sends it
+      -> {"where":{"name":{"contains":"fern","mode":"insensitive"}}}
+PASS  client-controlled mode, client omits it
+      -> {"where":{"name":{"contains":"fern"}}}
+
+=== ITEM 4 — coercion ===
+PASS  native types (POST body)
+      -> {"where":{"priceCents":{"gte":500},"isPublished":{"equals":true},"createdAt":{"gte":"2026-01-01T00:00:00.000Z"}},"take":10,"skip":0}
+PASS  string number (decoded query string)
+      -> {"where":{"priceCents":{"gte":500}}}
+THROW string boolean
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Invalid query on model "Plant": where.isPublished: No matching variant (branch 1: [equals: Expected boolean] | branch 2: [Expected boolean])
+PASS  string date
+      -> {"where":{"createdAt":{"gte":"2026-01-01T00:00:00.000Z"}}}
+THROW string take
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Invalid query on model "Plant": take: Expected number
+PASS  scalar list hasSome
+      -> {"where":{"tags":{"hasSome":["indoor","shade"]}}}
+THROW garbage number
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Invalid query on model "Plant": where.priceCents.gte: No matching variant (branch 1: [Expected number] | branch 2: [Invalid regex format])
+
+=== EXTRAS — shape construction and projection ===
+THROW empty combinator
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Empty "AND" combinator in where shape for model "Plant". Define at least one field.
+THROW shape config value not exactly true (orderBy: false)
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> orderBy config for "name" on model "Plant" must be true or a relation config object
+THROW empty select
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Empty select config on model "Plant". Define at least one field.
+THROW conflicting forced where values
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Conflicting forced where values for "isPublished.equals": shape defines both true and false
+THROW select and include together in the request
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Request cannot define both "include" and "select"
+PASS  projection auto-apply (client sends no select)
+      -> {}
+THROW client selects a field outside the shape
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Invalid query on model "Plant": select: Unrecognized key(s): priceCents
+THROW deleteMany shape without where
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Guard shape does not allow "where" on model "Plant"
+PASS  forced value inside OR is lifted
+      -> {"where":{"AND":[{"OR":[{"name":{"contains":"fern"}},{"description":{"contains":"fern"}}]},{"isPublished":{"equals":true}}]}}
+THROW negative take
+      -> ShapeError status=400 code=SHAPE_INVALID
+      -> Invalid query on model "Plant": take: Number must be >= 1
+
+########## verify:writes (verify-writes-and-scope.mts) ##########
+=== MUTATIONS — create ===
+PASS  create, allowed fields only
+      -> {"data":{"name":"Fern","priceCents":900,"tags":[],"isPublished":false}}
+THROW create, client sends forced field with a DIFFERENT value
+      -> ShapeError status=400
+      -> Invalid data for create on model "Plant": Unrecognized key(s): isPublished
+THROW create, client sends forced field with the SAME value
+      -> ShapeError status=400
+      -> Invalid data for create on model "Plant": Unrecognized key(s): isPublished
+PASS  create, field absent from the data shape
+      -> {"data":{"name":"Fern","priceCents":900,"tags":["indoor"],"isPublished":false}}
+THROW create, missing a required field
+      -> ShapeError status=400
+      -> Invalid data for create on model "Plant": priceCents: No matching variant (branch 1: [Expected number] | branch 2: [Expected string])
+THROW create, inline refine violated
+      -> ShapeError status=400
+      -> Invalid data for create on model "Plant": description: String must contain at most 20 character(s)
+THROW create, scope FK sent by the client
+      -> ShapeError status=400
+      -> Invalid data for create on model "Plant": Unrecognized key(s): nurseryId
+THROW create on Customer, @zod .email() violated
+      -> ShapeError status=400
+      -> Invalid data for create on model "Customer": email: Invalid email format
+PASS  create on Customer, @zod satisfied
+      -> {"data":{"email":"a@b.com"}}
+THROW create, client asks for a projection the shape does not define
+      -> ShapeError status=400
+      -> Guard shape does not define "select" or "include" for create return projection
+PASS  create, projection allowed by the shape
+      -> {"data":{"name":"Fern","priceCents":900,"tags":[],"isPublished":false},"select":{"id":true}}
+PASS  create, no projection requested (enforceProjection=false)
+      -> {"data":{"name":"Fern","priceCents":900,"tags":[],"isPublished":false}}
+
+=== MUTATIONS — update / bulk / upsert / relations ===
+PASS  update, allowed
+      -> {"data":{"name":"New"},"where":{"id":"p1"}}
+THROW update, data key not in shape
+      -> ShapeError status=400
+      -> Invalid data for update on model "Plant": Unrecognized key(s): priceCents
+THROW update, where key not in shape
+      -> ShapeError status=400
+      -> Invalid unique "where" on model "Plant". Allowed fields: id: id: No matching variant (branch 1: [Expected string] | branch 2: [Expected number]); Unrecognized key(s): name
+THROW updateMany, shape has no where
+      -> ShapeError status=400
+      -> Guard shape requires "where" for updateMany to prevent unconstrained bulk mutations
+PASS  updateMany, shape has where
+      -> {"data":{"isPublished":true},"where":{"isDeleted":{"equals":true}}}
+THROW updateMany, body has no where
+      -> ShapeError status=400
+      -> updateMany requires at least one where condition
+PASS  deleteMany, forced where only, empty body where
+      -> {"where":{"isDeleted":{"equals":true}}}
+THROW upsert with data instead of create/update
+      -> ShapeError status=400
+      -> Guard shape "data" is not valid for upsert. Use "create" and "update" instead.
+THROW upsert, correct shape
+      -> ShapeError status=400
+      -> Required field "tags" on model "Plant" is missing from create data shape, has no default, is not a scope FK, and is not covered by a relation write in the shape
+THROW createMany with a single object
+      -> ShapeError status=400
+      -> Required field "tags" on model "Plant" is missing from create data shape, has no default, is not a scope FK, and is not covered by a relation write in the shape
+THROW createMany with an array
+      -> ShapeError status=400
+      -> Required field "tags" on model "Plant" is missing from create data shape, has no default, is not a scope FK, and is not covered by a relation write in the shape
+PASS  relation write: connect allowed
+      -> {"data":{"status":"draft","customer":{"connect":{"id":"c1"}}}}
+THROW relation write: nested create not in shape
+      -> ShapeError status=400
+      -> Invalid data for create on model "Order": customer: Unrecognized key(s): create
+PASS  delete on an unscoped model (Customer) with scope ctx present
+      -> {"where":{"id":"c1"}}
+
+=== ENTRY-POINT WORDING ===
+THROW read, named shapes, caller missing (extension API wording)
+      -> CallerError status=400
+      -> Missing caller. This guard uses named shape routing with keys: "storefront". Provide caller via guard(input, caller).
+THROW read, caller in the body
+      -> CallerError status=400
+      -> Pass caller via the guard(input, caller) argument, not in the request body.
+PASS  resolve() instead of executing
+      -> {"shape":{"where":{"name":{"contains":true}},"take":{"max":10}},"body":{"where":{"name":{"contains":"fern"}}},"effectiveReadBody":{"where":{"name":{"contains":"fern"}}},"matchedKey":"_default","wasDynamic":false}
+
+=== SCOPE — automatic tenant isolation ===
+PASS  scope injected into findMany where
+      -> {"where":{"AND":[{"isPublished":true},{"nurseryId":"nursery-1"}]}}
+PASS  scope injected into create data
+      -> {"data":{"name":"Fern","priceCents":900,"tags":[],"nurseryId":"nursery-1"}}
+PASS  scope injected into updateMany where
+      -> {"where":{"AND":[{"isDeleted":false},{"nurseryId":"nursery-1"}]},"data":{"isPublished":true}}
+PASS  scope on an unscoped model (Customer) is a no-op
+      -> {"where":{}}
+PASS  scope root model is not self-scoped
+      -> {"where":{}}
+PASS  nested include of a scoped relation is NOT filtered
+      -> {"include":{"plants":true}}
+THROW missing scope context on a READ (onMissingScopeContext=error)
+      -> PolicyError status=403
+      -> prisma-guard: Missing scope context for model "Plant": roots "Nursery" not provided. All scope roots must be present.
+THROW missing scope context on a WRITE
+      -> PolicyError status=403
+      -> prisma-guard: Missing scope context for model "Plant": roots "Nursery" not provided. All scope roots must be present.
+PASS  scope value of the wrong type
+      -> {"where":{"AND":[{},{"nurseryId":42}]}}
+
+########## verify:extras (verify-extras.mts) ##########
+=== PROJECTION AUTO-APPLY AND TAKE DEFAULTS ===
+PASS  READ projection auto-apply, via parse()
+      -> {}
+PASS  READ projection auto-apply, via the guarded delegate
+      -> {"select":{"id":true,"name":true}}
+PASS  READ projection auto-apply, client sends a narrower select
+      -> {"select":{"id":true}}
+PASS  take default via the guarded delegate
+      -> {"take":3}
+PASS  take with no default via the guarded delegate
+      -> {}
+
+=== BULK SAFETY AND ROUTING EDGE CASES ===
+THROW deleteMany shape without where
+      -> ShapeError status=400
+      -> Guard shape where contains only forced conditions. Client where input is not accepted.
+THROW deleteMany shape with no where key at all
+      -> ShapeError status=400
+      -> Guard shape requires "where" for deleteMany to prevent unconstrained bulk mutations
+THROW updateManyAndReturn shape without where
+      -> ShapeError status=400
+      -> Guard shape requires "where" for updateManyAndReturn to prevent unconstrained bulk mutations
+THROW ambiguous caller across two patterns
+      -> CallerError status=400
+      -> Ambiguous caller "/shop/ferns" matches multiple patterns: "/shop/:slug", "/:section/ferns"
+THROW reserved key as a caller name, extension entry point
+      -> ShapeError status=400
+      -> Caller key "where" collides with reserved guard shape key. Rename the caller path.
+
+=== FORCED MERGE STRATEGY ===
+THROW forced NOT plus client NOT
+      -> ShapeError status=400
+      -> Invalid query on model "Plant": where.NOT: No matching variant (branch 1: [Unrecognized key(s): name] | branch 2: [Expected array])
+PASS  forced value AND-wrapped when the client filters another field
+      -> {"where":{"AND":[{"name":{"contains":"fern"}},{"isPublished":{"equals":true}}]}}
+PASS  forced value inline-merged when the client touches the same field
+      -> {"where":{"isPublished":{"equals":true}}}
+PASS  @zod .default() field omitted from a create data shape
+      -> {"data":{"name":"Fern","priceCents":1,"tags":[]}}
+
+=== SHAPE CONSTRUCTION MESSAGES QUOTED IN THE FAQ ===
+THROW relation write config: connect: true
+      -> ShapeError status=400
+      -> connect config on "Order.customer" must be an object of unique selectors
+PASS  relation write config: connect with unique selector
+      -> {"data":{"status":"draft","customer":{"connect":{"id":"c1"}}}}
+THROW create shape missing a required no-default field
+      -> ShapeError status=400
+      -> Required field "tags" on model "Plant" is missing from create data shape, has no default, is not a scope FK, and is not covered by a relation write in the shape
+THROW unique where on a non-unique field (findUnique)
+      -> ShapeError status=400
+      -> findUnique on model "Plant" requires unique where shape to cover a unique constraint using Prisma unique selector syntax: id
+THROW groupBy shape without by
+      -> ShapeError status=400
+      -> groupBy shape must define "by"
+
+=== NESTED INCLUDE IS A STRICT POSITION (nursery schema, quoted in A9) ===
+THROW nested include, forced where, client sends the forced field
+      -> ShapeError status=400
+      -> Invalid query on model "Nursery": include.plants.where.isDeleted: Unrecognized key(s): equals
+PASS  nested include, forced where, client filters an allowed field
+      -> {"include":{"plants":{"where":{"AND":[{"name":{"contains":"fern"}},{"isDeleted":{"equals":false}}]},"take":10}}}
+
+########## verify:forced (verify-forced-positions.mts) ##########
+=== FORCED VALUE POSITIONS — BOTH ENTRY POINTS ===
+AGREE   wholly forced boolean predicate, client sends the same value
+        parse    -> {"where":{"isPublished":{"equals":true}}}
+        delegate -> {"where":{"isPublished":{"equals":true}}}
+AGREE   wholly forced boolean predicate, client sends a different value
+        parse    -> {"where":{"isPublished":{"equals":true}}}
+        delegate -> {"where":{"isPublished":{"equals":true}}}
+AGREE   wholly forced boolean predicate, client sends a different operator
+        parse    -> {"where":{"isPublished":{"equals":true}}}
+        delegate -> {"where":{"isPublished":{"equals":true}}}
+AGREE   wholly forced string predicate, client sends its own value
+        parse    -> {"where":{"name":{"contains":"fern"}}}
+        delegate -> {"where":{"name":{"contains":"fern"}}}
+AGREE   wholly forced numeric predicate, client sends its own value
+        parse    -> {"where":{"priceCents":{"gte":100}}}
+        delegate -> {"where":{"priceCents":{"gte":100}}}
+AGREE   forced predicate, client filters a DIFFERENT field (AND-wrap)
+        parse    -> {"where":{"AND":[{"name":{"contains":"fern"}},{"isPublished":{"equals":true}}]}}
+        delegate -> {"where":{"AND":[{"name":{"contains":"fern"}},{"isPublished":{"equals":true}}]}}
+AGREE   forced modifier beside a client operator, client sends the modifier
+        parse    -> THROW ShapeError status=400: Invalid query on model "Plant": where.name: Unrecognized key(s): mode
+        delegate -> THROW ShapeError status=400: Invalid query on model "Plant": where.name: Unrecognized key(s): mode
+AGREE   forced modifier beside a client operator, client omits the modifier
+        parse    -> {"where":{"name":{"contains":"fern","mode":"insensitive"}}}
+        delegate -> {"where":{"name":{"contains":"fern","mode":"insensitive"}}}
+AGREE   client-controlled modifier, client omits it
+        parse    -> {"where":{"name":{"contains":"fern"}}}
+        delegate -> {"where":{"name":{"contains":"fern"}}}
+AGREE   forced scalar inside a to-one relation filter, client sends the same value
+        parse    -> THROW ShapeError status=400: Invalid query on model "Plant": where.nursery.is.id: Unrecognized key(s): equals
+        delegate -> THROW ShapeError status=400: Invalid query on model "Plant": where.nursery.is.id: Unrecognized key(s): equals
+AGREE   forced scalar inside a to-many relation filter, client sends another value
+        parse    -> THROW ShapeError status=400: Invalid query on model "Plant": where.orderItems.some.plantId: Unrecognized key(s): equals
+        delegate -> THROW ShapeError status=400: Invalid query on model "Plant": where.orderItems.some.plantId: Unrecognized key(s): equals
+AGREE   force INSIDE OR, lifted to top-level AND
+        parse    -> {"where":{"AND":[{"OR":[{"name":{"contains":"fern"}},{"description":{"contains":"fern"}}]},{"isPublished":{"equals":true}}]}}
+        delegate -> {"where":{"AND":[{"OR":[{"name":{"contains":"fern"}},{"description":{"contains":"fern"}}]},{"isPublished":{"equals":true}}]}}
+AGREE   force INSIDE OR, client sends nothing (no OR survives)
+        parse    -> {"where":{"isPublished":{"equals":true}}}
+        delegate -> {"where":{"isPublished":{"equals":true}}}
+AGREE   CONTRAST — force as a SIBLING of OR, not inside it
+        parse    -> {"where":{"AND":[{"OR":[{"name":{"contains":"fern"}},{"description":{"contains":"fern"}}]},{"isPublished":{"equals":true}}]}}
+        delegate -> {"where":{"AND":[{"OR":[{"name":{"contains":"fern"}},{"description":{"contains":"fern"}}]},{"isPublished":{"equals":true}}]}}
+AGREE   forced value without an operator (shorthand)
+        parse    -> THROW ShapeError status=400: Operator "value" not supported for type "Boolean"
+        delegate -> THROW ShapeError status=400: Operator "value" not supported for type "Boolean"
+
+=== DOCUMENTED CLAIM: "conflicts on the same op key (different values) throw ShapeError" ===
+boolean equals: forced true, client false
+        parse    -> {"where":{"isPublished":{"equals":true}}}
+        delegate -> {"where":{"isPublished":{"equals":true}}}
+string contains: forced "fern", client "rose"
+        parse    -> {"where":{"name":{"contains":"fern"}}}
+        delegate -> {"where":{"name":{"contains":"fern"}}}
+numeric gte: forced 100, client 5
+        parse    -> {"where":{"priceCents":{"gte":100}}}
+        delegate -> {"where":{"priceCents":{"gte":100}}}
+scope-style FK: forced "n1", client "n2"
+        parse    -> {"where":{"nurseryId":{"equals":"n1"}}}
+        delegate -> {"where":{"nurseryId":{"equals":"n1"}}}
+
+=== CONTROL: same-op-key conflict inside the SHAPE, not from the client ===
+        parse    -> THROW ShapeError status=400: Conflicting forced where values for "isPublished.equals": shape defines both true and false
+
+########## verify:a3 (verify-a3-ticketing.mts) ##########
+=== A3 §3 — lenient position: wholly forced top-level predicate ===
+AGREE   client sends nothing
+        parse    -> {"take":20,"where":{"isPublished":{"equals":true}}}
+        delegate -> {"take":20,"where":{"isPublished":{"equals":true}}}
+AGREE   client sends the same value
+        parse    -> {"take":20,"where":{"isPublished":{"equals":true}}}
+        delegate -> {"take":20,"where":{"isPublished":{"equals":true}}}
+AGREE   client sends a different value
+        parse    -> {"take":20,"where":{"isPublished":{"equals":true}}}
+        delegate -> {"take":20,"where":{"isPublished":{"equals":true}}}
+AGREE   client sends a different operator
+        parse    -> {"take":20,"where":{"isPublished":{"equals":true}}}
+        delegate -> {"take":20,"where":{"isPublished":{"equals":true}}}
+AGREE   forced string, client sends its own
+        parse    -> {"where":{"title":{"contains":"gala"}}}
+        delegate -> {"where":{"title":{"contains":"gala"}}}
+
+=== A3 §2 — forced value without an operator ===
+AGREE   where: { isPublished: force(true) }
+        parse    -> THROW ShapeError status=400: Operator "value" not supported for type "Boolean"
+        delegate -> THROW ShapeError status=400: Operator "value" not supported for type "Boolean"
+
+=== A3 §3 — strict positions ===
+AGREE   forced modifier, client sends mode
+        parse    -> THROW ShapeError status=400: Invalid query on model "Event": where.title: Unrecognized key(s): mode
+        delegate -> THROW ShapeError status=400: Invalid query on model "Event": where.title: Unrecognized key(s): mode
+AGREE   forced modifier, client omits mode
+        parse    -> {"where":{"title":{"contains":"gala","mode":"insensitive"}}}
+        delegate -> {"where":{"title":{"contains":"gala","mode":"insensitive"}}}
+AGREE   to-one relation filter
+        parse    -> THROW ShapeError status=400: Invalid query on model "Event": where.organizer.is.id: Unrecognized key(s): equals
+        delegate -> THROW ShapeError status=400: Invalid query on model "Event": where.organizer.is.id: Unrecognized key(s): equals
+AGREE   to-many relation filter
+        parse    -> THROW ShapeError status=400: Invalid query on model "Event": where.tickets.some.tier: Unrecognized key(s): equals
+        delegate -> THROW ShapeError status=400: Invalid query on model "Event": where.tickets.some.tier: Unrecognized key(s): equals
+DELEGATE-ONLY  data shape, forced field sent by the client
+        delegate -> THROW ShapeError status=400: Invalid data for create on model "Event": Unrecognized key(s): isPublished
+
+=== A3 §3b — nested include is a strict position ===
+AGREE   client filters inside the relation
+        parse    -> {"include":{"events":{"where":{"AND":[{"title":{"contains":"gala"}},{"isCancelled":{"equals":false}}]},"take":10}}}
+        delegate -> {"include":{"events":{"where":{"AND":[{"title":{"contains":"gala"}},{"isCancelled":{"equals":false}}]},"take":10}}}
+AGREE   client sends the forced nested field
+        parse    -> THROW ShapeError status=400: Invalid query on model "Organizer": include.events.where.isCancelled: Unrecognized key(s): equals
+        delegate -> THROW ShapeError status=400: Invalid query on model "Organizer": include.events.where.isCancelled: Unrecognized key(s): equals
+AGREE   client widens the nested take
+        parse    -> THROW ShapeError status=400: Invalid query on model "Organizer": include.events.take: Number must be <= 20
+        delegate -> THROW ShapeError status=400: Invalid query on model "Organizer": include.events.take: Number must be <= 20
+
+=== A3 §4 — the documented-vs-runtime conflict claim ===
+AGREE   boolean equals: forced true, client false
+        parse    -> {"where":{"isPublished":{"equals":true}}}
+        delegate -> {"where":{"isPublished":{"equals":true}}}
+AGREE   string contains: forced "gala", client "anything"
+        parse    -> {"where":{"title":{"contains":"gala"}}}
+        delegate -> {"where":{"title":{"contains":"gala"}}}
+AGREE   int gte: forced 100, client 5
+        parse    -> {"where":{"priceCents":{"gte":100}}}
+        delegate -> {"where":{"priceCents":{"gte":100}}}
+AGREE   FK equals: forced org_1, client org_2
+        parse    -> {"where":{"organizerId":{"equals":"org_1"}}}
+        delegate -> {"where":{"organizerId":{"equals":"org_1"}}}
+AGREE   CONTROL — conflict inside the shape config
+        parse    -> THROW ShapeError status=400: Conflicting forced where values for "isPublished.equals": shape defines both true and false
+        delegate -> THROW ShapeError status=400: Conflicting forced where values for "isPublished.equals": shape defines both true and false
+
+=== A3 §5 — where the forced condition lands ===
+AGREE   client filters a different field (AND-wrap)
+        parse    -> {"where":{"AND":[{"title":{"contains":"gala"}},{"isPublished":{"equals":true}}]},"take":20}
+        delegate -> {"where":{"AND":[{"title":{"contains":"gala"}},{"isPublished":{"equals":true}}]},"take":20}
+AGREE   client touches the same field (inline merge)
+        parse    -> {"take":20,"where":{"isPublished":{"equals":true}}}
+        delegate -> {"take":20,"where":{"isPublished":{"equals":true}}}
+AGREE   force INSIDE OR, client sends two OR branches
+        parse    -> {"where":{"AND":[{"OR":[{"title":{"contains":"gala"}},{"venue":{"contains":"hall"}}]},{"isPublished":{"equals":true}}]}}
+        delegate -> {"where":{"AND":[{"OR":[{"title":{"contains":"gala"}},{"venue":{"contains":"hall"}}]},{"isPublished":{"equals":true}}]}}
+AGREE   force INSIDE OR, client sends nothing
+        parse    -> {"where":{"isPublished":{"equals":true}}}
+        delegate -> {"where":{"isPublished":{"equals":true}}}
+AGREE   force INSIDE AND
+        parse    -> {"where":{"AND":[{"AND":[{"title":{"contains":"gala"}}]},{"isPublished":{"equals":true}}]}}
+        delegate -> {"where":{"AND":[{"AND":[{"title":{"contains":"gala"}}]},{"isPublished":{"equals":true}}]}}
+AGREE   CONTRAST — force as a sibling of OR, not inside it
+        parse    -> {"where":{"AND":[{"OR":[{"title":{"contains":"gala"}},{"venue":{"contains":"gala"}}]},{"isPublished":{"equals":true}}]}}
+        delegate -> {"where":{"AND":[{"OR":[{"title":{"contains":"gala"}},{"venue":{"contains":"gala"}}]},{"isPublished":{"equals":true}}]}}
+
+=== A3 §7 — generated SCOPE_MAP (all models in both schemas) ===
+MAP     Nursery    -> (no scope mapping — unscoped, queries on it are not filtered)
+MAP     Plant      -> [{"fk":"nurseryId","root":"Nursery","relationName":"nursery"}]
+MAP     Customer   -> (no scope mapping — unscoped, queries on it are not filtered)
+MAP     Order      -> [{"fk":"nurseryId","root":"Nursery","relationName":"nursery"}]
+MAP     OrderItem  -> (no scope mapping — unscoped, queries on it are not filtered)
+MAP     Organizer  -> (no scope mapping — unscoped, queries on it are not filtered)
+MAP     Event      -> [{"fk":"organizerId","root":"Organizer","relationName":"organizer"}]
+MAP     Ticket     -> (no scope mapping — unscoped, queries on it are not filtered)
+
+=== A3 §5b — forced NOT: merged or a separate branch? ===
+AGREE   forced NOT, client sends nothing
+        parse    -> {"where":{"NOT":{"isCancelled":{"equals":true}}}}
+        delegate -> {"where":{"NOT":{"isCancelled":{"equals":true}}}}
+AGREE   forced NOT, client sends its own NOT (object form)
+        parse    -> {"where":{"NOT":[{"title":{"contains":"draft"}},{"isCancelled":{"equals":true}}]}}
+        delegate -> {"where":{"NOT":[{"title":{"contains":"draft"}},{"isCancelled":{"equals":true}}]}}
+AGREE   forced NOT, client sends its own NOT (array form)
+        parse    -> {"where":{"NOT":[{"title":{"contains":"draft"}},{"isCancelled":{"equals":true}}]}}
+        delegate -> {"where":{"NOT":[{"title":{"contains":"draft"}},{"isCancelled":{"equals":true}}]}}
+AGREE   forced NOT, client filters outside NOT
+        parse    -> {"where":{"venue":{"contains":"hall"},"NOT":{"isCancelled":{"equals":true}}}}
+        delegate -> {"where":{"venue":{"contains":"hall"},"NOT":{"isCancelled":{"equals":true}}}}
+AGREE   CONTROL — client NOT against a wholly forced NOT
+        parse    -> THROW ShapeError status=400: Invalid query on model "Event": where.NOT: No matching variant (branch 1: [Unrecognized key(s): venue] | branch 2: [Expected array])
+        delegate -> THROW ShapeError status=400: Invalid query on model "Event": where.NOT: No matching variant (branch 1: [Unrecognized key(s): venue] | branch 2: [Expected array])
+
+=== A3 §7b — are forced relation filters lifted? ===
+AGREE   forced value inside some(), client sends nothing
+        parse    -> {"where":{"tickets":{"some":{"tier":{"equals":"vip"}}}}}
+        delegate -> {"where":{"tickets":{"some":{"tier":{"equals":"vip"}}}}}
+AGREE   forced value inside some(), client filters inside the same relation
+        parse    -> {"where":{"tickets":{"some":{"AND":[{"priceCents":{"gte":100}},{"tier":{"equals":"vip"}}]}}}}
+        delegate -> {"where":{"tickets":{"some":{"AND":[{"priceCents":{"gte":100}},{"tier":{"equals":"vip"}}]}}}}
+AGREE   forced value inside some(), client filters a top-level field
+        parse    -> {"where":{"title":{"contains":"gala"},"tickets":{"some":{"tier":{"equals":"vip"}}}}}
+        delegate -> {"where":{"title":{"contains":"gala"},"tickets":{"some":{"tier":{"equals":"vip"}}}}}
+AGREE   forced value inside none(), mixed with a client condition
+        parse    -> THROW ShapeError status=400: Relation filter "tickets.none" on model "Event" mixes client-controlled and forced conditions. Under negative relation operators (none, isNot), merging weakens the filter. Either move forced conditions to a separate top-level "none" branch, or make all conditions under this operator client-controlled or all forced.
+        delegate -> THROW ShapeError status=400: Relation filter "tickets.none" on model "Event" mixes client-controlled and forced conditions. Under negative relation operators (none, isNot), merging weakens the filter. Either move forced conditions to a separate top-level "none" branch, or make all conditions under this operator client-controlled or all forced.
+AGREE   wholly forced none(), client-controlled field elsewhere
+        parse    -> THROW ShapeError status=400: Relation filter "tickets.none" on model "Event" mixes client-controlled and forced conditions. Under negative relation operators (none, isNot), merging weakens the filter. Either move forced conditions to a separate top-level "none" branch, or make all conditions under this operator client-controlled or all forced.
+        delegate -> THROW ShapeError status=400: Relation filter "tickets.none" on model "Event" mixes client-controlled and forced conditions. Under negative relation operators (none, isNot), merging weakens the filter. Either move forced conditions to a separate top-level "none" branch, or make all conditions under this operator client-controlled or all forced.
+AGREE   CONTROL — forced none(), nothing client-controlled at all
+        parse    -> THROW ShapeError status=400: Relation filter "tickets.none" on model "Event" mixes client-controlled and forced conditions. Under negative relation operators (none, isNot), merging weakens the filter. Either move forced conditions to a separate top-level "none" branch, or make all conditions under this operator client-controlled or all forced.
+        delegate -> THROW ShapeError status=400: Relation filter "tickets.none" on model "Event" mixes client-controlled and forced conditions. Under negative relation operators (none, isNot), merging weakens the filter. Either move forced conditions to a separate top-level "none" branch, or make all conditions under this operator client-controlled or all forced.
+AGREE   CONTROL — the same forced condition under some()
+        parse    -> {"where":{"tickets":{"some":{"tier":{"equals":"vip"}}}}}
+        delegate -> {"where":{"tickets":{"some":{"tier":{"equals":"vip"}}}}}
+AGREE   CONTROL — the same forced condition under every()
+        parse    -> {"where":{"tickets":{"every":{"tier":{"equals":"vip"}}}}}
+        delegate -> {"where":{"tickets":{"every":{"tier":{"equals":"vip"}}}}}
+AGREE   to-one is(), wholly forced
+        parse    -> {"where":{"organizer":{"is":{"name":{"equals":"Acme"}}}}}
+        delegate -> {"where":{"organizer":{"is":{"name":{"equals":"Acme"}}}}}
+AGREE   to-one isNot(), wholly forced
+        parse    -> THROW ShapeError status=400: Relation filter "organizer.isNot" on model "Event" mixes client-controlled and forced conditions. Under negative relation operators (none, isNot), merging weakens the filter. Either move forced conditions to a separate top-level "isNot" branch, or make all conditions under this operator client-controlled or all forced.
+        delegate -> THROW ShapeError status=400: Relation filter "organizer.isNot" on model "Event" mixes client-controlled and forced conditions. Under negative relation operators (none, isNot), merging weakens the filter. Either move forced conditions to a separate top-level "isNot" branch, or make all conditions under this operator client-controlled or all forced.
+AGREE   CONTROL — to-one isNot(), wholly client-controlled
+        parse    -> {"where":{"organizer":{"isNot":{"name":{"equals":"Acme"}}}}}
+        delegate -> {"where":{"organizer":{"isNot":{"name":{"equals":"Acme"}}}}}
+AGREE   isNot on a to-many relation
+        parse    -> THROW ShapeError status=400: Operator "isNot" not supported for to-many relation "tickets". Allowed: some, every, none
+        delegate -> THROW ShapeError status=400: Operator "isNot" not supported for to-many relation "tickets". Allowed: some, every, none
+
+=== A3 §6 — validation layers ===
+DELEGATE-ONLY  inline refine violated
+        delegate -> THROW ShapeError status=400: Invalid data for create on model "Event": venue: String must contain at most 120 character(s)
+DELEGATE-ONLY  create shape incomplete (venue missing from the shape)
+        delegate -> THROW ShapeError status=400: Required field "venue" on model "Event" is missing from create data shape, has no default, is not a scope FK, and is not covered by a relation write in the shape
+
+=== A3 §6b — upsert and update ===
+DELEGATE-ONLY  upsert, client omits the forced fields
+        delegate -> {"where":{"id":"e1"},"create":{"title":"Gala","venue":"Hall","startsAt":"2026-09-01T00:00:00.000Z","isPublished":false,"isCancelled":false},"update":{"title":"Gala 2"}}
+DELEGATE-ONLY  upsert, client sends a forced field in create
+        delegate -> THROW ShapeError status=400: Invalid data for upsert (create) on model "Event": Unrecognized key(s): isPublished
+DELEGATE-ONLY  update, forced data field applied when the client omits it
+        delegate -> {"data":{"title":"x","isCancelled":true},"where":{"id":"e1"}}
+
+=== A3 §7 — where forced values do not reach ===
+SCOPE  scoped model: findMany gets the tenant filter
+        -> {"where":{"organizerId":"org_1"}}
+SCOPE  scope root: findMany on Organizer
+        -> {}
+SCOPE  scope root: findMany on Organizer with a client where
+        -> {"where":{"name":{"contains":"a"}}}
+DIFFER  to-many include with a forced where
+        parse    -> {}
+        delegate -> {"include":{"events":{"where":{"isPublished":{"equals":true}}}}}
+AGREE   to-many include, client tries its own where
+        parse    -> THROW ShapeError status=400: Invalid query on model "Organizer": include.events.where.isPublished: Unrecognized key(s): equals
+        delegate -> THROW ShapeError status=400: Invalid query on model "Organizer": include.events.where.isPublished: Unrecognized key(s): equals
+DIFFER  to-one relation in select
+        parse    -> {}
+        delegate -> {"select":{"id":true,"event":{"select":{"title":true}}}}
+AGREE   to-one relation with a where in the shape
+        parse    -> THROW ShapeError status=400: Relation "event" on model "Ticket" is to-one. Only "select" and "include" are supported for to-one nested reads, not where/orderBy/cursor/take/skip.
+        delegate -> THROW ShapeError status=400: Relation "event" on model "Ticket" is to-one. Only "select" and "include" are supported for to-one nested reads, not where/orderBy/cursor/take/skip.
+
+=== A3 §7 — relation write config ===
+DELEGATE-ONLY  connect: true
+        delegate -> THROW ShapeError status=400: connect config on "Event.tickets" must be an object of unique selectors
+DELEGATE-ONLY  connect: { id: true }
+        delegate -> {"data":{"title":"Gala","venue":"Hall","startsAt":"2026-09-01T00:00:00.000Z","tickets":{"connect":{"id":"t1"}}}}
+
+=== A3 §8 — parse() vs delegate, and reads-only ===
+DIFFER  projection: parse() vs delegate (expected to DIFFER)
+        parse    -> {}
+        delegate -> {"select":{"id":true,"title":true}}
+DIFFER  mutation shape passed to guard.query()
+        parse    -> THROW ShapeError status=400: Caller key "where" collides with reserved shape config key. Rename the caller path.
+        delegate -> {"data":{"title":"x"},"where":{"id":"e1"}}
+
+########## verify:wrong-api (verify-wrong-api.ts) ##########
+=== DATA SHAPES — create ===
+THROW create, only client fields
+      -> ShapeError status=400
+      -> Unknown shape config key "name"
+THROW create, client sends the forced field with a DIFFERENT value
+      -> ShapeError status=400
+      -> Unknown shape config key "name"
+THROW create, client sends the forced field with the SAME value
+      -> ShapeError status=400
+      -> Unknown shape config key "name"
+THROW create, field absent from the data shape
+      -> ShapeError status=400
+      -> Unknown shape config key "name"
+THROW create, missing a required field
+      -> ShapeError status=400
+      -> Unknown shape config key "name"
+THROW create, inline refine violated
+      -> ShapeError status=400
+      -> Unknown shape config key "name"
+THROW create, @zod violated on another model
+      -> ShapeError status=400
+      -> Unknown shape config key "email"
+THROW create, @zod satisfied
+      -> ShapeError status=400
+      -> Unknown shape config key "email"
+THROW create, projection not in shape
+      -> ShapeError status=400
+      -> Unknown shape config key "name"
+THROW create, projection allowed by shape
+      -> ShapeError status=400
+      -> Caller key "select" collides with reserved shape config key. Rename the caller path.
+
+=== DATA SHAPES — update / bulk / upsert / relations ===
+THROW update with where + data
+      -> ShapeError status=400
+      -> Caller key "where" collides with reserved shape config key. Rename the caller path.
+THROW update, data key not in shape
+      -> ShapeError status=400
+      -> Caller key "where" collides with reserved shape config key. Rename the caller path.
+THROW update, where key not in shape
+      -> ShapeError status=400
+      -> Caller key "where" collides with reserved shape config key. Rename the caller path.
+THROW updateMany without where in shape
+      -> ShapeError status=400
+      -> Unknown shape config key "isPublished"
+THROW updateMany with where in shape
+      -> ShapeError status=400
+      -> Caller key "where" collides with reserved shape config key. Rename the caller path.
+THROW updateMany, body without where
+      -> ShapeError status=400
+      -> Caller key "where" collides with reserved shape config key. Rename the caller path.
+THROW deleteMany with where shape
+      -> TypeError status=undefined
+      -> Cannot read properties of undefined (reading 'has')
+THROW upsert with data instead of create/update
+      -> ShapeError status=400
+      -> Caller key "where" collides with reserved shape config key. Rename the caller path.
+THROW upsert correct
+      -> ShapeError status=400
+      -> Caller key "where" collides with reserved shape config key. Rename the caller path.
+THROW createMany with a single object
+      -> ShapeError status=400
+      -> Unknown shape config key "name"
+THROW createMany with an array
+      -> ShapeError status=400
+      -> Unknown shape config key "name"
+THROW relation write: connect allowed by shape
+      -> ShapeError status=400
+      -> Unknown shape config key "status"
+THROW relation write: nested create not in shape
+      -> ShapeError status=400
+      -> Unknown shape config key "status"
+
+=== READS — projection, ordering, pagination, context ===
+THROW findUnique, non-unique where
+      -> ShapeError status=400
+      -> findUnique on model "Plant" requires unique where shape to cover a unique constraint using Prisma unique selector syntax: id
+PASS  findUnique, unique where
+      -> {"where":{"email":"a@b.com"}}
+THROW groupBy without by
+      -> ShapeError status=400
+      -> groupBy shape must define "by"
+PASS  groupBy with by
+      -> {"by":["isPublished"]}
+PASS  nested include with forced where (to-many)
+      -> {}
+THROW nested include, client widens the nested take
+      -> ShapeError status=400
+      -> Invalid query on model "Nursery": include.plants.take: Number must be <= 20
+PASS  to-one relation in select, no forced where possible
+      -> {}
+THROW orderBy field not in shape
+      -> ShapeError status=400
+      -> Invalid query on model "Plant": orderBy: No matching variant (branch 1: [Unrecognized key(s): priceCents] | branch 2: [Expected array])
+PASS  orderBy allowed
+      -> {"orderBy":{"name":"desc"}}
+THROW skip not enabled in shape
+      -> ShapeError status=400
+      -> Invalid query on model "Plant": Unrecognized key(s): skip
+PASS  skip enabled
+      -> {"skip":5}
+THROW distinct not in shape
+      -> ShapeError status=400
+      -> Invalid query on model "Plant": Unrecognized key(s): distinct
+PASS  take omitted, shape default applied
+      -> {"take":3}
+PASS  take omitted, no default in shape
+      -> {}
+PASS  context-dependent shape
+      -> {"where":{"nurseryId":{"equals":"n-42"}}}
+THROW context-dependent shape, ctx missing
+      -> PolicyError status=403
+      -> Context required for shape function

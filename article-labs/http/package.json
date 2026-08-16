@@ -1,0 +1,26 @@
+{
+  "name": "prisma-generator-express-http-lab",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "prisma generate",
+    "db:push": "prisma db push --skip-generate",
+    "typecheck": "tsc --noEmit",
+    "verify": "tsx verify.mts",
+    "results": "tsx verify.mts --check"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "express": "5.1.0",
+    "prisma-generator-express": "1.64.4",
+    "prisma-guard": "1.33.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.3",
+    "prisma": "6.19.3",
+    "tsx": "4.23.8",
+    "typescript": "5.9.2"
+  }
+}

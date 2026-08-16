@@ -1,0 +1,20 @@
+title: Prisma Generator Express Series
+short_title: Prisma Express Series
+description: Verified guides to prisma-generator-express and prisma-guard.
+url: https://multipliedtwice.github.io
+baseurl: /prisma-generator-express
+repository: multipliedtwice/prisma-generator-express
+lang: en
+markdown: kramdown
+highlighter: rouge
+permalink: pretty
+strict_front_matter: true
+
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+exclude:
+  - vendor
+  - Gemfile
+  - Gemfile.lock
