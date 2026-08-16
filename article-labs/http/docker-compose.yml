@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16.6-bookworm
+    environment:
+      POSTGRES_DB: generator_lab
+      POSTGRES_USER: generator_lab
+      POSTGRES_PASSWORD: generator_lab
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U generator_lab -d generator_lab"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  runner:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://generator_lab:generator_lab@postgres:5432/generator_lab?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy

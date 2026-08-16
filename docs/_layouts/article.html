@@ -1,0 +1,32 @@
+---
+layout: default
+---
+{% assign article = site.data.series | where: "id", page.article_id | first %}
+{% assign article_count = site.data.series | size %}
+<nav class="series-crumb" aria-label="Series position">
+  <a href="{{ '/' | relative_url }}">Prisma Generator Express Series</a>
+  <span aria-hidden="true">/</span>
+  <span>Article {{ article.number }} of {{ article_count }}</span>
+</nav>
+
+<article class="article-body">
+  {{ content }}
+</article>
+
+<nav class="article-nav" aria-label="Article navigation">
+  <div>
+    {% if article.previous_id %}
+      {% assign previous_article = site.data.series | where: "id", article.previous_id | first %}
+      <span class="article-nav__label">Previous</span>
+      <a rel="prev" href="{{ previous_article.url | relative_url }}">{{ previous_article.title }}</a>
+    {% endif %}
+  </div>
+  <a class="article-nav__home" href="{{ '/' | relative_url }}">All articles</a>
+  <div class="article-nav__next">
+    {% if article.next_id %}
+      {% assign next_article = site.data.series | where: "id", article.next_id | first %}
+      <span class="article-nav__label">Next</span>
+      <a rel="next" href="{{ next_article.url | relative_url }}">{{ next_article.title }}</a>
+    {% endif %}
+  </div>
+</nav>

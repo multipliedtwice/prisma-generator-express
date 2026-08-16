@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="{{ site.lang | default: 'en' }}">
+  <head>
+    {% assign article = site.data.series | where: "id", page.article_id | first %}
+    {% assign meta_title = page.title | default: site.title %}
+    {% assign meta_description = page.description | default: site.description %}
+    {% if article %}
+      {% assign meta_title = article.title %}
+      {% assign meta_description = article.description %}
+    {% endif %}
+    {% assign canonical_url = page.url | absolute_url %}
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if page.url == '/' %}{{ site.title | escape }}{% else %}{{ meta_title | escape }} · {{ site.short_title | escape }}{% endif %}</title>
+    <meta name="description" content="{{ meta_description | strip_html | normalize_whitespace | escape }}">
+    <meta name="robots" content="index,follow">
+    <link rel="canonical" href="{{ canonical_url }}">
+    <meta property="og:site_name" content="{{ site.title | escape }}">
+    <meta property="og:title" content="{{ meta_title | escape }}">
+    <meta property="og:description" content="{{ meta_description | strip_html | normalize_whitespace | escape }}">
+    <meta property="og:type" content="{% if article %}article{% else %}website{% endif %}">
+    <meta property="og:url" content="{{ canonical_url }}">
+    <meta name="twitter:card" content="summary">
+    <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "{% if article %}TechArticle{% else %}CollectionPage{% endif %}",
+        "name": {{ meta_title | jsonify }},
+        "headline": {{ meta_title | jsonify }},
+        "description": {{ meta_description | jsonify }},
+        "url": {{ canonical_url | jsonify }},
+        "isPartOf": {
+          "@type": "CreativeWorkSeries",
+          "name": {{ site.title | jsonify }},
+          "url": {{ '/' | absolute_url | jsonify }}
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <div class="shell site-header__inner">
+        <a class="site-title" href="{{ '/' | relative_url }}">{{ site.short_title }}</a>
+        <nav class="site-nav" aria-label="Site">
+          <a href="{{ '/' | relative_url }}">Series</a>
+          <a href="https://github.com/multipliedtwice/prisma-generator-express">Generator</a>
+          <a href="https://github.com/multipliedtwice/prisma-guard">Guard</a>
+        </nav>
+      </div>
+    </header>
+    <main id="content" class="shell main-content">
+      {{ content }}
+    </main>
+    <footer class="site-footer">
+      <div class="shell">
+        <p>Verified guides for <a href="https://github.com/multipliedtwice/prisma-generator-express">prisma-generator-express</a> and <a href="https://github.com/multipliedtwice/prisma-guard">prisma-guard</a>.</p>
+      </div>
+    </footer>
+  </body>
+</html>

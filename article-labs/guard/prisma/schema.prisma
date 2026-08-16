@@ -1,0 +1,88 @@
+generator guard {
+  provider = "prisma-guard"
+  output   = "../generated/guard"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// @scope-root
+model Nursery {
+  id     String  @id @default(cuid())
+  name   String
+  plants Plant[]
+  orders Order[]
+}
+
+model Plant {
+  id          String   @id @default(cuid())
+  name        String
+  /// @zod .max(2000)
+  description String?
+  priceCents  Int
+  isPublished Boolean  @default(false)
+  isDeleted   Boolean  @default(false)
+  tags        String[]
+  createdAt   DateTime @default(now())
+  nurseryId   String
+  nursery     Nursery  @relation(fields: [nurseryId], references: [id])
+  orderItems  OrderItem[]
+}
+
+model Customer {
+  id     String  @id @default(cuid())
+  /// @zod .email()
+  email  String  @unique
+  name   String?
+  orders Order[]
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  status     String      @default("draft")
+  total      Int         @default(0)
+  createdAt  DateTime    @default(now())
+  nurseryId  String
+  nursery    Nursery     @relation(fields: [nurseryId], references: [id])
+  customerId String
+  customer   Customer    @relation(fields: [customerId], references: [id])
+  items      OrderItem[]
+}
+
+model OrderItem {
+  id       String @id @default(cuid())
+  quantity Int
+  orderId  String
+  order    Order  @relation(fields: [orderId], references: [id])
+  plantId  String
+  plant    Plant  @relation(fields: [plantId], references: [id])
+}
+
+/// @scope-root
+model Organizer {
+  id     String  @id @default(cuid())
+  name   String
+  events Event[]
+}
+
+model Event {
+  id          String    @id @default(cuid())
+  title       String
+  venue       String
+  startsAt    DateTime
+  isPublished Boolean   @default(false)
+  isCancelled Boolean   @default(false)
+  organizerId String
+  organizer   Organizer @relation(fields: [organizerId], references: [id])
+  tickets     Ticket[]
+}
+
+model Ticket {
+  id         String @id @default(cuid())
+  priceCents Int
+  tier       String
+  eventId    String
+  event      Event  @relation(fields: [eventId], references: [id])
+}
