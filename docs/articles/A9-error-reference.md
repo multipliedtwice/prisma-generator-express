@@ -350,7 +350,7 @@ This is the strict half of the forced-value rule: `mode` is a forced key sharing
 
 **Cause.** `isPublished` is **forced** in the data shape, and forced fields are removed from the client-facing schema. The client may not send them at all — not even the same value the server would have used.
 
-This is worth internalizing, because the behavior is *not* symmetric with `where`: a wholly-forced top-level `where` predicate accepts the same field and discards it silently. That asymmetry, and the four positions it does not apply to, are covered in [It didn't error, and the result is still wrong](./A10-silent-behaviors.md).
+This is worth internalizing, because the behavior is *not* symmetric with `where`: a wholly-forced top-level `where` predicate accepts the same field and discards it silently. That asymmetry, and the four positions it does not apply to, are covered in [When Prisma Returns 200 but the Result Is Wrong](./A10-silent-behaviors.md).
 
 **Fix.** Delete the field from the client payload. If the client legitimately decides it, it is `true` in the shape, not forced.
 
