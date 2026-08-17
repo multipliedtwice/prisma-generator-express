@@ -4,9 +4,9 @@ article_id: A2
 permalink: /articles/tenant-query-leaks/
 ---
 
-A freight platform exposes `Shipment`, `Carrier`, and `Broker` records. Every request belongs to one broker. Most tenant leaks in a query API do not begin with an exotic database bug. They begin when a rule is expressed in a place that the query executor does not consistently use.
+A freight platform exposes `Shipment`, `Carrier`, and `Broker` records. Every request belongs to one broker, and one broker must never see another broker's data. Most leaks do not begin with an unusual database bug. They begin when a tenant rule trusts the wrong input, protects only part of a query, or disappears in one execution path.
 
-The fixes below prefer guard shapes and automatic scope where those mechanisms cover the rule. Two cases cannot be represented by a shape: genuinely disjunctive ownership and authorization that requires a database read. Those require an application query or database policy. The point is to put each rule in a layer that actually enforces it, not to force every rule into configuration.
+This guide shows seven leak paths and the test that catches each one. It uses guard shapes and automatic scope when they can express the rule. Two cases need normal application code or a database policy: an ownership rule with a real `OR`, and authorization that requires a database read. The goal is simple: put every rule where it is actually enforced.
 
 Terms used throughout the series:
 
@@ -415,7 +415,7 @@ Record the generated map in deterministic lab output. Compare every schema model
 
 The test is a build assertion, not telemetry. It runs against generated artifacts and produces no runtime instrumentation.
 
-## Bonus: passing E2E after the guard was dropped
+## 8. Testing control: keep guard validation active in E2E
 
 **Run security-contract tests through the real guard even when browser E2E drops it.**
 
@@ -482,7 +482,7 @@ Use this minimum matrix. The first seven rows correspond to the seven leak bound
 |---|---|---|
 | tenant identity | authenticated broker A, client mentions broker B | emitted predicate and two-tenant result |
 | disjunction | owned row, shared row, unrelated row | complete server-authored `OR` and result set |
-| hook usage | same read through GET and POST | `article-labs/http/` GET/POST row-count result |
+| hook usage | same read through GET and POST | `lab-http` GET/POST row-count result |
 | id authorization | authorized id differs from executed id | generated write rejects from `req.body.where.id`, or one purpose-built handler authorizes and executes |
 | variant routing | exact, pattern, blank, unknown, ambiguous | matched declared key or exact `CallerError` |
 | nested projection | parent safe, nested relation discriminating fixture | emitted nested predicate and result set |
