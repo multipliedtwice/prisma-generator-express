@@ -4,9 +4,18 @@ article_id: A7
 permalink: /articles/reads-at-scale/
 ---
 
-Generated reads are not one mechanism. A normal `findMany` has one database result. `findManyPaginated` combines rows with a total. A POST read changes how arguments cross HTTP without changing the operation. Progressive Server-Sent Events change when parts of one response reach the browser. Each choice has a separate correctness boundary.
+Large read endpoints need different tools for different problems. A normal `findMany` returns one database result. `findManyPaginated` returns rows with a total. A POST read carries a large query in the request body instead of the URL. Server-Sent Events (SSE) can send parts of a response as they become ready. Each option solves a different problem and needs a different test.
 
-This article uses `prisma-generator-express` 1.64.4, `prisma-guard` 1.33.0, Prisma 6.19.3, Node 22.14.0, and PostgreSQL 16.6. The HTTP examples are reproduced by `article-labs/http/`, which generates real Express routers and runs them through the normal Prisma query engine against PostgreSQL. The source READMEs define the supported contract; the lab records the concrete output used below.
+This article uses `prisma-generator-express` 1.64.4, `prisma-guard` 1.33.0, Prisma 6.19.3, Node 22.14.0, and PostgreSQL 16.6. The HTTP examples are reproduced by `lab-http/`, which generates real Express routers and runs them through the normal Prisma query engine against PostgreSQL. The source READMEs define the supported contract; the lab records the concrete output used below.
+
+Choose the route from the problem you need to solve:
+
+| Need | Choose |
+|---|---|
+| rows only | normal JSON read |
+| rows, total, and forward `hasMore` | paginated read |
+| query is too large for a URL | POST read |
+| useful partial data can arrive early | Server-Sent Events (SSE) |
 
 The example domain is a delivery history with three models:
 
@@ -511,14 +520,14 @@ Finally, test hooks separately from SSE patching. The verified after-hook runs f
 
 ## Reproduction appendix
 
-The complete environment is in `article-labs/http/`. It pins the Node runner and dependency versions, starts PostgreSQL 16 through Docker Compose, generates promise-all and transaction routers, applies the schema, replaces all fixture rows, creates the discriminating materialized view, and compares normalized output with `RESULTS.txt`.
+The complete environment is in `lab-http/`. It pins the Node runner and dependency versions, starts PostgreSQL 16 through Docker Compose, generates promise-all and transaction routers, applies the schema, replaces all fixture rows, creates the discriminating materialized view, and compares normalized output with `RESULTS.txt`.
 
 ```sh
-cd article-labs/http
+cd lab-http
 docker compose build
 docker compose up -d --wait postgres
 docker compose run --rm runner
 docker compose down -v
 ```
 
-The runner executes `tsc --noEmit` before the database and HTTP checks. A changed output makes the `RESULTS.txt` comparison exit non-zero. The Prisma query engine is downloaded during the image build and is the normal runtime engine; this lab does not use the no-op stub from `article-labs/guard/`.
+The runner executes `tsc --noEmit` before the database and HTTP checks. A changed output makes the `RESULTS.txt` comparison exit non-zero. The Prisma query engine is downloaded during the image build and is the normal runtime engine; this lab does not use the no-op stub from `lab/`.

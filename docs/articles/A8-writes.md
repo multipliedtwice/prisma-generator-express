@@ -4,9 +4,9 @@ article_id: A8
 permalink: /articles/writes/
 ---
 
-Generated write endpoints accept Prisma-shaped arguments. A guard shape then decides which values the client may provide, which values the server pins, which nested operations exist, and whether a bulk request is constrained enough to run.
+Generated write endpoints accept Prisma-style arguments. A guard shape decides which values the client may send, which values the server controls, which nested writes exist, and whether a bulk update or delete is narrow enough to run.
 
-Those rules deliberately fail closed. A create shape must account for every required field. A bulk mutation needs `where` in two different places. An upsert is not a create or update shape with a different method name. A nested relation write does not inherit top-level tenant scope.
+These rules reject unsafe or incomplete configurations. A create shape must cover every required field. A bulk mutation needs `where` in two places. An upsert needs separate create and update rules. A nested relation write does not inherit the top-level tenant filter.
 
 The examples use subscription billing:
 
@@ -737,6 +737,6 @@ Do not duplicate the same policy as a hook assignment. The generated Zod default
 
 ## Reproduction appendix
 
-Run `cd article-labs/guard && npm run results` to reproduce the guard-level create completeness, forced-data, bulk-shape, empty-resolved-where, forced-only-where, upsert, and scope arguments cited here. `writeStrategy`, HTTP response types, provider support, and 501 behavior come from the current generator README and require a real provider to exercise; this shape-only lab does not claim to execute them.
+Run `cd lab && npm run results` to reproduce the guard-level create completeness, forced-data, bulk-shape, empty-resolved-where, forced-only-where, upsert, and scope arguments cited here. `writeStrategy`, HTTP response types, provider support, and 501 behavior come from the current generator README and require a real provider to exercise; this shape-only lab does not claim to execute them.
 
 Documentation sources: [`prisma-generator-express` README](https://github.com/multipliedtwice/prisma-generator-express/blob/master/README.md) and [`prisma-guard` README](https://github.com/multipliedtwice/prisma-guard/blob/main/README.md).

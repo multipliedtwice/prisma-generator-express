@@ -4,7 +4,7 @@ article_id: A3
 permalink: /articles/force-and-boundaries/
 ---
 
-A guard shape looks like a description of a query. It is closer to a description of *who decides what*. Every leaf in it answers one question — does the client choose this value, or does the server?
+A guard shape may look like a Prisma query, but it answers a simpler question: who chooses each value? The client chooses some values. The server owns the rest.
 
 ```ts
 { status: true }              // the client chooses
@@ -13,7 +13,9 @@ A guard shape looks like a description of a query. It is closer to a description
 { status: (base) => base.max(20) } // the client chooses, within a rule
 ```
 
-That is the whole vocabulary. The interesting part is what "the server chose" means at runtime: two different things, depending on *where in the shape the forced value sits* — and one of them is not what the documentation says.
+That is the whole vocabulary. The tricky part is what happens when a client sends a server-owned value. One position silently replaces the client value. Four positions reject it. The result depends on where `force()` appears in the shape, not only on the value itself.
+
+By the end, you will know how to place a forced value, when the client receives a 400, how Boolean operators move forced conditions, and how to test the final Prisma arguments.
 
 Examples use an event-ticketing schema:
 
@@ -79,7 +81,7 @@ where: { isPublished: { equals: force(true) } }
 
 The wrong form fails at shape construction:
 
-```
+```text
 Operator "value" not supported for type "Boolean"
 ```
 
@@ -127,7 +129,7 @@ where: { title: { contains: true, mode: 'insensitive' } }
 
 Here `contains` is the client's and `mode` is the server's, in the same object. The forced key is removed from the client-facing schema, so a client that sends it is rejected:
 
-```
+```text
 Invalid query on model "Event": where.title: Unrecognized key(s): mode
 ```
 
@@ -140,7 +142,7 @@ where: { organizer: { is: { id: { equals: force(ctx.organizerId) } } } }
 where: { tickets: { some: { tier: { equals: force('vip') } } } }
 ```
 
-```
+```text
 Invalid query on model "Event": where.organizer.is.id: Unrecognized key(s): equals
 Invalid query on model "Event": where.tickets.some.tier: Unrecognized key(s): equals
 ```
@@ -158,7 +160,7 @@ include: {
 }
 ```
 
-```
+```text
 Invalid query on model "Organizer": include.events.where.isCancelled: Unrecognized key(s): equals
 ```
 
@@ -183,7 +185,7 @@ create: {
 }
 ```
 
-```
+```text
 Invalid data for create on model "Event": Unrecognized key(s): isPublished
 ```
 
@@ -191,7 +193,7 @@ Invalid data for create on model "Event": Unrecognized key(s): isPublished
 
 Upsert splits this across its two halves and says which one it means:
 
-```
+```text
 Invalid data for upsert (create) on model "Event": Unrecognized key(s): isPublished
 ```
 
@@ -230,7 +232,7 @@ No error in any case. The forced value wins silently.
 
 The check does exist — it runs somewhere else. A conflict *inside the shape config*, between a top-level force and a force in a combinator, throws at construction:
 
-```
+```text
 Conflicting forced where values for "isPublished.equals": shape defines both true and false
 ```
 
@@ -314,7 +316,9 @@ The proof that it left the combinator is an empty request. An `OR` branch would 
 
 Forced values restrict, never broaden. So a genuinely disjunctive rule — "events I organize **or** events that are public" — cannot be expressed with forced values: lifting turns it into a conjunction that matches almost nothing.
 
-The rule has to live somewhere the guard is not doing the narrowing. Three choices, in the order worth trying them: model the rule as a single scoping column, so the disjunction collapses to an equality the shape *can* force; write a purpose-built handler that composes and issues the query itself, with the disjunction authored server-side; or enforce the policy in the database. The middle option is the one to be careful with — writing the handler is what enforces the rule, and it is now your code's job rather than the guard's.
+The rule has to live somewhere the guard is not doing the narrowing. Three choices, in the order worth trying them: model the rule as a single scoping column, so the disjunction collapses to an equality the shape *can* force; write a purpose-built handler that composes and issues the query itself, with the disjunction authored server-side; or enforce the policy in the database.
+
+Be careful with the middle option. Writing the handler is what enforces the rule, and it is now your code's job rather than the guard's.
 
 ### `NOT` is the exception to the merge, and it changes shape
 
@@ -370,13 +374,13 @@ create: {
 
 Failures are reported per field, and the message names the model and operation:
 
-```
+```text
 Invalid data for create on model "Event": venue: String must contain at most 120 character(s)
 ```
 
 `startsAt` is listed for a reason that has nothing to do with forcing: a create shape has to be *complete*. If a required field has no client entry, no schema default, no scope FK injection, no relation write and no `@zod .default(...)` or `.catch(...)` directive, the shape is rejected at construction — before any request is examined — with a message that lists the escape hatches:
 
-```
+```text
 Required field "venue" on model "Event" is missing from create data shape, has no default,
 is not a scope FK, and is not covered by a relation write in the shape
 ```
@@ -411,7 +415,9 @@ A new row is always unpublished; an existing row's `isPublished` is untouched be
 
 Four boundaries worth knowing before you rely on one. Three of them are visible in emitted args, so they are shown that way rather than asserted.
 
-**Nested reads, to-many.** A relation loaded through `include`/`select` is not tenant-filtered by the scope extension. For a to-many relation the mitigation is a forced `where` inside the include shape, and it does what you would hope — the guarded delegate emits it whether or not the client asked:
+### Nested to-many reads
+
+A relation loaded through `include`/`select` is not tenant-filtered by the scope extension. For a to-many relation the mitigation is a forced `where` inside the include shape, and it does what you would hope — the guarded delegate emits it whether or not the client asked:
 
 ```json
 {"include":{"events":{"where":{"isPublished":{"equals":true}}}}}
@@ -423,15 +429,23 @@ It is also a strict position, so the client cannot supply that field itself:
 Invalid query on model "Organizer": include.events.where.isPublished: Unrecognized key(s): equals
 ```
 
-**Nested reads, to-one.** Here the mitigation does not exist, and the guard says so outright rather than ignoring the attempt:
+### Nested to-one reads
+
+Here the mitigation does not exist, and the guard says so outright rather than ignoring the attempt:
 
 ```text
 Relation "event" on model "Ticket" is to-one. Only "select" and "include" are supported for to-one nested reads, not where/orderBy/cursor/take/skip.
 ```
 
-A to-one relation is reached through the foreign key on the row you already returned, so there is no collection to filter — *which* row comes back is fixed by that key. That is not the same as the access decision being settled: returning the row is still a separate projection, and still a separate authorization decision. What the missing `where` removes is your ability to make that decision in the shape. The options are to omit the relation, restrict its scalars with a nested `select`, or enforce the constraint in the database. This message is a `ShapeError` at 400 and comes from the shape, not the request: a shape written this way fails the first time it is built, not on some later unlucky request.
+A to-one relation is reached through the foreign key on the row you already returned, so there is no collection to filter. The foreign key fixes *which* row comes back. It does not decide whether the caller may see that row.
 
-**Relation filters are not lifted — and `none` is refused outright.** A forced value inside `some` stays inside `some`; it is not pulled to the top level the way a combinator member is:
+The missing `where` means the shape cannot make that access decision. Omit the relation, restrict its fields with a nested `select`, or enforce the rule in the database.
+
+This message is a `ShapeError` at 400 and comes from the shape, not the request. A shape written this way fails the first time it is built, not on a later request.
+
+### Relation filters are not lifted
+
+A forced value inside `some` stays inside `some`; it is not pulled to the top level the way a combinator member is:
 
 ```json
 {"where":{"tickets":{"some":{"tier":{"equals":"vip"}}}}}
@@ -451,7 +465,11 @@ That is the behavior you want: a relation-scoped rule stays attached to the rela
 Relation filter "tickets.none" on model "Event" mixes client-controlled and forced conditions. Under negative relation operators (none, isNot), merging weakens the filter. Either move forced conditions to a separate top-level "none" branch, or make all conditions under this operator client-controlled or all forced.
 ```
 
-The reasoning is sound — under a negation, AND-ing an extra condition into the client's filter makes the exclusion *narrower*, which quietly weakens the rule the forced value was there to enforce. But the message describes a mixture, and the check fires without one. A shape whose `none` contains a single forced condition and no client-controlled key anywhere in it throws the same error, and it throws with an empty request body, so this is shape construction rather than validation. The final clause of the message — "or make all conditions under this operator client-controlled or all forced" — describes a shape that 1.33.0 does not actually accept.
+The reasoning is sound. Under a negation, adding an `AND` condition makes the exclusion narrower. That quietly weakens the rule the forced value was meant to enforce.
+
+The message still describes the wrong trigger. A `none` shape with one forced condition and no client-controlled key throws the same error. It also throws with an empty request body, so this is shape construction rather than request validation.
+
+The final advice in the message—make all conditions forced—does not work in 1.33.0. That all-forced shape is the case that throws.
 
 The same forced conditions under `some` and `every` build and run normally, which is what tells you the check is specific to negative operators rather than to your shape. The cleanest demonstration is the to-one pair — same relation, same forced condition, opposite operator:
 
@@ -472,7 +490,9 @@ Operator "isNot" not supported for to-many relation "tickets". Allowed: some, ev
 
 **What to do.** Put the forced condition where it will not be negated: a separate top-level predicate, or `some`/`every` phrased positively. If the rule is genuinely "no ticket of this tier", 1.33.0 will not express it declaratively at all — the message's own suggested remedy, an all-forced block under the operator, is the case that throws. Check this against your own version before designing around it; of everything in this article it is the likeliest to have moved.
 
-**Relation writes.** Forced values do not describe a `connect`. The shape configures which relation operations are permitted and what identifies the target:
+### Relation writes
+
+Forced values do not describe a `connect`. The shape configures which relation operations are permitted and what identifies the target:
 
 ```ts
 // wrong
@@ -485,7 +505,9 @@ data: { tickets: { connect: { id: true } } }
 
 Restricting to `connect`/`disconnect` means a client can only reference existing rows — but *which* rows is not something `force()` can pin. Ownership of the connected id is a hook's job.
 
-**Scope roots.** The `@scope-root` model is not scoped to itself, and the difference is plain in what the extension injects. A scoped model gets the tenant filter:
+### Scope roots
+
+The `@scope-root` model is not scoped to itself, and the difference is plain in what the extension injects. A scoped model gets the tenant filter:
 
 ```json
 {"where":{"organizerId":"org_1"}}
@@ -513,7 +535,9 @@ MAP     Organizer  -> (no scope mapping — unscoped, queries on it are not filt
 
 `Ticket`, `OrderItem`, and `Customer` are reached through a scoped parent but carry no mapping of their own, so a query that *starts* at one of them is unscoped — as is any query on a root. The scope extension adds no filter in those cases. Protect the operation with an explicit route shape, application authorization, or a database policy.
 
-**Raw SQL.** `$queryRaw` and `$executeRaw` are not intercepted by anything in this article. That one is from the `prisma-guard` README, not the harness — the lab asserts on arguments passed to a fake delegate, and raw SQL never reaches it.
+### Raw SQL
+
+`$queryRaw` and `$executeRaw` are not intercepted by anything in this article. That one is from the `prisma-guard` README, not the harness — the lab asserts on arguments passed to a fake delegate, and raw SQL never reaches it.
 
 ## 8. Testing a shape without a server
 

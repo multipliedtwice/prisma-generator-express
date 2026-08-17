@@ -1,78 +1,78 @@
 - id: A1
   number: 1
-  topic: Architecture
-  title: "A whole product API without writing an endpoint: Prisma + generated RPC routes"
-  description: Build a generated Prisma HTTP API with guarded shapes, caller variants, projection, pagination, and tenant scope.
+  topic: Getting started
+  title: "Build a Prisma CRUD API Without Writing Every Route"
+  description: Generate working CRUD routes from a Prisma schema, then add the API rules your product needs.
   url: /articles/generated-prisma-rpc-api/
   next_id: A2
 - id: A2
   number: 2
-  topic: Tenant isolation
-  title: Seven ways to leak a tenant through a query API—and the declarative fix for each
-  description: Find tenant-isolation failures in query shapes, hooks, variants, nested reads, scope maps, and dropped guards.
+  topic: Tenant safety
+  title: "7 Ways a Multi-Tenant Prisma API Can Leak Data"
+  description: Find seven common tenant-isolation mistakes and learn the direct fix for each one.
   url: /articles/tenant-query-leaks/
   previous_id: A1
   next_id: A3
 - id: A3
   number: 3
-  topic: Shape semantics
-  title: "force(), true, and the difference between a default and a boundary"
-  description: Understand forced Prisma values, strict positions, merge behavior, validation, scope limits, and direct shape tests.
+  topic: Guard shapes
+  title: "Prisma Guard force() Explained: Defaults vs Server Rules"
+  description: Learn when a value is a client option, a default, or a server rule that clients cannot override.
   url: /articles/force-and-boundaries/
   previous_id: A2
   next_id: A4
 - id: A4
   number: 4
-  topic: Caller routing
-  title: "One model, five audiences: caller routing with named and parameterized variants"
-  description: Route public and privileged callers to separate declared Prisma contracts without trusting client-selected headers.
+  topic: User types
+  title: "One Prisma Model, Different APIs for Every User Type"
+  description: Give public users, staff, and admins different API contracts without duplicating your model.
   url: /articles/caller-routing-variants/
   previous_id: A3
   next_id: A5
 - id: A5
   number: 5
   topic: Hooks
-  title: "When configuration runs out: hooks that narrow, hooks that enrich, hooks that must not exist"
-  description: Place generated-route hooks at the correct lifecycle boundary and keep authorization, shapes, scope, and transport behavior separate.
+  title: "When Generated Prisma Routes Need Hooks—and When They Don’t"
+  description: Use hooks for rules that shapes cannot express, and keep simple rules in configuration.
   url: /articles/hooks/
   previous_id: A4
   next_id: A6
 - id: A6
   number: 6
-  topic: Projection
-  title: "Projection is a security boundary: select, include, and the relation that carries no scope"
-  description: Protect Prisma projections across reads, mutations, nested relations, caller variants, counts, and unguarded paths.
+  topic: Response fields
+  title: "Control Prisma Responses with select and include"
+  description: Choose which fields and relations an endpoint returns, including nested data.
   url: /articles/projection-security/
   previous_id: A5
   next_id: A7
 - id: A7
   number: 7
-  topic: Read paths
-  title: "Reads at scale: pagination totals, POST reads, and streaming a page before it is complete"
-  description: Verify generated pagination, count strategies, POST reads, progressive SSE events, fallbacks, and hook behavior.
+  topic: Large reads
+  title: "Choose a Prisma Read Route: Pages, POST Queries, or Streaming"
+  description: Pick the right generated read route for normal lists, large filters, and progressive results.
   url: /articles/reads-at-scale/
   previous_id: A6
   next_id: A8
 - id: A8
   number: 8
-  topic: Write paths
-  title: "Writes: forced data, upserts, relation writes, and not deleting the table"
-  description: Guard generated Prisma writes across create, update, bulk operations, upsert, relations, projection, and provider limits.
+  topic: Writes
+  title: "Safe Prisma Writes: Create, Update, Upsert, and Delete"
+  description: Build write routes that validate input, apply server values, and avoid dangerous bulk changes.
   url: /articles/writes/
   previous_id: A7
   next_id: A9
 - id: A9
   number: 9
-  topic: Error reference
-  title: Every error this stack throws, and what actually caused it
-  description: Look up reproduced prisma-guard and prisma-generator-express errors by message, cause, and correction.
+  topic: Error help
+  title: "Fix prisma-guard Errors: A Practical Reference"
+  description: Start with the error message, find the failing step, and apply the matching correction.
   url: /articles/error-reference/
   previous_id: A8
   next_id: A10
 - id: A10
   number: 10
-  topic: Silent failures
-  title: "Silent semantics and testing traps: when no error tells you the shape is wrong"
-  description: Diagnose successful requests whose forced values, projections, scope, pagination, counts, or test mode behave unexpectedly.
+  topic: Silent bugs
+  title: "When Prisma Returns 200 but the Result Is Wrong"
+  description: Diagnose successful requests that return the wrong filters, fields, scope, count, or page.
   url: /articles/silent-behaviors/
   previous_id: A9
