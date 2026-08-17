@@ -4,9 +4,9 @@ article_id: A6
 permalink: /articles/projection-security/
 ---
 
-A query can have a perfect tenant filter and still return a private field. Filtering decides which records qualify. Projection decides which fields and related records leave the server. They are separate boundaries.
+A query can have the right tenant filter and still return a private field. A filter decides which records match. A projection—the query's `select` or `include`—decides which fields and related records leave the server. You must review both.
 
-This distinction matters in a generated API because clients can request native Prisma arguments. A response shape that accidentally exposes an internal note, an agent email, or an unrestricted relation is not repaired by a correct root `where` clause.
+This matters in a generated API because clients can send Prisma-style arguments. A correct root `where` clause does not hide an internal note, an agent email, or an unrestricted relation. The response shape must protect them separately.
 
 The examples use a helpdesk schema:
 
@@ -629,6 +629,6 @@ Build an operation inventory for sensitive models: every generated read, every r
 
 ## Reproduction appendix
 
-Run `cd article-labs/guard && npm run results` and inspect the projection rows in `RESULTS.txt`. They show read projection appearing at delegate execution but not `guard.query().parse()`, mutation projection remaining absent by default, nested forced `where`, and unscoped nested reads. HTTP `omit` compatibility and provider behavior are README-sourced rather than exercised by this no-database lab.
+Run `cd lab && npm run results` and inspect the projection rows in `RESULTS.txt`. They show read projection appearing at delegate execution but not `guard.query().parse()`, mutation projection remaining absent by default, nested forced `where`, and unscoped nested reads. HTTP `omit` compatibility and provider behavior are README-sourced rather than exercised by this no-database lab.
 
 Documentation sources: [`prisma-generator-express` README](https://github.com/multipliedtwice/prisma-generator-express/blob/master/README.md) and [`prisma-guard` README](https://github.com/multipliedtwice/prisma-guard/blob/main/README.md).
