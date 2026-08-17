@@ -4,71 +4,13 @@ article_id: A9
 permalink: /articles/error-reference/
 ---
 
-A symptom index for Prisma + `prisma-generator-express` + `prisma-guard`. No architecture argument here — just the message you got, the thing that produced it, and the fix.
+Use this page when `prisma-generator-express` or `prisma-guard` rejects a configuration or request. Find the message, check when it appeared, then apply the listed fix.
 
 Every guard message quoted here was produced by running the code against `prisma-guard` 1.33.0 / `zod` 4.4.3 / Prisma 6.19.3, not read from documentation. One exception, marked where it starts: **§6** (transport layer) comes from the `prisma-generator-express` README, because reproducing it needs a running router and a database.
 
-Error text is version-specific. The *causes* are stable; the strings drift.
+Error text can change between versions. Search for the stable part of the message and use the failure phase to narrow the cause.
 
-**This article covers what throws.** Its companion, [Silent semantics and testing traps]({{ '/articles/silent-behaviors/' | relative_url }}), covers the behaviors that produce no message at all — forced values discarded silently, a disjunction flattened, a guard dropped under `E2E=true`. Several entries here point at it.
-
-## The schema every example uses
-
-This is the nursery half of `article-labs/guard/prisma/schema.prisma`, verbatim. (The same file also holds the ticketing models used by the `force()` article; nothing here references them.) Every message quoted below was produced against these models.
-
-```prisma
-/// @scope-root
-model Nursery {
-  id     String  @id @default(cuid())
-  name   String
-  plants Plant[]
-  orders Order[]
-}
-
-model Plant {
-  id          String   @id @default(cuid())
-  name        String
-  /// @zod .max(2000)
-  description String?
-  priceCents  Int
-  isPublished Boolean  @default(false)
-  isDeleted   Boolean  @default(false)
-  tags        String[]
-  createdAt   DateTime @default(now())
-  nurseryId   String
-  nursery     Nursery  @relation(fields: [nurseryId], references: [id])
-  orderItems  OrderItem[]
-}
-
-model Customer {
-  id     String  @id @default(cuid())
-  /// @zod .email()
-  email  String  @unique
-  name   String?
-  orders Order[]
-}
-
-model Order {
-  id         String      @id @default(cuid())
-  status     String      @default("draft")
-  total      Int         @default(0)
-  createdAt  DateTime    @default(now())
-  nurseryId  String
-  nursery    Nursery     @relation(fields: [nurseryId], references: [id])
-  customerId String
-  customer   Customer    @relation(fields: [customerId], references: [id])
-  items      OrderItem[]
-}
-
-model OrderItem {
-  id       String @id @default(cuid())
-  quantity Int
-  orderId  String
-  order    Order  @relation(fields: [orderId], references: [id])
-  plantId  String
-  plant    Plant  @relation(fields: [plantId], references: [id])
-}
-```
+**This article covers what throws.** Its companion, [Silent semantics and testing traps](./A10-silent-behaviors.md), covers the behaviors that produce no message at all — forced values discarded silently, a disjunction flattened, a guard dropped under `E2E=true`. Several entries here point at it.
 
 ## Before anything else: which layer are you in?
 
@@ -390,7 +332,7 @@ These are not equivalent, and the difference is easy to get backwards:
 
 So forcing it guarantees case-insensitive matching and forbids the client from mentioning it; making it client-controlled means a client that forgets `mode` silently gets case-*sensitive* search. Pick deliberately: force it if case-insensitivity is part of the endpoint's contract, allow it if the client decides. If you force it, audit what your clients actually send — a client that includes `mode` gets a 400 rather than the behavior it asked for.
 
-This is the strict half of the forced-value rule: `mode` is a forced key sharing an object with a client-controlled operator, so it is removed from the client-facing schema. That is *not* how a wholly-forced field like `isPublished: { equals: force(true) }` behaves — that one accepts client input and silently discards it, which is the [companion article's]({{ '/articles/silent-behaviors/' | relative_url }}) first entry.
+This is the strict half of the forced-value rule: `mode` is a forced key sharing an object with a client-controlled operator, so it is removed from the client-facing schema. That is *not* how a wholly-forced field like `isPublished: { equals: force(true) }` behaves — that one accepts client input and silently discards it, which is the [companion article's](./A10-silent-behaviors.md) first entry.
 
 ### `Request cannot define both "include" and "select"`
 
@@ -408,7 +350,7 @@ This is the strict half of the forced-value rule: `mode` is a forced key sharing
 
 **Cause.** `isPublished` is **forced** in the data shape, and forced fields are removed from the client-facing schema. The client may not send them at all — not even the same value the server would have used.
 
-This is worth internalizing, because the behavior is *not* symmetric with `where`: a wholly-forced top-level `where` predicate accepts the same field and discards it silently. That asymmetry, and the four positions it does not apply to, are covered in [It didn't error, and the result is still wrong]({{ '/articles/silent-behaviors/' | relative_url }}).
+This is worth internalizing, because the behavior is *not* symmetric with `where`: a wholly-forced top-level `where` predicate accepts the same field and discards it silently. That asymmetry, and the four positions it does not apply to, are covered in [It didn't error, and the result is still wrong](./A10-silent-behaviors.md).
 
 **Fix.** Delete the field from the client payload. If the client legitimately decides it, it is `true` in the shape, not forced.
 
@@ -537,7 +479,65 @@ These come from the route layer, not the guard, and this whole section is source
 
 ## Appendix: reproducing any of this in 30 lines
 
-Every guard message quoted above came out of this harness — §6's transport-layer table is the exception, and needs a running router. The harness needs no database and no HTTP server, and it is the same one behind the [companion article]({{ '/articles/silent-behaviors/' | relative_url }}).
+Every guard message quoted above came out of this harness — §6's transport-layer table is the exception, and needs a running router. The harness needs no database and no HTTP server, and it is the same one behind the [companion article](./A10-silent-behaviors.md).
+
+### The schema every example uses
+
+This is the nursery half of `lab/prisma/schema.prisma`, verbatim. The same file also holds the ticketing models used by the `force()` article; nothing here references them.
+
+```prisma
+/// @scope-root
+model Nursery {
+  id     String  @id @default(cuid())
+  name   String
+  plants Plant[]
+  orders Order[]
+}
+
+model Plant {
+  id          String   @id @default(cuid())
+  name        String
+  /// @zod .max(2000)
+  description String?
+  priceCents  Int
+  isPublished Boolean  @default(false)
+  isDeleted   Boolean  @default(false)
+  tags        String[]
+  createdAt   DateTime @default(now())
+  nurseryId   String
+  nursery     Nursery  @relation(fields: [nurseryId], references: [id])
+  orderItems  OrderItem[]
+}
+
+model Customer {
+  id     String  @id @default(cuid())
+  /// @zod .email()
+  email  String  @unique
+  name   String?
+  orders Order[]
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  status     String      @default("draft")
+  total      Int         @default(0)
+  createdAt  DateTime    @default(now())
+  nurseryId  String
+  nursery    Nursery     @relation(fields: [nurseryId], references: [id])
+  customerId String
+  customer   Customer    @relation(fields: [customerId], references: [id])
+  items      OrderItem[]
+}
+
+model OrderItem {
+  id       String @id @default(cuid())
+  quantity Int
+  orderId  String
+  order    Order  @relation(fields: [orderId], references: [id])
+  plantId  String
+  plant    Plant  @relation(fields: [plantId], references: [id])
+}
+```
 
 ```ts
 import { force } from 'prisma-guard'
