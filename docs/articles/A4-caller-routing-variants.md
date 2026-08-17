@@ -4,9 +4,9 @@ article_id: A4
 permalink: /articles/caller-routing-variants/
 ---
 
-One hotel inventory model may serve a public feed, the hotel storefront, a distribution partner, a corporate booking portal, and backoffice staff. Those callers should not share one permissive query contract. `prisma-generator-express` and `prisma-guard` let one generated operation expose several named shapes and select one for each request.
+One hotel inventory model may serve a public feed, a hotel storefront, a partner, a corporate customer, and staff. Those users should not share one large set of permissions. `prisma-generator-express` and `prisma-guard` let one generated operation expose a separate contract for each user type.
 
-The important boundary is not the header itself. A header is client input. The boundary is the declared variant key selected by the router and the shape attached to that key. If choosing a more powerful key would reveal data, derive the caller on the server with `resolveVariant`. If the choices are intentionally public contracts, a header is enough.
+These contracts are called variants. A variant chooses the allowed filters, returned fields, limits, and hooks for one request. A request header may choose between public variants. A privileged variant must come from authenticated server state through `resolveVariant`; never trust a client to ask for staff access.
 
 Terms used throughout the series:
 
