@@ -4,9 +4,9 @@ article_id: A1
 permalink: /articles/generated-prisma-rpc-api/
 ---
 
-This tutorial builds the API boundary for an online plant nursery. Prisma describes the data. prisma-generator-express emits model routers. prisma-guard emits validation and tenant-scope artifacts. The application still assembles Express, authenticates requests, supplies scope context, and chooses route configuration, but it does not hand-write CRUD endpoint handlers.
+This tutorial builds a working API for an online plant nursery. Prisma describes the data. `prisma-generator-express` creates the model routes. `prisma-guard` creates validation and tenant-filtering helpers. Your application still starts Express, authenticates requests, and decides which operations are public. You do not have to hand-write every CRUD route.
 
-The result is a public plant catalog plus a seller API. Both use one generated Plant router and different named shapes. Public callers search published plants and receive a small projection. Sellers see inventory for their nursery and create plants whose publication state is pinned by the server. Tenant identity comes from authenticated request context, not the body.
+By the end, you will have a public plant catalog and a seller API. Both use one generated `Plant` router with different rules. Public users can search published plants and receive only public fields. Sellers can see their nursery's inventory and create plants whose publication state is controlled by the server. The seller's nursery id comes from authenticated request context, never from the request body.
 
 Terms used throughout the series:
 
@@ -559,11 +559,19 @@ Scope also manages mutation FKs. It injects nurseryId on create, merges the pred
 
 **Attribute every observed behavior to the layer that produced it.**
 
-The generated router decides paths, methods, GET parsing, POST body handling, caller extraction, hook order, Prisma client lookup, and HTTP error mapping. Guard decides shape construction, validation, forced-value merging, default read projection, scope injection, and guarded method execution. Prisma and the database decide whether the final query is supported and what rows it returns.
+The generated router decides paths, methods, GET parsing, POST body handling, caller extraction, hook order, Prisma client lookup, and HTTP error mapping.
 
-This separation prevents bad diagnoses. A missing caller is caller routing, not a Zod field error. An unrecognized forced data key is guard validation, not Express JSON parsing. A 500 about the absent guard extension is route wiring. A 404 is transport not-found mapping. A tenant row appearing despite correct emitted scope needs database-fixture investigation, while a missing scope predicate is already visible before execution.
+The guard decides shape construction, validation, forced-value merging, default read projection, scope injection, and guarded method execution. Prisma and the database decide whether the final query is supported and what rows it returns.
 
-The shape lab deliberately avoids a database engine. It builds DMMF-backed shapes, calls both guard entry points, captures errors, and inspects delegated args. The separate HTTP lab runs generator 1.64.4 with guard 1.33.0, Prisma 6.19.3, Node 22.14.0, and PostgreSQL 16.6. It reproduces GET/POST read equality for one filter and the POST native-type boundary: string `take` returns 400. The recorded equality proves that one pair produced the same body against seeded PostgreSQL; it does not prove every operation or arbitrary input. The full route table and encoder rules remain generator-README sourced. Neither result should be widened into claims the recorded cases do not establish.
+This separation prevents bad diagnoses. A missing caller is caller routing, not a Zod field error. An unrecognized forced data key is guard validation, not Express JSON parsing. A 500 about the absent guard extension is route wiring. A 404 is transport not-found mapping.
+
+A tenant row appearing despite correct emitted scope needs database-fixture investigation. A missing scope predicate is already visible before execution.
+
+The shape lab avoids a database engine. It builds DMMF-backed shapes, calls both guard entry points, captures errors, and inspects delegated args.
+
+The HTTP lab runs generator 1.64.4 with guard 1.33.0, Prisma 6.19.3, Node 22.14.0, and PostgreSQL 16.6. It reproduces GET/POST read equality for one filter. It also shows that a string `take` in a POST body returns 400.
+
+The equality proves only that the recorded pair produced the same result against seeded PostgreSQL. The full route table and encoder rules remain generator-README sourced. Do not extend either result beyond the cases the labs record.
 
 The HTTP lab also records the transport-dependent hook trap relevant to generated read twins: rewriting `req.body.where` narrowed POST but not GET. This tutorial therefore keeps tenant predicates in shapes and scope rather than raw body hooks. That is observed evidence for the design choice, not a claim that all hooks behave identically.
 
