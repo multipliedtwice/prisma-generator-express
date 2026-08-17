@@ -316,7 +316,9 @@ The proof that it left the combinator is an empty request. An `OR` branch would 
 
 Forced values restrict, never broaden. So a genuinely disjunctive rule — "events I organize **or** events that are public" — cannot be expressed with forced values: lifting turns it into a conjunction that matches almost nothing.
 
-The rule has to live somewhere the guard is not doing the narrowing. Three choices, in the order worth trying them: model the rule as a single scoping column, so the disjunction collapses to an equality the shape *can* force; write a purpose-built handler that composes and issues the query itself, with the disjunction authored server-side; or enforce the policy in the database. The middle option is the one to be careful with — writing the handler is what enforces the rule, and it is now your code's job rather than the guard's.
+The rule has to live somewhere the guard is not doing the narrowing. Three choices, in the order worth trying them: model the rule as a single scoping column, so the disjunction collapses to an equality the shape *can* force; write a purpose-built handler that composes and issues the query itself, with the disjunction authored server-side; or enforce the policy in the database.
+
+Be careful with the middle option. Writing the handler is what enforces the rule, and it is now your code's job rather than the guard's.
 
 ### `NOT` is the exception to the merge, and it changes shape
 
