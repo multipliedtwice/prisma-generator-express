@@ -4,17 +4,27 @@ article_id: A10
 permalink: /articles/silent-behaviors/
 ---
 
-Companion to [the error reference]({{ '/articles/error-reference/' | relative_url }}), which is a lookup for messages that throw. This one collects the opposite: behaviors that produce no message at the point where you would look for one.
+Some Prisma API mistakes return no error. The request succeeds, but the final query or response is not what the developer expected. This guide shows how to find those mistakes by checking the Prisma arguments that the guard emits.
 
-They are not all the same failure. Three kinds are mixed here deliberately, because they are found the same way — by reading emitted arguments rather than status codes:
+It is the companion to [the error reference](./A9-error-reference.md), which covers failures with an error message.
 
-- **A request succeeds and the arguments are not what the shape's author intended.** Forced values discarded silently, a disjunction flattened to a conjunction, a projection applied at a different time than expected.
-- **A behavior is correct and load-bearing, and surprises people who did not know it was there.** Read projection defaults, mutation projection *not* defaulting, a materialized count quietly stepping aside — that last one keeps the answer right and changes what it costs.
-- **A test passes and production does not.** The guard is dropped under `E2E=true`, so a shape that 400s for a real client is green in the harness.
+There are three kinds of silent surprise:
 
-The unifying property is not the status code. It is that the response alone does not tell you which of these you are looking at.
+- **The request succeeds with different Prisma arguments.** A forced value replaces client input, an `OR` becomes an `AND`, or a projection appears later than expected.
+- **The library works as designed, but the application expected something else.** Read and mutation projections have different defaults. A materialized count may fall back to a live count.
+- **The test uses a different path from production.** `E2E=true` drops guard validation, so a request that fails in production can pass in the test suite.
 
-Versions: `prisma-guard` 1.33.0, `zod` 4.4.3, Prisma 6.19.3. Examples use the Nursery/Plant subset of [A9's schema]({{ '/articles/error-reference/' | relative_url }}#the-schema-every-example-uses) — the same models, minus the ones no example here touches:
+In every case, a 200 response is not enough. Inspect the emitted arguments and use test data that makes the wrong result visible.
+
+Start with the symptom:
+
+- A client filter disappeared: check forced values.
+- An `OR` behaves like an `AND`: check where the forced condition landed.
+- A response contains extra fields: compare read and mutation projection rules.
+- A related record crosses a tenant boundary: inspect the nested relation separately.
+- A test passes while production returns 400: check whether `E2E=true` disabled validation.
+
+Versions: `prisma-guard` 1.33.0, `zod` 4.4.3, Prisma 6.19.3. Examples use the Nursery/Plant subset of [A9's schema](./A9-error-reference.md#the-schema-every-example-uses) — the same models, minus the ones no example here touches:
 
 ```prisma
 /// @scope-root
@@ -36,18 +46,7 @@ model Plant {
 }
 ```
 
-**Where each claim comes from.** This article mixes harness output with documented behavior more than A9 does, so each section says which:
-
-| Section | Evidence |
-|---|---|
-| forced-value positions, combinator lifting | run in `article-labs/guard/`; emitted arguments, both guard entry points |
-| read projection auto-apply | run in `article-labs/guard/`; the `parse()`-versus-delegate difference is observed |
-| mutation projection | run in `article-labs/guard/` for the *arguments* — no `select` is emitted. That this returns the full record is Prisma's behavior for a query with no projection, and the `enforceProjection` switch is documented in the `prisma-guard` README |
-| nested reads, scope roots, raw SQL | `prisma-guard` README |
-| pagination, materialized count | `prisma-generator-express` README |
-| `DROP_GUARD` / `E2E=true` | `prisma-generator-express` README |
-
-One limit worth stating plainly: the lab has no database and no HTTP server, so it proves which arguments would have reached Prisma. It does not prove which rows come back or what status a real request returns. Every claim below about *rows* or *status* is README-sourced, not harness-sourced.
+Each section identifies whether its claim comes from the version-pinned lab or a project README. The complete evidence map is in the appendix.
 
 ---
 
@@ -164,7 +163,9 @@ For to-many relations the mitigation is a forced `where` in the include shape. F
 
 ## `hasMore` is not always right
 
-`findManyPaginated` returns `{ data, total, hasMore }`. `hasMore` is reliable for forward offset pagination — `skip` plus a positive `take`. With cursor-based pagination or a negative `take` (backward pagination) it may be inaccurate. `take: 0` is not in that category: `hasMore` is then `false`, deterministically. And `total` is not atomic with `data` under the default `findManyPaginatedMode = "promiseAll"` — two concurrent queries, no transaction. Switch to `"transaction"` if a page number that disagrees with its own rows is a real problem for you, and accept the 500 on clients without transaction support.
+`findManyPaginated` returns `{ data, total, hasMore }`. `hasMore` is reliable for forward offset pagination: `skip` plus a positive `take`. With cursor pagination or a negative `take`, it may be inaccurate. With `take: 0`, `hasMore` is always `false`.
+
+Under the default `findManyPaginatedMode = "promiseAll"`, `total` and `data` come from two concurrent queries rather than one transaction. Use `"transaction"` if they must be consistent with each other, and accept that clients without transaction support return 500.
 
 ## Pagination defaults: who wins
 
@@ -222,6 +223,19 @@ expect(findPredicate(args.where, 'isPublished')).toEqual({ equals: true })
 
 ## Appendix
 
-The harness behind the rows marked "run in `article-labs/guard/`" in the provenance table above is described in full in the [error reference appendix]({{ '/articles/error-reference/' | relative_url }}#appendix-reproducing-any-of-this-in-30-lines): `guard.query(...).parse(body)` for read args, a fake delegate for mutations and projection, and the extension's `$allOperations` for scope injection.
+### Evidence map
+
+| Section | Evidence |
+|---|---|
+| forced-value positions and Boolean lifting | `lab/`; emitted arguments through both guard entry points |
+| read projection defaults | `lab/`; observed difference between `parse()` and delegate execution |
+| mutation projection | `lab/` verifies that no `select` is emitted; Prisma behavior and `enforceProjection` come from documentation |
+| nested reads, scope roots, and raw SQL | `prisma-guard` README |
+| pagination and materialized counts | `prisma-generator-express` README |
+| `DROP_GUARD` / `E2E=true` | `prisma-generator-express` README |
+
+The guard lab has no database or HTTP server. It proves which arguments would have reached Prisma, not which rows return or which status a real request sends. Claims about returned rows or HTTP status are README-sourced unless a section names the HTTP lab.
+
+The harness behind the `lab/` rows is described in full in the [error reference appendix](./A9-error-reference.md#appendix-reproducing-any-of-this-in-30-lines): `guard.query(...).parse(body)` for read args, a fake delegate for mutations and projection, and the extension's `$allOperations` for scope injection.
 
 What it gives you is the argument object that would have reached the database. That is the right assertion target for everything in the first two sections here, and it is not a substitute for an integration test where the claim is about returned rows or HTTP status — those rows in the table are documented behavior, and testing them needs the real thing.
