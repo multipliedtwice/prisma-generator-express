@@ -4,9 +4,9 @@ article_id: A5
 permalink: /articles/hooks/
 ---
 
-Generated routes remove repeated request plumbing. They do not remove the need for application decisions. A warehouse API still has to decide whether an operator may count stock in a location, whether a transfer crosses a boundary that needs approval, and whether a completed write should trigger a downstream action.
+Generated routes remove repeated request code. They do not remove application decisions. A warehouse API still has to decide whether a user may count stock in a location, whether a transfer needs approval, and whether a completed write should trigger more work.
 
-The first question is where that decision belongs. A shape describes the Prisma arguments a caller may express. A variant chooses a shape and a set of hooks. Scope injects top-level tenant conditions. A hook runs application code before or after the generated handler. Those are different jobs.
+The first question is where each decision belongs. A shape controls the Prisma arguments a client may send. A variant chooses one contract for the current user. Scope adds a top-level tenant filter. A hook runs application code before or after the generated handler. This guide shows when to use each tool.
 
 This article uses three warehouse models:
 
@@ -575,7 +575,9 @@ The separation can be summarized as follows:
 
 If the last row changes the request grammar, the design should usually move that behavior into a visible route or shape instead.
 
-Parameterized callers add one more reason not to reproduce routing in a hook. A raw caller such as `warehouse/42` may match the declared key `warehouse/:id`. The router stores the declared matched key separately from the raw caller, and variant hooks are selected by that declared key. A hand-written string comparison against the raw header does not implement the same precedence or ambiguity checks. When a hook needs caller identity, rely on the router's resolved variant placement or authenticated application context; do not parse path-like caller strings as if the parameter were extracted. The guard documentation states that caller parameters are routing-only and are not copied into context.
+Parameterized callers add one more reason not to reproduce routing in a hook. A raw caller such as `warehouse/42` may match the declared key `warehouse/:id`. The router stores the declared key separately from the raw caller, and variant hooks use that declared key.
+
+A hand-written comparison against the raw header does not implement the same precedence or ambiguity checks. When a hook needs caller identity, use authenticated application context. Do not parse path-like caller strings as if the parameter were extracted; caller parameters are routing-only and are not copied into context.
 
 This also keeps trust decisions explicit. `resolveVariant` is the documented place to derive caller selection from a session when the client must not choose it. A variant before-hook then performs policy for the selected audience. Combining resolution and authorization inside one hook makes it unclear whether a missing match should be a caller-routing 400 or an application authorization response.
 
