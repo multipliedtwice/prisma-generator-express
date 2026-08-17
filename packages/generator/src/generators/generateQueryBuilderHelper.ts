@@ -1,11 +1,27 @@
 import { GeneratorOptions } from '@prisma/generator-helper'
 
+/**
+ * THE EMITTED DEFAULT IS THE CONSUMER'S OWN SCHEMA, NEVER THE GENERATOR'S.
+ *
+ * This baked `options.schemaPath` — an ABSOLUTE path on the machine that ran
+ * `prisma generate` — into the generated helper as its runtime default. For a
+ * consumer that generates and runs in the same checkout that is invisible; for
+ * anyone else it is a path that does not exist, and for a generated artifact
+ * built in a staging directory it is worse than that: the directory is renamed
+ * away at adoption, so the shipped fallback can never resolve on ANY machine,
+ * including the one that produced it.
+ *
+ * `resolve(process.cwd(), 'prisma/schema.prisma')` — Prisma's own convention,
+ * relative to wherever the consumer's process runs — was already written here as
+ * the no-schemaPath branch. It is now the only default.
+ *
+ * THE EXPLICIT OVERRIDE IS UNTOUCHED: `startQueryBuilder({ schemaPath })` still
+ * wins, which is how a consumer with a different layout says so.
+ */
 export function generateQueryBuilderHelper(
-  options: Pick<GeneratorOptions, 'schemaPath'>,
+  _options?: Partial<Pick<GeneratorOptions, 'schemaPath'>>,
 ): string {
-  const schemaPath = options.schemaPath
-    ? JSON.stringify(options.schemaPath)
-    : "resolve(process.cwd(), 'prisma/schema.prisma')"
+  const schemaPath = "resolve(process.cwd(), 'prisma/schema.prisma')"
 
   return `import { spawn } from 'child_process'
 import { resolve, join, dirname } from 'path'

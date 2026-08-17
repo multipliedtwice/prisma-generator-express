@@ -120,19 +120,23 @@ describe('a dynamic shape is resolved once, and the validated value travels on',
     expect(out).toContain(
       'await resolveGuardShapeOnce(opConfig.guardShape, resolvedKey, resolveCtx)',
     )
-    expect(out).toContain('effectiveShape = resolution.shape')
+    expect(out).toContain(
+      'effectiveShape = isPlainObject(resolution.shape) ? resolution.shape : opConfig.guardShape',
+    )
 
     // Resolution is the OPT-IN path, on its own control. Without it the raw shape
     // is passed through as upstream does, so nothing resolves twice there either.
     expect(out).toContain('if (policy.validateResolvedShapes) {')
-    expect(out).toContain('let effectiveShape: unknown = opConfig.guardShape')
+    expect(out).toContain(
+      'let effectiveShape: Record<string, unknown> | undefined = opConfig.guardShape',
+    )
   })
 
   it('hands prisma-guard the RESOLVED value, never the original shape', () => {
-    // `c.set('guardShape', …)` is what reaches `delegate.guard(ctx.guardShape, …)`.
-    expect(out).toContain("c.set('guardShape', effectiveShape)")
+    // `vars.set('guardShape', …)` is what reaches `delegate.guard(ctx.guardShape, …)`.
+    expect(out).toContain("vars.set('guardShape', effectiveShape)")
     expect(out, 'the unresolved shape is still passed downstream').not.toContain(
-      "c.set('guardShape', opConfig.guardShape)",
+      "vars.set('guardShape', opConfig.guardShape)",
     )
   })
 
@@ -284,7 +288,7 @@ describe('variant resolution is settled before any operation hook runs', () => {
     const start = out.indexOf('const handleRead =')
     const body = out.slice(start, out.indexOf('const handleWrite =', start))
 
-    expect(body.indexOf("c.get('guardVariantKey')")).toBeGreaterThan(
+    expect(body.indexOf("(c as unknown as HandlerContext).get('guardVariantKey')")).toBeGreaterThan(
       body.indexOf('if (SETTLE_BEFORE_HOOKS) settleGuard(c)'),
     )
     expect(body).toContain('variantHooks')

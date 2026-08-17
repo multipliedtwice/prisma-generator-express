@@ -4,6 +4,17 @@
   "version": "1.65.2",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./guard-options": {
+      "types": "./dist/guardOptions.d.ts",
+      "default": "./dist/guardOptions.js"
+    },
+    "./package.json": "./package.json"
+  },
   "license": "MIT",
   "bin": "dist/bin.js",
   "engines": {

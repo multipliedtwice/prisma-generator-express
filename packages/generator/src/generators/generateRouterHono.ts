@@ -205,13 +205,15 @@ const _env = getEnv()
 // which is upstream behaviour. See generateRouterHono.ts.
 const DROP_GUARD = ${dropGuard}
 
-type JsonLike =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonLike[]
-  | { [k: string]: JsonLike }
+/**
+ * DELIBERATELY NOT RECURSIVE.
+ *
+ * A self-referential JSON type sent through \`c.json()\` makes Hono's response
+ * inference instantiate without a fixed point, and TypeScript answers
+ * "type instantiation is excessively deep" — in the emitted file, for every
+ * consumer. One level is all this needs: the value is serialised, not walked.
+ */
+type JsonLike = string | number | boolean | null | unknown[] | Record<string, unknown>
 
 type OperationConfigLike<TEnv extends HonoEnvBase> = {
   before?: HonoBeforeHook<TEnv>[]
@@ -304,17 +306,30 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
   const dropGuard = DROP_GUARD || (policy.allowE2EGuardBypass && _env.E2E === 'true')
 
   return async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<void> => {
+    /**
+     * INTERNAL REQUEST STATE IS SET THROUGH A CONCRETE CONTEXT.
+     *
+     * \`GeneratedHonoEnv<TEnv>['Variables']\` is \`HonoInternalVariables & TEnv['Variables']\`,
+     * and inside this generic function TypeScript cannot know that the consumer's
+     * half does not also declare \`routeConfig\` — so setting that key straight
+     * onto \`c\` is unassignable to the intersection and the emitted router does not
+     * typecheck under \`strict\` for ANY consumer. These keys belong to this
+     * router, so they are written through the internal shape they were declared
+     * in.
+     */
+    const vars = c as unknown as HandlerContext
+
     const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
-    if (merged) c.set('routeConfig', { pagination: merged })
+    if (merged) vars.set('routeConfig', { pagination: merged })
 
     const headerName = config.guard?.variantHeader || 'x-api-variant'
     const headerValue = c.req.header(headerName)
     const caller = config.guard?.resolveVariant?.(c) ?? headerValue ?? undefined
-    if (typeof caller === 'string') c.set('guardCaller', caller)
+    if (typeof caller === 'string') vars.set('guardCaller', caller)
 
     const resolution = resolveOperationVariantKey(opConfig.guardRouting, caller)
     if (!resolution.ok) {
-      c.set('guardVariantFailure', resolution)
+      vars.set('guardVariantFailure', resolution)
       return
     }
 
@@ -322,11 +337,11 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
       opConfig.guardRouting.kind === 'named'
         ? resolution.key
         : undefined
-    if (resolvedKey !== undefined) c.set('guardVariantKey', resolvedKey)
+    if (resolvedKey !== undefined) vars.set('guardVariantKey', resolvedKey)
 
     if (opConfig.guardShape) {
       const resolveCtx = typeof config.resolveContext === 'function'
-        ? () => (config.resolveContext as (ctx: Context<GeneratedHonoEnv<TEnv>>) => unknown | Promise<unknown>)(c)
+        ? () => (config.resolveContext as unknown as (ctx: Context<GeneratedHonoEnv<TEnv>>) => unknown | Promise<unknown>)(c)
         : undefined
 
       /**
@@ -339,18 +354,20 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
        * behaviour: it is resolved at the point of use, and a function returning
        * something unusable is not this router's business to refuse.
        */
-      let effectiveShape: unknown = opConfig.guardShape
+      let effectiveShape: Record<string, unknown> | undefined = opConfig.guardShape
       if (policy.validateResolvedShapes) {
         const resolution = await resolveGuardShapeOnce(opConfig.guardShape, resolvedKey, resolveCtx)
         if (!resolution.ok) {
-          c.set('guardShapeFailure', resolution.problem)
+          vars.set('guardShapeFailure', resolution.problem)
           return
         }
-        effectiveShape = resolution.shape
+        // \`ok\` means the resolved value is a shape object; the fallback keeps the
+        // declared shape rather than storing something the context cannot hold.
+        effectiveShape = isPlainObject(resolution.shape) ? resolution.shape : opConfig.guardShape
       }
 
       if (!dropGuard) {
-        c.set('guardShape', effectiveShape)
+        vars.set('guardShape', effectiveShape)
       } else {
         await applyDroppedGuard(
           effectiveShape,
@@ -358,24 +375,24 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
           resolveCtx,
           opKind,
           {
-            readQuery: c.get('parsedQuery'),
-            writeBody: isPlainObject(c.get('body'))
-              ? (c.get('body') as Record<string, unknown>)
+            readQuery: vars.get('parsedQuery'),
+            writeBody: isPlainObject(vars.get('body'))
+              ? (vars.get('body') as Record<string, unknown>)
               : undefined,
           },
           () => {
-            let target = c.get('parsedQuery')
+            let target = vars.get('parsedQuery')
             if (!target) {
               target = {}
-              c.set('parsedQuery', target)
+              vars.set('parsedQuery', target)
             }
             return target
           },
           () => {
-            let target = c.get('body')
+            let target = vars.get('body')
             if (!isPlainObject(target)) {
               target = {}
-              c.set('body', target)
+              vars.set('body', target)
             }
             return target as Record<string, unknown>
           },
@@ -454,7 +471,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
         '${modelName}',
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
-        config as RouteConfig,
+        config as unknown as Parameters<typeof buildModelOpenApi>[3],
         { format: 'json', writeStrategy: '${writeStrategy}' },
       )
     }
@@ -467,14 +484,14 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
         '${modelName}',
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
-        config as RouteConfig,
+        config as unknown as Parameters<typeof buildModelOpenApi>[3],
         { format: 'yaml', writeStrategy: '${writeStrategy}' },
       ) as string
     }
     return _openApiYamlCache
   }
 
-  if (config.queryBuilder && config.queryBuilder !== false && _env.NODE_ENV !== 'production') {
+  if (config.queryBuilder && _env.NODE_ENV !== 'production') {
     console.warn(
       '[${modelName}Router] queryBuilder config is present but Hono target does not auto-start it. ' +
       'Run \`npx prisma-query-builder-ui\` in a separate process.',
@@ -482,7 +499,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
   }
 
   app.onError((err, c) => {
-    return sendError(c as HandlerContext, err)
+    return sendError(c as unknown as HandlerContext, err)
   })
 
   if (!openApiDisabled) {
@@ -512,14 +529,15 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
    * that branch is inert rather than merely unreached when it is off.
    */
   const settleGuard = (c: Context<GeneratedHonoEnv<TEnv>>): void => {
-    const failure = c.get('guardVariantFailure')
+    const vars = c as unknown as HandlerContext
+    const failure = vars.get('guardVariantFailure')
     if (failure) {
       throw new HTTPException(400, {
         message: formatGuardVariantResolutionError(failure),
       })
     }
 
-    const shapeFailure = c.get('guardShapeFailure')
+    const shapeFailure = vars.get('guardShapeFailure')
     if (shapeFailure) {
       throw new HTTPException(500, {
         message: 'guard shape could not be resolved: ' + shapeFailure,
@@ -546,7 +564,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
       // Upstream order: hooks first, guard failure after.
       if (!SETTLE_BEFORE_HOOKS) settleGuard(c)
 
-      const key = c.get('guardVariantKey')
+      const key = (c as unknown as HandlerContext).get('guardVariantKey')
       const variantHooks =
         key !== undefined ? opConfig.variantHooks[key] : undefined
 
@@ -581,7 +599,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
       // Upstream order: hooks first, guard failure after.
       if (!SETTLE_BEFORE_HOOKS) settleGuard(c)
 
-      const key = c.get('guardVariantKey')
+      const key = (c as unknown as HandlerContext).get('guardVariantKey')
       const variantHooks =
         key !== undefined ? opConfig.variantHooks[key] : undefined
 

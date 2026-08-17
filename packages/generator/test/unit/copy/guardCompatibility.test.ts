@@ -232,7 +232,9 @@ describe('the emitted router keeps the 1.64.1 runtime shape', () => {
   it('passes the raw shape through when the flag is off', () => {
     // 1.64.1 resolved a function shape at the point of use. Pre-resolving it for
     // everyone would change how many times a consumer's function is called.
-    expect(out).toContain('let effectiveShape: unknown = opConfig.guardShape')
+    expect(out).toContain(
+      'let effectiveShape: Record<string, unknown> | undefined = opConfig.guardShape',
+    )
     expect(out).toContain('if (policy.validateResolvedShapes) {')
   })
 

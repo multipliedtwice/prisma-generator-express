@@ -38,6 +38,13 @@ export type HonoInternalVariables = {
   guardCaller?: string
   guardVariantKey?: string
   guardVariantFailure?: Extract<GuardVariantResolution, { ok: false }>
+  /**
+   * Set when `validateResolvedShapes` refuses what a shape function returned.
+   *
+   * It was written by the router and never declared here, so the emitted router
+   * failed to typecheck at exactly the line that implements the control.
+   */
+  guardShapeFailure?: string
   resultData?: unknown
   resultStatus?: number
 }
