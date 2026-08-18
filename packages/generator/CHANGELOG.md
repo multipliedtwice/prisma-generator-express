@@ -1,3 +1,10 @@
+# [1.66.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.65.2...v1.66.0) (2026-08-18)
+
+
+### Features
+
+* **generator:** enhance type safety and exports in Hono router and query builder ([2ce9d72](https://github.com/multipliedtwice/prisma-generator-express/commit/2ce9d723665468e680992998b957da231d9c1cd0))
+
 ## [1.65.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.65.1...v1.65.2) (2026-08-16)
 
 
