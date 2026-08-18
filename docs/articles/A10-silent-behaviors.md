@@ -6,6 +6,8 @@ permalink: /articles/silent-behaviors/
 
 Some Prisma API mistakes return no error. The request succeeds, but the final query or response is not what the developer expected. This guide shows how to find those mistakes by checking the Prisma arguments that the guard emits.
 
+> **Project context.** This is maintainer-written documentation for the current open-source implementation. The examples are instructional and lab-backed; they are not reports of broad adoption or production history.
+
 It is the companion to [the error reference](./A9-error-reference.md), which covers failures with an error message.
 
 There are three kinds of silent surprise:
@@ -52,7 +54,7 @@ Each section identifies whether its claim comes from the version-pinned lab or a
 
 ## A forced value sometimes rejects the client that sends it, and sometimes silently discards it
 
-The most surprising behavior in the stack, and the one people generalize wrongly. There is exactly one lenient case:
+This position-dependent behavior has exactly one lenient case:
 
 **Lenient — a top-level `where` field whose predicate is *entirely* forced.** The field stays in the client-facing schema; whatever the client sends for it is thrown away.
 
@@ -80,7 +82,7 @@ Same for forced strings and numbers: a shape of `name: { contains: 'fern' }` aga
 
 **The rule, stated once.** A wholly-forced scalar predicate at the top level of `where` is *merged*. Forced values anywhere else — a modifier beside a client operator, a relation-filter member, a nested `include`'s `where`, a `data` field — are *removed*, and sending them is a 400.
 
-**In practice.** A frontend sending its own tenant id into a top-level forced filter keeps working for years and proves nothing: the server was overriding it, and would have overridden a foreign id identically. Against a relation-scoped shape the same frontend 400s on the first request — so migrating a client onto a forced scope means *removing* the field from the payload, not correcting it.
+**In this example.** A frontend sending its own tenant id into a top-level forced filter keeps succeeding and proves nothing: the server overrides it, and would override a foreign id identically. Against a relation-scoped shape the same frontend 400s on the first request—so moving a client onto a forced scope means *removing* the field from the payload, not correcting it.
 
 **For tests:** sending a foreign id and asserting only that the request succeeded passes whether or not the forcing exists — as does asserting against fixtures where both outcomes look alike. Make it discriminating (two tenants, both with rows, assert on what comes back) and it does distinguish them: without the force, the client's foreign id is what reaches Prisma. Asserting on emitted args tests the same thing without the database.
 
@@ -125,7 +127,7 @@ Worth knowing when reading someone else's shape: the sibling form and the nested
 
 An assertion that indexes `where.NOT.isCancelled` therefore passes until the first client `NOT` arrives. A3 §5 has the shape that produces both.
 
-**The consequence people miss:** a genuinely disjunctive scope — "rows where I am the buyer **or** the seller" — cannot be expressed with forced values. Lifting turns it into "buyer AND seller", which matches almost nothing. It has to be expressed somewhere else: a single scoping column that collapses the rule to an equality, a purpose-built handler that runs the query itself, or a database-level policy.
+**Consequence:** a genuinely disjunctive scope — "rows where I am the buyer **or** the seller" — cannot be expressed with forced values. Lifting turns it into "buyer AND seller", which matches almost nothing. It has to be expressed somewhere else: a single scoping column that collapses the rule to an equality, a purpose-built handler that runs the query itself, or a database-level policy.
 
 ## The shape's projection is applied when the client omits `select`
 
