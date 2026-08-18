@@ -6,6 +6,8 @@ permalink: /articles/caller-routing-variants/
 
 One hotel inventory model may serve a public feed, a hotel storefront, a partner, a corporate customer, and staff. Those users should not share one large set of permissions. `prisma-generator-express` and `prisma-guard` let one generated operation expose a separate contract for each user type.
 
+> **Project context.** This is maintainer-written documentation for the current open-source implementation. The examples are instructional and lab-backed; they are not reports of broad adoption or production history.
+
 These contracts are called variants. A variant chooses the allowed filters, returned fields, limits, and hooks for one request. A request header may choose between public variants. A privileged variant must come from authenticated server state through `resolveVariant`; never trust a client to ask for staff access.
 
 Terms used throughout the series:
@@ -277,7 +279,7 @@ The direct parser reports `Caller key "select" collides with reserved shape conf
 
 The bare words `create` and `update` are reserved because they are upsert branch keys. Full paths such as `/admin/create` and `/api/room/update` are unaffected; only the bare keys collide.
 
-There is a second common cause for this message: passing one direct shape where an API expects a named map. The runtime reads top-level `where` or `select` as if it were a caller key. Check the expected nesting before renaming a legitimate shape field.
+A second cause for this message is passing one direct shape where an API expects a named map. The runtime reads top-level `where` or `select` as if it were a caller key. Check the expected nesting before renaming a legitimate shape field.
 
 ## 6. Derive public variants from frontend routes carefully
 
