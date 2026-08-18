@@ -6,6 +6,8 @@ permalink: /articles/force-and-boundaries/
 
 A guard shape may look like a Prisma query, but it answers a simpler question: who chooses each value? The client chooses some values. The server owns the rest.
 
+> **Project context.** This is maintainer-written documentation for the current open-source implementation. The examples are instructional and lab-backed; they are not reports of broad adoption or production history.
+
 ```ts
 { status: true }              // the client chooses
 { status: 'published' }       // the server chose, at deploy time
@@ -147,7 +149,7 @@ Invalid query on model "Event": where.organizer.is.id: Unrecognized key(s): equa
 Invalid query on model "Event": where.tickets.some.tier: Unrecognized key(s): equals
 ```
 
-Rejected whether the client sends the *right* value or a foreign one. Tenant scoping usually lives here, which is why teams who scope through a relation come away believing forced values are always strict.
+Rejected whether the client sends the *right* value or a foreign one. A relation-scoped example can therefore make forced values look universally strict even though the top-level case behaves differently.
 
 ### Strict: anything in a nested `include`
 
@@ -201,7 +203,7 @@ Invalid data for upsert (create) on model "Event": Unrecognized key(s): isPublis
 
 > A wholly-forced scalar predicate at the top level of `where` is **merged** — the client may send the field and its input is silently discarded. Forced values anywhere else — a modifier beside a client operator, a relation-filter member, a nested `include`'s `where`, a `data` field — are **removed** from the client-facing schema, and sending them is a 400.
 
-There is exactly one lenient position, and it is the one people reach for first when adding a filter to a list endpoint.
+There is exactly one lenient position: a wholly forced scalar predicate at the top level of `where`.
 
 Every **read** case above ran through both entry points — `guard.query(...).parse(body)` and `prisma.event.guard(shape).findMany(body)` — and they agree. The `data`-shape row is delegate-only, since `guard.query()` accepts read methods only. Four cases elsewhere do *not* agree, and all are findings rather than defects: three are projection auto-apply, two of those on nested projections, and the fourth is a mutation shape passed to `guard.query()`. All of them are §8.
 
@@ -246,7 +248,7 @@ await expect(request(app).get('/event').query({ where: { organizerId: { equals: 
   .rejects.toThrow()
 ```
 
-The request succeeds and returns correctly-scoped rows, so the assertion fails, so the developer "fixes" it by asserting a 200 and moves on believing the scope was tested. It was not.
+The request succeeds and returns correctly scoped rows, so the assertion fails. Changing the test to expect 200 would still not prove that scope was enforced.
 
 Worth reporting upstream: either the runtime should reject a conflicting client value, or that README sentence should say the check is shape-only. Until then, treat the runtime as the specification.
 
@@ -520,7 +522,7 @@ The scope root gets nothing at all — an unfiltered `findMany` on `Organizer` s
 {"where":{"name":{"contains":"a"}}}
 ```
 
-Which is correct: there is no column on `Organizer` that says which organizer it belongs to. It is also the boundary people are most surprised by, because models that *do* have a generated scope mapping are filtered automatically and the difference is invisible at the call site. Check the generated `SCOPE_MAP` rather than assuming. Across the two schemas in the lab it maps three models and no others, which the harness records rather than leaving to the article:
+Which is correct: there is no column on `Organizer` that says which organizer it belongs to. This boundary is easy to miss because models that *do* have a generated scope mapping are filtered automatically and the difference is invisible at the call site. Check the generated `SCOPE_MAP` rather than assuming. Across the two schemas in the lab it maps three models and no others, which the harness records rather than leaving to the article:
 
 ```text
 MAP     Plant      -> [{"fk":"nurseryId","root":"Nursery","relationName":"nursery"}]
