@@ -6,6 +6,8 @@ permalink: /articles/projection-security/
 
 A query can have the right tenant filter and still return a private field. A filter decides which records match. A projection—the query's `select` or `include`—decides which fields and related records leave the server. You must review both.
 
+> **Project context.** This is maintainer-written documentation for the current open-source implementation. The examples are instructional and lab-backed; they are not reports of broad adoption or production history.
+
 This matters in a generated API because clients can send Prisma-style arguments. A correct root `where` clause does not hide an internal note, an agent email, or an unrestricted relation. The response shape must protect them separately.
 
 The examples use a helpdesk schema:
@@ -137,7 +139,7 @@ Prisma's three projection forms have different meanings:
 | `include` | return relations in addition to all scalar fields |
 | `omit` | exclude named scalar fields |
 
-For a public or customer response, `select` is usually the clearest boundary because a newly added model field stays absent until someone deliberately opens it.
+For a public or customer response, `select` keeps a newly added model field absent until someone deliberately opens it.
 
 ```ts
 // right for a customer-facing endpoint
