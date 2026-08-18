@@ -6,6 +6,8 @@ permalink: /articles/writes/
 
 Generated write endpoints accept Prisma-style arguments. A guard shape decides which values the client may send, which values the server controls, which nested writes exist, and whether a bulk update or delete is narrow enough to run.
 
+> **Project context.** This is maintainer-written documentation for the current open-source implementation. The examples are instructional and lab-backed; they are not reports of broad adoption or production history.
+
 These rules reject unsafe or incomplete configurations. A create shape must cover every required field. A bulk mutation needs `where` in two places. An upsert needs separate create and update rules. A nested relation write does not inherit the top-level tenant filter.
 
 The examples use subscription billing:
@@ -583,7 +585,7 @@ const updateShape = (ctx) => ({
 
 At least one declared unique selector is still required. The non-unique condition narrows the mutation; it does not make a non-unique `where` valid for a unique method. For compound uniqueness, use Prisma's generated compound selector object or its configured constraint name.
 
-This distinction prevents a common repair error: seeing a bulk safety failure and copying `{ equals: true }` into an upsert. The operation families have separate shape grammars even though both keys are named `where`.
+This distinction prevents a tempting repair error: seeing a bulk safety failure and copying `{ equals: true }` into an upsert. The operation families have separate shape grammars even though both keys are named `where`.
 
 ## 11. Configure scope-relation writes explicitly
 
@@ -667,7 +669,7 @@ Use discriminating fixtures for outcome tests. Two billing accounts should both 
 
 Returning mutation shapes can define `select` or `include`. By default those declarations validate only a projection the client actually sends. If a client omits projection, Prisma receives none and returns its normal full payload. This is deliberately different from reads, whose shape projection auto-applies.
 
-For billing records, relying on every caller to request a safe field list is usually the wrong boundary. Configure the guard once:
+For billing records, relying on every caller to request a safe field list leaves omission able to widen the returned record. Configure the guard once:
 
 ```prisma
 generator guard {
