@@ -6,6 +6,8 @@ permalink: /articles/generated-prisma-rpc-api/
 
 This tutorial builds a working API for an online plant nursery. Prisma describes the data. `prisma-generator-express` creates the model routes. `prisma-guard` creates validation and tenant-filtering helpers. Your application still starts Express, authenticates requests, and decides which operations are public. You do not have to hand-write every CRUD route.
 
+> **Project context.** This is maintainer-written documentation for the current open-source implementation. The examples are instructional and lab-backed; they are not reports of broad adoption or production history.
+
 By the end, you will have a public plant catalog and a seller API. Both use one generated `Plant` router with different rules. Public users can search published plants and receive only public fields. Sellers can see their nursery's inventory and create plants whose publication state is controlled by the server. The seller's nursery id comes from authenticated request context, never from the request body.
 
 Terms used throughout the series:
@@ -511,7 +513,7 @@ Pin versions and regenerate before interpreting diffs. Current lab versions are 
 
 **Register only operations the product intends to support.**
 
-The route table describes capability, not a recommended public surface. A catalog often needs findMany, findFirst, findUnique, count, and selected seller writes. It may not need aggregate, groupBy, bulk mutation, or delete at all. When an operation is absent from config and enableAll is false, the router does not register it. That is a stronger and simpler result than registering an operation and hoping every caller fails later.
+The route table describes capability, not a recommended public surface. This example catalog needs findMany, findFirst, findUnique, count, and selected seller writes. It does not need aggregate, groupBy, bulk mutation, or delete. When an operation is absent from config and enableAll is false, the router does not register it. That is a stronger and simpler result than registering an operation and hoping every caller fails later.
 
 Review each write independently. createMany and updateMany behavior can change under the schema-wide writeStrategy option. regular uses Prisma's normal non-returning methods and returns count. throwOnNonReturning disables those generated endpoints and direct calls return 501. forceReturn invokes returning counterparts and returns record arrays where the provider supports them. It does not change deleteMany. This tutorial does not need those strategies, so it should not enable bulk writes accidentally.
 
@@ -529,7 +531,7 @@ The public list shape contains four distinct policy kinds. name.contains is clie
 
 Client-control tests send accepted and rejected keys. A shape allows only configured fields and operators. It is not enough to send one happy value; send a sibling field that should be absent and assert the 400. For mode, test omission and explicit input because forced and client-controlled configurations differ exactly on those requests.
 
-Forced-state tests inspect final args. When the client filters another field, forced where commonly becomes an AND branch. When the client touches the same field, force may merge flat into that operator. Forced values inside AND and OR lift into top-level AND. Forced NOT is kept as a separate logical branch and can change from object to array when the client also sends NOT. A recursive predicate search is more stable than indexing args.where.isPublished.
+Forced-state tests inspect final args. When the client filters another field, forced where can become an AND branch. When the client touches the same field, force may merge flat into that operator. Forced values inside AND and OR lift into top-level AND. Forced NOT is kept as a separate logical branch and can change from object to array when the client also sends NOT. A recursive predicate search is more stable than indexing args.where.isPublished.
 
 Projection tests use guarded execution or resolve planning, not parse alone. The lab verifies that parse returns no synthesized select while the delegate receives the default select. A client may narrow within the whitelist, but it cannot widen beyond it. The public projection should have an exact-key canary test so adding a Prisma field does not silently expose it.
 
