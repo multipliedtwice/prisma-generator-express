@@ -4,7 +4,9 @@ article_id: A7
 permalink: /articles/reads-at-scale/
 ---
 
-Large read endpoints need different tools for different problems. A normal `findMany` returns one database result. `findManyPaginated` returns rows with a total. A POST read carries a large query in the request body instead of the URL. Server-Sent Events (SSE) can send parts of a response as they become ready. Each option solves a different problem and needs a different test.
+Read endpoints can need separate tools for pagination, oversized query transport, and progressive delivery. A normal `findMany` returns one database result. `findManyPaginated` returns rows with a total. A POST read carries a large query in the request body instead of the URL. Server-Sent Events (SSE) can send parts of a response as they become ready. Each option solves a different problem and needs a different test.
+
+> **Project context.** This is maintainer-written documentation for the current open-source implementation. The examples are instructional and lab-backed; they are not reports of broad adoption or production history.
 
 This article uses `prisma-generator-express` 1.64.4, `prisma-guard` 1.33.0, Prisma 6.19.3, Node 22.14.0, and PostgreSQL 16.6. The HTTP examples are reproduced by `lab-http/`, which generates real Express routers and runs them through the normal Prisma query engine against PostgreSQL. The source READMEs define the supported contract; the lab records the concrete output used below.
 
@@ -94,7 +96,7 @@ The lab's forward-offset request uses `take: 2`, `skip: 1`, and an ascending id 
 
 `hasMore` has a narrower contract than `total`. The generator README calls it reliable only for forward offset pagination: `skip` plus a positive `take`. Cursor pagination and negative `take` can produce a boolean, but the boolean may be inaccurate. The lab makes that distinction concrete. Its cursor request and backward request both happen to return `hasMore: true`; neither result widens the documented guarantee.
 
-Do not convert that observation into a cursor protocol. For a cursor UI, use the returned rows and a cursor-specific continuation design owned by the application. For backward pagination, make direction explicit in that design. `hasMore` remains usable as documented for the common forward-offset case.
+Do not convert that observation into a cursor protocol. For a cursor UI, use the returned rows and a cursor-specific continuation design owned by the application. For backward pagination, make direction explicit in that design. `hasMore` remains usable as documented for the forward-offset case.
 
 There is another boundary: `total` describes the count strategy, not necessarily a transactionally identical moment. That depends on the schema-wide execution mode.
 
@@ -136,7 +138,7 @@ The two values have different failure and consistency behavior:
 | `promiseAll` | root `findMany` and count run concurrently | not atomic under concurrent writes | works without `$transaction` |
 | `transaction` | both operations run inside one interactive transaction | `data` and `total` share the transaction | HTTP 500, no fallback |
 
-The default is `promiseAll`. It favors throughput and compatibility. A write can commit between the row query and count query, so `data.length`, `total`, and the state another request sees need not describe one database snapshot.
+The default is `promiseAll`. It runs the row and count queries concurrently and does not require transaction support. A write can commit between the row query and count query, so `data.length`, `total`, and the state another request sees need not describe one database snapshot.
 
 `transaction` favors a consistent page envelope. The lab generates a second router from the same schema with this block:
 
