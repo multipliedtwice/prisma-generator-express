@@ -4,7 +4,9 @@ article_id: A2
 permalink: /articles/tenant-query-leaks/
 ---
 
-A freight platform exposes `Shipment`, `Carrier`, and `Broker` records. Every request belongs to one broker, and one broker must never see another broker's data. Most leaks do not begin with an unusual database bug. They begin when a tenant rule trusts the wrong input, protects only part of a query, or disappears in one execution path.
+A freight platform exposes `Shipment`, `Carrier`, and `Broker` records. Every request belongs to one broker, and one broker must never see another broker's data. A leak does not need an unusual database bug. It can begin when a tenant rule trusts the wrong input, protects only part of a query, or disappears in one execution path.
+
+> **Project context.** This is maintainer-written documentation for the current open-source implementation. The examples are instructional and lab-backed; they are not reports of broad adoption or production history.
 
 This guide shows seven leak paths and the test that catches each one. It uses guard shapes and automatic scope when they can express the rule. Two cases need normal application code or a database policy: an ownership rule with a real `OR`, and authorization that requires a database read. The goal is simple: put every rule where it is actually enforced.
 
@@ -185,7 +187,7 @@ Seed three rows: owned, shared but not owned, and neither owned nor shared. The 
 
 ### Symptom
 
-A team mutates `req.body.where` in a `before` hook and assumes the generated handler will execute the modified filter. One transport path appears to narrow correctly, while another path or a later generator version does not.
+Suppose a `before` hook mutates `req.body.where` and the application assumes the generated handler will execute the modified filter. One transport path may appear to narrow correctly while another path, or a later generator version, does not.
 
 ### Wrong
 
