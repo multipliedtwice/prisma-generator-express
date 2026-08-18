@@ -6,6 +6,8 @@ permalink: /articles/error-reference/
 
 Use this page when `prisma-generator-express` or `prisma-guard` rejects a configuration or request. Find the message, check when it appeared, then apply the listed fix.
 
+> **Project context.** This is maintainer-written documentation for the current open-source implementation. The examples are instructional and lab-backed; they are not reports of broad adoption or production history.
+
 Every guard message quoted here was produced by running the code against `prisma-guard` 1.33.0 / `zod` 4.4.3 / Prisma 6.19.3, not read from documentation. One exception, marked where it starts: **§6** (transport layer) comes from the `prisma-generator-express` README, because reproducing it needs a running router and a database.
 
 Error text can change between versions. Search for the stable part of the message and use the failure phase to narrow the cause.
@@ -115,9 +117,9 @@ variants: {
 
 **Note the class:** this one is a `ShapeError`, not a `CallerError`, even though it reads like a routing problem. It is in this section because of where it sends you looking, not because of its type.
 
-**Cause.** This is usually not about callers at all. You passed a **single shape** where a **named map** was expected, so the guard read its top-level keys (`where`, `data`, `select`, …) as variant names. It also fires when a named map legitimately contains a reserved word as a variant name.
+**Cause.** This may not be about callers at all. You passed a **single shape** where a **named map** was expected, so the guard read its top-level keys (`where`, `data`, `select`, …) as variant names. It also fires when a named map legitimately contains a reserved word as a variant name.
 
-The most common way to trigger it: calling `guard.query()` with a mutation shape. `guard.query()` accepts read methods only — `findMany`, `findFirst`, `findFirstOrThrow`, `findUnique`, `findUniqueOrThrow`, `count`, `aggregate`, `groupBy`. Mutations run through the extension: `prisma.plant.guard(shape).create(args)`.
+One direct way to trigger it is calling `guard.query()` with a mutation shape. `guard.query()` accepts read methods only — `findMany`, `findFirst`, `findFirstOrThrow`, `findUnique`, `findUniqueOrThrow`, `count`, `aggregate`, `groupBy`. Mutations run through the extension: `prisma.plant.guard(shape).create(args)`.
 
 ```ts
 // wrong
@@ -177,7 +179,7 @@ The same strictness applies to `cursor`, `having`, `_count` in object form, `_av
 
 ### `Conflicting forced where values for "isPublished.equals": shape defines both true and false`
 
-**Cause.** The same field and operator carry different forced values in two places in one shape — typically a top-level force plus a force inside a combinator.
+**Cause.** The same field and operator carry different forced values in two places in one shape — for example, a top-level force plus a force inside a combinator.
 
 ```ts
 // wrong
@@ -263,7 +265,7 @@ All of these start with `Invalid query on model "X":` and end with a Zod-derived
 
 ### `Invalid query on model "Plant": where: Unrecognized key(s): priceCents`
 
-**Cause.** The client filtered on a field the shape does not expose. This is the single most common 400 in normal operation, and it is the system working.
+**Cause.** The client filtered on a field the shape does not expose. This is the boundary working as configured.
 
 **Fix.** If the filter is legitimate, add it to the shape — `priceCents: { gte: true, lte: true }`. If it is not, the client is asking for something it should not have.
 
@@ -287,7 +289,7 @@ All of these start with `Invalid query on model "X":` and end with a Zod-derived
 
 ### `Invalid query on model "Plant": take: Expected number`
 
-**Cause.** `take: "10"` — a string. This is the classic GET-versus-POST trap. Scalar coercion is uneven by design, and it is worth knowing exactly where it applies:
+**Cause.** `take: "10"` — a string. This version-pinned case shows why GET and POST inputs need separate tests. Scalar coercion is uneven by design, and it is worth knowing exactly where it applies:
 
 | Sent value | Field | Result |
 |---|---|---|
@@ -303,7 +305,7 @@ All of these start with `Invalid query on model "X":` and end with a Zod-derived
 
 ### `Invalid query on model "Plant": where.isPublished: No matching variant (branch 1: [equals: Expected boolean] | branch 2: [Expected boolean])`
 
-**Cause.** Zod union failure, most often a string where a scalar belongs. Read the branches as "the two shapes this value could have had": the operator-object form (`{ equals: true }`) and the shorthand form (`true`).
+**Cause.** Zod union failure—for example, a string where a scalar belongs. Read the branches as "the two shapes this value could have had": the operator-object form (`{ equals: true }`) and the shorthand form (`true`).
 
 ### `Invalid query on model "Plant": orderBy: No matching variant (branch 1: [Unrecognized key(s): priceCents] | branch 2: [Expected array])`
 
@@ -406,7 +408,7 @@ Note the interaction: if your shape forces a condition, `{ "where": {} }` in the
 
 ### `prisma-guard: Missing scope context for model "Plant": roots "Nursery" not provided. All scope roots must be present.`
 
-**Cause.** The context function returned nothing for a scope root on a scoped model. Usually one of: the request never entered the `AsyncLocalStorage` scope, an unauthenticated request reached a scoped route, or the context function read a header that was absent.
+**Cause.** The context function returned nothing for a scope root on a scoped model. Check whether the request entered the `AsyncLocalStorage` scope, whether an unauthenticated request reached a scoped route, and whether the context function read an absent header.
 
 **Behavior differs by operation and config.** With `onMissingScopeContext = "error"` (the recommended setting) both reads and writes throw. With `"warn"` or `"ignore"`, **reads proceed with partial scope** — writes still throw unconditionally. That asymmetry is deliberate and it is also a footgun: a permissive setting turns a missing-context bug into a cross-tenant read instead of a 403.
 
