@@ -6,6 +6,8 @@ permalink: /articles/hooks/
 
 Generated routes remove repeated request code. They do not remove application decisions. A warehouse API still has to decide whether a user may count stock in a location, whether a transfer needs approval, and whether a completed write should trigger more work.
 
+> **Project context.** This is maintainer-written documentation for the current open-source implementation. The examples are instructional and lab-backed; they are not reports of broad adoption or production history.
+
 The first question is where each decision belongs. A shape controls the Prisma arguments a client may send. A variant chooses one contract for the current user. Scope adds a top-level tenant filter. A hook runs application code before or after the generated handler. This guide shows when to use each tool.
 
 This article uses three warehouse models:
@@ -198,7 +200,7 @@ An authorization read followed by a write is not automatically atomic. If anothe
 
 **Store preloaded application data in framework-local state and keep it out of the request body.**
 
-Hooks often need the same trusted row more than once. For example, an operation before-hook may load a warehouse and a variant before-hook may check its operating state. Express exposes `res.locals` for request-local data, and the generated router itself uses it for normalized guard state.
+A hook may need the same trusted row more than once. For example, an operation before-hook may load a warehouse and a variant before-hook may check its operating state. Express exposes `res.locals` for request-local data, and the generated router itself uses it for normalized guard state.
 
 ```ts
 const loadWarehouse = ({ findWarehouse }) => async (req, res, next) => {
@@ -346,7 +348,7 @@ Good placements depend on meaning:
 | state shared among hooks | `res.locals` / target-equivalent request context |
 | value that changes the database query | Prisma args, represented in the shape |
 
-If a custom command fundamentally changes the operation—preview transfer, approve transfer, cancel transfer—it is usually a different application action, not an extra boolean accepted by a generic Prisma endpoint. Give it a purpose-built route or handler. That keeps generated operations native to Prisma's argument grammar and makes the action visible in authorization review.
+If a custom command fundamentally changes the operation—preview transfer, approve transfer, cancel transfer—treat it as a different application action, not an extra boolean accepted by a generic Prisma endpoint. Give it a purpose-built route or handler. That keeps generated operations native to Prisma's argument grammar and makes the action visible in authorization review.
 
 ## 7. Test hooks as functions, then test only the router contract that matters
 
@@ -483,7 +485,7 @@ const stockCountShape = (ctx) => ({
 
 This is the right mechanism when all required facts already exist in stable request context. The guard README recommends `AsyncLocalStorage` as the source and requires the context function to return a plain object. Dynamic shape functions must also return a plain guard shape object. Invalid context produces `PolicyError`; an invalid function result produces `ShapeError`.
 
-A hook is warranted when the application must perform work the shape function cannot express, most commonly a database lookup or an external authorization decision. Do not hide asynchronous work inside a shape function. The documented shape function is a resolver of shape structure from context, not an application workflow stage.
+A hook is warranted when the application must perform work the shape function cannot express, such as a database lookup or an external authorization decision. Do not hide asynchronous work inside a shape function. The documented shape function is a resolver of shape structure from context, not an application workflow stage.
 
 This produces a useful decision sequence:
 
@@ -573,7 +575,7 @@ The separation can be summarized as follows:
 | mounted operation and path | route configuration |
 | application lookup or side effect | hand-written documentation for the hook |
 
-If the last row changes the request grammar, the design should usually move that behavior into a visible route or shape instead.
+If the last row changes the request grammar, move that behavior into a visible route or shape instead.
 
 Parameterized callers add one more reason not to reproduce routing in a hook. A raw caller such as `warehouse/42` may match the declared key `warehouse/:id`. The router stores the declared key separately from the raw caller, and variant hooks use that declared key.
 
