@@ -64,7 +64,9 @@ const emitted = generateHonoRouterFunction({
  * `c.set` calls were never the defect. The router body — everything from the
  * shape middleware onward — is where the generic context is in scope.
  */
-const ROUTER_BODY = emitted.slice(emitted.indexOf('function makeShapeMiddleware'))
+const ROUTER_BODY = emitted.slice(
+  emitted.indexOf('function makeShapeMiddleware'),
+)
 
 const INTERNAL_KEYS = [
   'routeConfig',
@@ -82,7 +84,7 @@ describe('the emitted Hono router typechecks under strict', () => {
     for (const key of INTERNAL_KEYS) {
       expect(
         ROUTER_BODY.includes(`c.set('${key}'`),
-        `internal key "${key}" is set on the generic context`
+        `internal key "${key}" is set on the generic context`,
       ).toBe(false)
     }
   })
@@ -91,13 +93,13 @@ describe('the emitted Hono router typechecks under strict', () => {
     for (const key of INTERNAL_KEYS) {
       expect(
         ROUTER_BODY.includes(`c.get('${key}'`),
-        `internal key "${key}" is read on the generic context`
+        `internal key "${key}" is read on the generic context`,
       ).toBe(false)
     }
   })
 
   it('writes internal variables through the internal context shape', () => {
-    expect(emitted).toContain("const vars = c as unknown as HandlerContext")
+    expect(emitted).toContain('const vars = c as unknown as HandlerContext')
     expect(emitted).toContain("vars.set('routeConfig'")
     expect(emitted).toContain("vars.set('guardShapeFailure'")
   })
@@ -119,7 +121,9 @@ describe('the emitted Hono router typechecks under strict', () => {
 
   it('hands the OpenAPI builder the config type that function declares', () => {
     expect(emitted).not.toContain('config as RouteConfig')
-    expect(emitted).toContain('config as unknown as Parameters<typeof buildModelOpenApi>[3]')
+    expect(emitted).toContain(
+      'config as unknown as Parameters<typeof buildModelOpenApi>[3]',
+    )
   })
 
   /**

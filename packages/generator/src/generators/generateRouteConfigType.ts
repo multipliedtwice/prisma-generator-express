@@ -1,11 +1,14 @@
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import type { Target } from '../constants'
-import { OPERATION_METADATA, READ_OPERATION_NAMES } from '../copy/operationDefinitions'
+import {
+  OPERATION_METADATA,
+  READ_OPERATION_NAMES,
+} from '../copy/operationDefinitions'
 
-const ROUTER_OPERATIONS = OPERATION_METADATA
-  .filter((m) => m.name !== 'updateEach')
-  .map((m) => m.name)
+const ROUTER_OPERATIONS = OPERATION_METADATA.filter(
+  (m) => m.name !== 'updateEach',
+).map((m) => m.name)
 
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1)
@@ -19,9 +22,9 @@ function requestTypeFor(target: Target): string {
 
 function configGenericsFor(target: Target): string {
   if (target === 'hono') {
-    return `<TCtx = unknown, TPrisma = any, TEnv extends { Variables: Record<string, unknown> } = { Variables: Record<string, unknown> }>`
+    return `<TCtx = unknown, TPrisma extends PrismaClientLike = PrismaClientLike, TEnv extends { Variables: Record<string, unknown> } = { Variables: Record<string, unknown> }>`
   }
-  return `<TCtx = unknown, TPrisma = any>`
+  return `<TCtx = unknown, TPrisma extends PrismaClientLike = PrismaClientLike>`
 }
 
 function routeConfigBaseFor(target: Target): string {
@@ -61,14 +64,13 @@ export function generateRouteConfigType(
   const afterRef = afterHookRef(target, hookHandlerType)
   const requestType = requestTypeFor(target)
 
-  const progressiveTypeImport = supportsProgressive
+  const typeImports = supportsProgressive
     ? `import type { ProgressiveVariantConfig, ProgressiveStage } from '../routeConfig.target${ext}'\n`
     : ''
 
   if (!guardShapesImport) {
     return (
-      progressiveTypeImport +
-      `export type ${m}RouteConfig${generics} = ${baseConfig}\n`
+      typeImports + `export type ${m}RouteConfig${generics} = ${baseConfig}\n`
     )
   }
 
@@ -133,7 +135,7 @@ export function generateRouteConfigType(
   const omitKeys = ROUTER_OPERATIONS.map((k) => `'${k}'`).join('\n  | ')
 
   return (
-    progressiveTypeImport +
+    typeImports +
     `import type {\n  ${opShapeImports}\n} from '${guardShapesImport}${ext}'\n\n` +
     `${shapeOrFnAliases}\n\n` +
     `export type ${m}RouteConfig${generics} = Omit<\n` +

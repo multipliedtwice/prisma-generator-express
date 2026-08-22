@@ -16,5 +16,8 @@ export default {
     include: ['test/unit/**/*.test.ts', 'test/consumer/**/*.test.ts'],
     testTimeout: 900_000,
     hookTimeout: 900_000,
+    coverage: {
+      reporter: ['text', 'lcov'],
+    },
   },
 }

@@ -12,27 +12,32 @@ export function generateHonoHandler(options: {
 
   const readOps = OPERATION_METADATA.filter((m) => m.kind === 'read')
   const writeOps = OPERATION_METADATA.filter(
-    (m) => (m.kind === 'write' || m.kind === 'batch') && m.name !== 'updateEach',
+    (m) =>
+      (m.kind === 'write' || m.kind === 'batch') && m.name !== 'updateEach',
   )
 
-  const readHandlers = readOps.map((meta) => {
-    const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
-    return `
+  const readHandlers = readOps
+    .map((meta) => {
+      const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
+      return `
 export async function ${exportName}(c: HandlerContext): Promise<void> {
   const data = await core.${meta.coreName}(buildContext(c))
   c.set('resultData', data)
 }`
-  }).join('\n')
+    })
+    .join('\n')
 
-  const writeHandlers = writeOps.map((meta) => {
-    const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
-    return `
+  const writeHandlers = writeOps
+    .map((meta) => {
+      const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
+      return `
 export async function ${exportName}(c: HandlerContext): Promise<void> {
   const data = await core.${meta.coreName}(buildContext(c))
   c.set('resultData', data)
   c.set('resultStatus', ${meta.successStatus})
 }`
-  }).join('\n')
+    })
+    .join('\n')
 
   const updateEachExportName = `${modelName}UpdateEach`
   const updateEachHandler = `

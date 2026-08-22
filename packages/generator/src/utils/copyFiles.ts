@@ -31,6 +31,7 @@ const EXPRESS_ONLY_FILES = [
   'autoIncludeRuntime.ts',
   'autoIncludeRuntimeGuarded.ts',
   'materializedRouter.ts',
+  'ndjson.ts',
 ]
 
 interface CopyFileOptions {
@@ -45,8 +46,14 @@ function resolveTemplateDir(subpath: string): string {
   const fromDist = path.join(__dirname, '..', subpath)
   if (fs.existsSync(fromDist)) return fromDist
   throw new Error(
-    'Template directory "' + subpath + '" not found.\n  Searched:\n    ' +
-    fromSrc + '\n    ' + fromDist + '\n  __dirname: ' + __dirname,
+    'Template directory "' +
+      subpath +
+      '" not found.\n  Searched:\n    ' +
+      fromSrc +
+      '\n    ' +
+      fromDist +
+      '\n  __dirname: ' +
+      __dirname,
   )
 }
 
@@ -86,7 +93,8 @@ function copyFileSync(
   }
 
   const destDirPath = path.dirname(destPath)
-  if (!fs.existsSync(destDirPath)) fs.mkdirSync(destDirPath, { recursive: true })
+  if (!fs.existsSync(destDirPath))
+    fs.mkdirSync(destDirPath, { recursive: true })
 
   let content = fs.readFileSync(srcPath, 'utf-8')
 
@@ -125,42 +133,65 @@ export async function copyFiles(
   const copyBase = resolveTemplateDir('copy')
   const errors: string[] = []
 
-  console.log('  Copying utility files to: ' + outputPath + ' (target: ' + target + ')')
+  console.log(
+    '  Copying utility files to: ' + outputPath + ' (target: ' + target + ')',
+  )
 
   for (const file of SHARED_FILES) {
-    const err = copyFileSync(copyBase, outputPath, file, importStyle, { required: true })
+    const err = copyFileSync(copyBase, outputPath, file, importStyle, {
+      required: true,
+    })
     if (err) errors.push(err)
   }
 
   if (target === 'express') {
     for (const file of EXPRESS_ONLY_FILES) {
-      const err = copyFileSync(copyBase, outputPath, file, importStyle, { required: true })
+      const err = copyFileSync(copyBase, outputPath, file, importStyle, {
+        required: true,
+      })
       if (err) errors.push(err)
     }
   }
 
   const targetConfigFile = 'routeConfig.' + target + '.ts'
-  const err = copyFileSync(copyBase, outputPath, targetConfigFile, importStyle, {
-    required: true,
-    destFilename: 'routeConfig.target.ts',
-  })
+  const err = copyFileSync(
+    copyBase,
+    outputPath,
+    targetConfigFile,
+    importStyle,
+    {
+      required: true,
+      destFilename: 'routeConfig.target.ts',
+    },
+  )
   if (err) errors.push(err)
 
   const clientDir = path.join(outputPath, 'client')
   if (!fs.existsSync(clientDir)) fs.mkdirSync(clientDir, { recursive: true })
 
   const clientSrcDir = resolveTemplateDir('client')
-  const clientErr = copyFileSync(clientSrcDir, clientDir, 'encodeQueryParams.ts', importStyle, {
-    required: true,
-    importRewrites: [{ from: '../copy/misc', to: '../misc' }],
-  })
+  const clientErr = copyFileSync(
+    clientSrcDir,
+    clientDir,
+    'encodeQueryParams.ts',
+    importStyle,
+    {
+      required: true,
+      importRewrites: [{ from: '../copy/misc', to: '../misc' }],
+    },
+  )
   if (clientErr) errors.push(clientErr)
 
   if (errors.length > 0) {
     throw new Error(
-      'Failed to copy ' + errors.length + ' required file(s):\n' +
-      errors.map((e) => '  - ' + e).join('\n') +
-      '\n  copyBase: ' + copyBase + '\n  __dirname: ' + __dirname,
+      'Failed to copy ' +
+        errors.length +
+        ' required file(s):\n' +
+        errors.map((e) => '  - ' + e).join('\n') +
+        '\n  copyBase: ' +
+        copyBase +
+        '\n  __dirname: ' +
+        __dirname,
     )
   }
 

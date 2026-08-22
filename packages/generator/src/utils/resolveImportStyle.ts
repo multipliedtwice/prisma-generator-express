@@ -39,7 +39,8 @@ function stripJsonComments(input: string): string {
     }
     if (c === '/' && next === '*') {
       i += 2
-      while (i < input.length && !(input[i] === '*' && input[i + 1] === '/')) i++
+      while (i < input.length && !(input[i] === '*' && input[i + 1] === '/'))
+        i++
       i += 2
       continue
     }
@@ -75,7 +76,10 @@ function findUpwards(startDir: string, filename: string): string | null {
   return result
 }
 
-function resolveExtendsTarget(extendsValue: string, fromFile: string): string | null {
+function resolveExtendsTarget(
+  extendsValue: string,
+  fromFile: string,
+): string | null {
   const fromDir = path.dirname(fromFile)
   if (extendsValue.startsWith('.') || path.isAbsolute(extendsValue)) {
     const direct = path.resolve(fromDir, extendsValue)
@@ -90,7 +94,9 @@ function resolveExtendsTarget(extendsValue: string, fromFile: string): string | 
     return require.resolve(extendsValue, { paths: [fromDir] })
   } catch {
     try {
-      return require.resolve(extendsValue + '/tsconfig.json', { paths: [fromDir] })
+      return require.resolve(extendsValue + '/tsconfig.json', {
+        paths: [fromDir],
+      })
     } catch {
       return null
     }
@@ -102,7 +108,10 @@ type TsConfigRaw = {
   compilerOptions?: Record<string, unknown>
 }
 
-function readTsConfig(filePath: string, seen: Set<string> = new Set()): Record<string, unknown> {
+function readTsConfig(
+  filePath: string,
+  seen: Set<string> = new Set(),
+): Record<string, unknown> {
   const abs = path.resolve(filePath)
   if (seen.has(abs)) return {}
   seen.add(abs)
@@ -143,21 +152,25 @@ function readPackageType(startDir: string): string | null {
 
 export function resolveImportStyle(options: GeneratorOptions): ImportStyle {
   const config = (options.generator.config || {}) as Record<string, string>
-  const raw = typeof config.importStyle === 'string'
-    ? config.importStyle.toLowerCase()
-    : 'auto'
+  const raw =
+    typeof config.importStyle === 'string'
+      ? config.importStyle.toLowerCase()
+      : 'auto'
 
   if (!VALID_OVERRIDES.has(raw)) {
     console.warn(
-      '[prisma-generator-express] Invalid importStyle "' + config.importStyle +
-      '". Expected one of: auto, none, js, ts. Falling back to auto.',
+      '[prisma-generator-express] Invalid importStyle "' +
+        config.importStyle +
+        '". Expected one of: auto, none, js, ts. Falling back to auto.',
     )
   } else if (raw !== 'auto') {
     return raw as ImportStyle
   }
 
   const outputPath = options.generator.output?.value
-  const schemaDir = options.schemaPath ? path.dirname(options.schemaPath) : process.cwd()
+  const schemaDir = options.schemaPath
+    ? path.dirname(options.schemaPath)
+    : process.cwd()
   const startDir = outputPath ? path.dirname(outputPath) : schemaDir
 
   const tsconfigPath =
@@ -171,12 +184,21 @@ export function resolveImportStyle(options: GeneratorOptions): ImportStyle {
   if (compilerOptions.allowImportingTsExtensions === true) return 'ts'
 
   const moduleVal = String(compilerOptions.module ?? '').toLowerCase()
-  const moduleResolution = String(compilerOptions.moduleResolution ?? '').toLowerCase()
+  const moduleResolution = String(
+    compilerOptions.moduleResolution ?? '',
+  ).toLowerCase()
 
-  if (NODE_MODULE_KEYWORDS.has(moduleVal) || NODE_MODULE_KEYWORDS.has(moduleResolution)) {
+  if (
+    NODE_MODULE_KEYWORDS.has(moduleVal) ||
+    NODE_MODULE_KEYWORDS.has(moduleResolution)
+  ) {
     return 'js'
   }
-  if (moduleResolution === 'bundler' || moduleResolution === 'classic' || moduleResolution === 'node') {
+  if (
+    moduleResolution === 'bundler' ||
+    moduleResolution === 'classic' ||
+    moduleResolution === 'node'
+  ) {
     return 'none'
   }
 

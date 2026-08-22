@@ -6,9 +6,7 @@ describe('planAutoInclude', () => {
   it('returns the original args when there is no projection', () => {
     const args = { where: { active: true }, take: 10 }
 
-    expect(
-      planAutoInclude({ rootModelName: 'User', models, args }),
-    ).toEqual({
+    expect(planAutoInclude({ rootModelName: 'User', models, args })).toEqual({
       rootArgs: args,
       stages: [],
       internalFieldPaths: [],
@@ -139,7 +137,10 @@ describe('planAutoInclude', () => {
     },
     {
       label: 'relation filter',
-      args: { where: { posts: { some: { published: true } } }, select: { id: true } },
+      args: {
+        where: { posts: { some: { published: true } } },
+        select: { id: true },
+      },
       reason: 'relation used in where/orderBy/cursor is not supported in MVP',
     },
     {
@@ -160,7 +161,8 @@ describe('planAutoInclude', () => {
     {
       label: 'invalid relation projection',
       args: { include: { posts: [] } },
-      reason: 'invalid relation projection value for posts (expected true or plain object)',
+      reason:
+        'invalid relation projection value for posts (expected true or plain object)',
     },
   ])('falls back atomically for $label', ({ args, reason }) => {
     const plan = planAutoInclude({ rootModelName: 'User', models, args })
@@ -182,9 +184,7 @@ describe('planAutoInclude', () => {
       },
     }
 
-    expect(
-      planAutoInclude({ rootModelName: 'User', models, args }),
-    ).toEqual({
+    expect(planAutoInclude({ rootModelName: 'User', models, args })).toEqual({
       rootArgs: args,
       stages: [],
       internalFieldPaths: [],
@@ -227,7 +227,8 @@ describe('planAutoInclude', () => {
       rootArgs: args,
       stages: [],
       internalFieldPaths: [],
-      unsupportedReason: 'auto-progressive fallback: stages reached maxStages=1',
+      unsupportedReason:
+        'auto-progressive fallback: stages reached maxStages=1',
     })
   })
 

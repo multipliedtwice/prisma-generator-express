@@ -60,7 +60,11 @@ export type PrismaClientLike = {
   $transaction?: <T>(fn: (tx: PrismaClientLike) => Promise<T>) => Promise<T>
 }
 
-type SpeedExtensionFactory = (opts: { postgres?: unknown; sqlite?: unknown; debug?: boolean }) => unknown
+type SpeedExtensionFactory = (opts: {
+  postgres?: unknown
+  sqlite?: unknown
+  debug?: boolean
+}) => unknown
 
 let _speedExtension: SpeedExtensionFactory | null = null
 
@@ -82,10 +86,15 @@ const _prismasqlReady = (async () => {
 
 const _extendedClients = new WeakMap<object, WeakMap<object, unknown>>()
 
-export async function getExtendedClient(ctx: OperationContext): Promise<unknown> {
+export async function getExtendedClient(
+  ctx: OperationContext,
+): Promise<unknown> {
   const base = ctx.prisma as PrismaClientLike | null | undefined
   if (!base) {
-    throw new HttpError(500, 'PrismaClient not found on request. Set req.prisma in middleware.')
+    throw new HttpError(
+      500,
+      'PrismaClient not found on request. Set req.prisma in middleware.',
+    )
   }
   await _prismasqlReady
   if (!_speedExtension) return base
@@ -98,11 +107,13 @@ export async function getExtendedClient(ctx: OperationContext): Promise<unknown>
   }
   try {
     if (typeof base.$extends !== 'function') return base
-    const extended = base.$extends(_speedExtension({
-      postgres: ctx.postgres,
-      sqlite: ctx.sqlite,
-      debug: process.env.DEBUG === 'true',
-    }))
+    const extended = base.$extends(
+      _speedExtension({
+        postgres: ctx.postgres,
+        sqlite: ctx.sqlite,
+        debug: process.env.DEBUG === 'true',
+      }),
+    )
     let map = _extendedClients.get(connector)
     if (!map) {
       map = new WeakMap<object, unknown>()
@@ -111,7 +122,10 @@ export async function getExtendedClient(ctx: OperationContext): Promise<unknown>
     map.set(base as unknown as object, extended)
     return extended
   } catch (error) {
-    console.warn('[speedExtension] Failed to initialize, using base client:', error)
+    console.warn(
+      '[speedExtension] Failed to initialize, using base client:',
+      error,
+    )
     return base
   }
 }
@@ -134,7 +148,10 @@ export function validateBody(body: unknown): Record<string, unknown> {
   return sanitizeKeys(body as Record<string, unknown>)
 }
 
-export function requireBodyField(body: Record<string, unknown>, field: string): void {
+export function requireBodyField(
+  body: Record<string, unknown>,
+  field: string,
+): void {
   if (!(field in body) || body[field] === undefined) {
     throw new HttpError(400, 'Missing required field: ' + field)
   }
@@ -143,7 +160,8 @@ export function requireBodyField(body: Record<string, unknown>, field: string): 
 export function transformResult(value: unknown): unknown {
   if (value === null || value === undefined) return value
   if (typeof value === 'bigint') return value.toString()
-  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) return value.toString('base64')
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value))
+    return value.toString('base64')
   if (typeof Buffer !== 'undefined' && value instanceof Uint8Array) {
     return Buffer.from(value).toString('base64')
   }

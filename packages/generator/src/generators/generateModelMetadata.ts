@@ -4,16 +4,26 @@ import { importExt } from '../utils/importExt'
 
 function exampleValueForType(fieldType: string): unknown {
   switch (fieldType) {
-    case 'String': return 'example'
-    case 'Int': return 1
-    case 'BigInt': return '1'
-    case 'Float': return 1.0
-    case 'Decimal': return '1.0'
-    case 'Boolean': return true
-    case 'DateTime': return '2025-01-01T00:00:00.000Z'
-    case 'Json': return {}
-    case 'Bytes': return 'base64data'
-    default: return 'example'
+    case 'String':
+      return 'example'
+    case 'Int':
+      return 1
+    case 'BigInt':
+      return '1'
+    case 'Float':
+      return 1.0
+    case 'Decimal':
+      return '1.0'
+    case 'Boolean':
+      return true
+    case 'DateTime':
+      return '2025-01-01T00:00:00.000Z'
+    case 'Json':
+      return {}
+    case 'Bytes':
+      return 'base64data'
+    default:
+      return 'example'
   }
 }
 
@@ -23,7 +33,9 @@ export interface GenerateModelMetadataOptions {
   importStyle: ImportStyle
 }
 
-export function generateModelMetadata(options: GenerateModelMetadataOptions): string {
+export function generateModelMetadata(
+  options: GenerateModelMetadataOptions,
+): string {
   const ext = importExt(options.importStyle)
   const { model, enums } = options
   const modelName = model.name

@@ -15,7 +15,11 @@ export {
   HARDENED_GUARD_PROFILE,
   resolveGuardPolicy,
 } from './guardOptions'
-export type { GuardPolicy, GuardOptionMetadata, GuardResolutionOrder } from './guardOptions'
+export type {
+  GuardPolicy,
+  GuardOptionMetadata,
+  GuardResolutionOrder,
+} from './guardOptions'
 
 import {
   generatorHandler,
@@ -45,6 +49,7 @@ import {
 import { writeFileSafely } from './utils/writeFileSafely'
 import { copyFiles } from './utils/copyFiles'
 import { resolveImportStyle, ImportStyle } from './utils/resolveImportStyle'
+import { parsePathCase, modelPathSegment, PathCase } from './utils/pathCasing'
 import {
   GENERATOR_NAME,
   Target,
@@ -99,6 +104,12 @@ function getFindManyPaginatedMode(
   )
 }
 
+function getPathCase(options: GeneratorOptions): PathCase {
+  return parsePathCase(
+    (options.generator.config as Record<string, unknown>).pathCase,
+  )
+}
+
 function getDropGuard(options: GeneratorOptions): boolean {
   const raw = (options.generator.config as Record<string, unknown>).dropGuard
   if (raw === undefined || raw === null) return false
@@ -109,7 +120,8 @@ function getDropGuard(options: GeneratorOptions): boolean {
     const s = raw.trim()
     const lower = s.toLowerCase()
     if (lower === 'true' || lower === '1' || lower === 'yes') return true
-    if (lower === 'false' || lower === '0' || lower === 'no' || s === '') return false
+    if (lower === 'false' || lower === '0' || lower === 'no' || s === '')
+      return false
     const envVal = process.env[s]
     if (envVal === undefined) return false
     const el = envVal.trim().toLowerCase()
@@ -140,6 +152,7 @@ generatorHandler({
     const writeStrategy = getWriteStrategy(options)
     const findManyPaginatedMode = getFindManyPaginatedMode(options)
     const dropGuard = getDropGuard(options)
+    const pathCase = getPathCase(options)
 
     const manifestDefaultAbs = path.resolve(
       __dirname,
@@ -165,6 +178,7 @@ generatorHandler({
     console.log(`  Import style: ${importStyle}`)
     console.log(`  Write strategy: ${writeStrategy}`)
     console.log(`  findManyPaginated mode: ${findManyPaginatedMode}`)
+    console.log(`  Path case: ${pathCase}`)
 
     if (dropGuard) {
       console.log('')
@@ -181,6 +195,7 @@ generatorHandler({
     await copyFiles(options, target, importStyle)
 
     const modelNames: string[] = []
+    let guardArtifactsSeen = false
     const generateHandler: (opts: {
       model: DMMF.Model
       importStyle: ImportStyle
@@ -201,6 +216,7 @@ generatorHandler({
       modelNames.push(model.name)
 
       const guardShapesImport = getGuardShapesImport(options, model.name)
+      if (guardShapesImport) guardArtifactsSeen = true
 
       await writeFileSafely({
         content: generateModelMetadata({
@@ -242,6 +258,7 @@ generatorHandler({
               writeStrategy,
               findManyPaginatedMode,
               dropGuard,
+              pathCase,
             })
           : target === 'hono'
             ? generateHonoRouterFunction({
@@ -251,6 +268,7 @@ generatorHandler({
                 importStyle,
                 writeStrategy,
                 dropGuard,
+                pathCase,
               })
             : generateRouterFunction({
                 model: model as DMMF.Model,
@@ -260,6 +278,7 @@ generatorHandler({
                 writeStrategy,
                 findManyPaginatedMode,
                 dropGuard,
+                pathCase,
               })
 
       await writeFileSafely({
@@ -304,8 +323,17 @@ generatorHandler({
       })
     }
 
+    const pathSegments = Object.fromEntries(
+      modelNames.map((n) => [n, modelPathSegment(n, pathCase)]),
+    )
+
     await writeFileSafely({
-      content: generateUnifiedDocs(modelNames, target, importStyle),
+      content: generateUnifiedDocs(
+        modelNames,
+        pathSegments,
+        target,
+        importStyle,
+      ),
       options,
       operation: 'combinedDocs',
     })
@@ -315,6 +343,16 @@ generatorHandler({
       options,
       operation: 'queryBuilder',
     })
+
+    if (modelNames.length > 0 && !guardArtifactsSeen) {
+      console.log('')
+      console.log(
+        '  Note: prisma-guard not detected. Generated routes call Prisma directly',
+      )
+      console.log(
+        '  unless your route configs define guard shapes or variants.',
+      )
+    }
 
     console.log('\n═══ Generation Complete ═══')
     console.log(`✓ ${modelNames.length} models (${target})`)

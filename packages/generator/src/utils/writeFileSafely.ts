@@ -41,7 +41,11 @@ export async function writeFileSafely({
       break
     default:
       if (!model) throw new Error('Model required for operation: ' + operation)
-      filePath = path.join(outputPath, model.name, `${model.name}${operation}.ts`)
+      filePath = path.join(
+        outputPath,
+        model.name,
+        `${model.name}${operation}.ts`,
+      )
   }
 
   const dirPath = path.dirname(filePath)

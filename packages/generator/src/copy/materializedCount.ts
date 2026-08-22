@@ -4,7 +4,10 @@ import type { PaginationCountSource } from './routeConfig'
 export const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 type PrismaRawClient = {
-  $queryRawUnsafe?: <T = unknown>(sql: string, ...values: unknown[]) => Promise<T>
+  $queryRawUnsafe?: <T = unknown>(
+    sql: string,
+    ...values: unknown[]
+  ) => Promise<T>
 }
 
 export function quoteIdent(name: string): string {
@@ -47,7 +50,10 @@ export async function countFromMaterializedView(
 ): Promise<number> {
   const raw = client as PrismaRawClient
   if (typeof raw.$queryRawUnsafe !== 'function') {
-    throw new HttpError(500, 'Materialized count source requires $queryRawUnsafe on the Prisma client')
+    throw new HttpError(
+      500,
+      'Materialized count source requires $queryRawUnsafe on the Prisma client',
+    )
   }
   const column = source.column ?? 'total'
   const where = buildMaterializedCountWhere(source.where)
@@ -58,11 +64,17 @@ export async function countFromMaterializedView(
     buildMaterializedCountFqn(source) +
     where.sql +
     ' LIMIT 1'
-  const rows = await raw.$queryRawUnsafe<Array<{ total: unknown }>>(sql, ...where.values)
+  const rows = await raw.$queryRawUnsafe<Array<{ total: unknown }>>(
+    sql,
+    ...where.values,
+  )
   const value = rows[0]?.total
   const total = Number(value)
   if (!Number.isFinite(total)) {
-    throw new HttpError(500, 'Materialized count source did not return a numeric total')
+    throw new HttpError(
+      500,
+      'Materialized count source did not return a numeric total',
+    )
   }
   return Math.trunc(total)
 }

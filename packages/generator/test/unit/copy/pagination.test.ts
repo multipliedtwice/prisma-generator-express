@@ -24,25 +24,25 @@ describe('applyPaginationLimits', () => {
   })
 
   it('applies defaultLimit only to unguarded queries without take', () => {
-    expect(applyPaginationLimits({}, { defaultLimit: 25 })).toEqual({ take: 25 })
-    expect(
-      applyPaginationLimits({}, { defaultLimit: 25 }, true),
-    ).toEqual({})
-    expect(
-      applyPaginationLimits({ take: 5 }, { defaultLimit: 25 }),
-    ).toEqual({ take: 5 })
+    expect(applyPaginationLimits({}, { defaultLimit: 25 })).toEqual({
+      take: 25,
+    })
+    expect(applyPaginationLimits({}, { defaultLimit: 25 }, true)).toEqual({})
+    expect(applyPaginationLimits({ take: 5 }, { defaultLimit: 25 })).toEqual({
+      take: 5,
+    })
   })
 
   it('clamps positive and negative take values to maxLimit', () => {
-    expect(
-      applyPaginationLimits({ take: 100 }, { maxLimit: 20 }),
-    ).toEqual({ take: 20 })
-    expect(
-      applyPaginationLimits({ take: -100 }, { maxLimit: 20 }),
-    ).toEqual({ take: -20 })
-    expect(
-      applyPaginationLimits({ take: '12' }, { maxLimit: 20 }),
-    ).toEqual({ take: 12 })
+    expect(applyPaginationLimits({ take: 100 }, { maxLimit: 20 })).toEqual({
+      take: 20,
+    })
+    expect(applyPaginationLimits({ take: -100 }, { maxLimit: 20 })).toEqual({
+      take: -20,
+    })
+    expect(applyPaginationLimits({ take: '12' }, { maxLimit: 20 })).toEqual({
+      take: 12,
+    })
   })
 
   it.each([
@@ -50,9 +50,9 @@ describe('applyPaginationLimits', () => {
     [Infinity, 'Invalid take: must be a finite number'],
     [1.5, 'Invalid take: must be an integer'],
   ])('rejects invalid take %s', (take, message) => {
-    expect(() =>
-      applyPaginationLimits({ take }, { maxLimit: 20 }),
-    ).toThrow(message)
+    expect(() => applyPaginationLimits({ take }, { maxLimit: 20 })).toThrow(
+      message,
+    )
   })
 })
 
@@ -129,11 +129,16 @@ describe('countForPagination', () => {
     const delegate = createDelegate()
 
     await expect(
-      countForPagination(delegate, {
-        where: { active: true },
-        orderBy: { id: 'desc' },
-        take: 10,
-      }, undefined, undefined),
+      countForPagination(
+        delegate,
+        {
+          where: { active: true },
+          orderBy: { id: 'desc' },
+          take: 10,
+        },
+        undefined,
+        undefined,
+      ),
     ).resolves.toBe(12)
 
     expect(delegate.count).toHaveBeenCalledWith({

@@ -19,7 +19,11 @@ const encodeEntry = (key: string, value: unknown): string | null => {
   }
 
   if (Array.isArray(value) || isObject(value)) {
-    return encodedKey + '=' + encodeURIComponent(JSON.stringify(value, bigintReplacer))
+    return (
+      encodedKey +
+      '=' +
+      encodeURIComponent(JSON.stringify(value, bigintReplacer))
+    )
   }
 
   return encodedKey + '=' + encodeURIComponent(String(value))

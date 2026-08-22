@@ -14,10 +14,11 @@ export function generateUnifiedHandler(options: UnifiedHandlerOptions): string {
 
   const dispatchOps = OPERATION_METADATA.filter((m) => m.name !== 'updateEach')
 
-  const handlers = dispatchOps.map((meta) => {
-    const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
+  const handlers = dispatchOps
+    .map((meta) => {
+      const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
 
-    return `
+      return `
 export async function ${exportName}(
   req: Request,
   res: Response,
@@ -30,7 +31,8 @@ export async function ${exportName}(
     next(mapError(error))
   }
 }`
-  }).join('\n')
+    })
+    .join('\n')
 
   return `import type { Request, Response, NextFunction } from 'express'
 import * as core from './${modelName}Core${ext}'

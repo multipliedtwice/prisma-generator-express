@@ -69,7 +69,10 @@ describe('every 1.64.2 refusal is inert without the flag', () => {
   for (const { name, config, strictError } of cases) {
     it(`accepts ${name}`, () => {
       expect(() =>
-        validateOperationConfig(config as Parameters<typeof validateOperationConfig>[0], AT),
+        validateOperationConfig(
+          config as Parameters<typeof validateOperationConfig>[0],
+          AT,
+        ),
       ).not.toThrow()
     })
 
@@ -106,10 +109,17 @@ describe('the checks that predate 1.64.2 still run in BOTH modes', () => {
    * direction — a configuration that used to be rejected silently starting to
    * build.
    */
-  const legacyRefusals: Array<{ name: string; config: unknown; error: RegExp }> = [
+  const legacyRefusals: Array<{
+    name: string
+    config: unknown
+    error: RegExp
+  }> = [
     {
       name: 'shape and variants both defined',
-      config: { shape: { where: {} }, variants: { a: { shape: { where: {} } } } },
+      config: {
+        shape: { where: {} },
+        variants: { a: { shape: { where: {} } } },
+      },
       error: /cannot both be defined/,
     },
     {
@@ -212,21 +222,29 @@ describe('the emitted router keeps the 1.64.1 runtime shape', () => {
     expect(out).toContain('PostUpdateEach(c as unknown as HandlerContext)')
   })
 
-  it('still honours the E2E bypass for consumers who never opted in', () => {
-    expect(out).toContain("_env.E2E === 'true'")
-    const line = out.split('\n').find((l) => l.includes("_env.E2E === 'true'"))
+  it('still honours the env bypass for consumers who never opted in', () => {
+    expect(out).toContain('resolveDropGuardEnv(_env)')
+    const line = out
+      .split('\n')
+      .find((l) => l.includes('resolveDropGuardEnv(_env)'))
     expect(line, 'the bypass is not gated on its own control').toContain(
       'policy.allowE2EGuardBypass',
     )
   })
 
   it('runs operation hooks before settling the guard, as 1.64.1 did', () => {
-    const body = out.slice(out.indexOf('const handleRead ='), out.indexOf('const handleWrite ='))
+    const body = out.slice(
+      out.indexOf('const handleRead ='),
+      out.indexOf('const handleWrite ='),
+    )
     const hooks = body.indexOf('runBeforeHooks<TEnv>(opConfig.operationBefore')
     const legacy = body.indexOf('if (!SETTLE_BEFORE_HOOKS) settleGuard(c)')
 
     expect(legacy, 'the legacy ordering is gone').toBeGreaterThan(-1)
-    expect(legacy, 'hooks no longer run first on the default path').toBeGreaterThan(hooks)
+    expect(
+      legacy,
+      'hooks no longer run first on the default path',
+    ).toBeGreaterThan(hooks)
   })
 
   it('passes the raw shape through when the flag is off', () => {

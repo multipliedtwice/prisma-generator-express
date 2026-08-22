@@ -75,7 +75,9 @@ describe('an operation with no guard is refused', () => {
 describe('a shape that constrains nothing is refused', () => {
   it('refuses an empty shape', () => {
     // Reads as "guarded" to a reviewer and lets everything through.
-    expect(() => validateStrict({ shape: {} }, AT)).toThrow(/constrains nothing/)
+    expect(() => validateStrict({ shape: {} }, AT)).toThrow(
+      /constrains nothing/,
+    )
   })
 
   it('refuses a shape that is not an object or function', () => {
@@ -134,7 +136,7 @@ describe('a variant entry gets the same shape validation as a legacy shape', () 
     expect(() =>
       validateStrict({ variants: { public: { shape: {} } } }, AT),
     ).toThrow(/constrains nothing/)
-  });
+  })
 
   it('names the variant, not just the operation', () => {
     try {
@@ -143,16 +145,16 @@ describe('a variant entry gets the same shape validation as a legacy shape', () 
     } catch (error) {
       expect((error as Error).message).toContain('variant "public"')
     }
-  });
+  })
 
   it('refuses a variant shape that is not an object or function', () => {
     for (const bad of [null, 42, 'where', true, []]) {
-      expect(() =>
-        validateStrict({ variants: { public: { shape: bad } } }, AT),
+      expect(
+        () => validateStrict({ variants: { public: { shape: bad } } }, AT),
         String(bad),
       ).toThrow(/shape must be an object or a function/)
     }
-  });
+  })
 
   it('refuses a variant shape mixing guard keys with non-guard keys', () => {
     expect(() =>
@@ -161,7 +163,7 @@ describe('a variant entry gets the same shape validation as a legacy shape', () 
         AT,
       ),
     ).toThrow(/mixes guard keys/)
-  });
+  })
 
   it('checks EVERY variant, not only the first', () => {
     expect(() =>
@@ -170,7 +172,7 @@ describe('a variant entry gets the same shape validation as a legacy shape', () 
         AT,
       ),
     ).toThrow(/variant "public"/)
-  });
+  })
 
   it('still accepts real variant shapes, including function ones', () => {
     expect(() =>
@@ -179,8 +181,8 @@ describe('a variant entry gets the same shape validation as a legacy shape', () 
         AT,
       ),
     ).not.toThrow()
-  });
-});
+  })
+})
 
 describe('a resolved function shape is checked before it is used', () => {
   /**
@@ -195,30 +197,34 @@ describe('a resolved function shape is checked before it is used', () => {
   it('rejects nothing at all', () => {
     expect(describeResolvedGuardShape(undefined)).toMatch(/returned nothing/)
     expect(describeResolvedGuardShape(null)).toMatch(/returned nothing/)
-  });
+  })
 
   it('rejects an empty object, which constrains nothing', () => {
     expect(describeResolvedGuardShape({})).toMatch(/constrains nothing/)
-  });
+  })
 
   it('rejects a non-object', () => {
     expect(describeResolvedGuardShape(42)).toMatch(/number/)
     expect(describeResolvedGuardShape('where')).toMatch(/string/)
     expect(describeResolvedGuardShape([])).toMatch(/an array/)
-  });
+  })
 
   it('rejects stray keys, and names them', () => {
     const problem = describeResolvedGuardShape({ where: {}, wheer: {} })
     expect(problem).toMatch(/non-guard keys/)
     expect(problem).toContain('wheer')
     expect(problem).not.toContain('where:')
-  });
+  })
 
   it('accepts a real guard shape', () => {
-    expect(describeResolvedGuardShape({ where: { published: true } })).toBeNull()
-    expect(describeResolvedGuardShape({ select: { id: true }, take: 10 })).toBeNull()
-  });
-});
+    expect(
+      describeResolvedGuardShape({ where: { published: true } }),
+    ).toBeNull()
+    expect(
+      describeResolvedGuardShape({ select: { id: true }, take: 10 }),
+    ).toBeNull()
+  })
+})
 
 describe('a dynamic shape is resolved exactly once', () => {
   /**
@@ -298,10 +304,17 @@ describe('a dynamic shape is resolved exactly once', () => {
     const selected = treacherous()
     const other = treacherous()
 
-    await resolveGuardShapeOnce({ public: selected.fn, admin: other.fn }, 'public', ctx)
+    await resolveGuardShapeOnce(
+      { public: selected.fn, admin: other.fn },
+      'public',
+      ctx,
+    )
 
     expect(selected.calls()).toBe(1)
-    expect(other.calls(), 'an unselected variant shape function was invoked').toBe(0)
+    expect(
+      other.calls(),
+      'an unselected variant shape function was invoked',
+    ).toBe(0)
   })
 
   it('a second resolution of the SAME map re-invokes, which is why one is passed on', async () => {
@@ -317,9 +330,16 @@ describe('a dynamic shape is resolved exactly once', () => {
     const first = await resolveGuardShapeOnce(map, 'public', ctx)
     const second = await resolveGuardShapeOnce(map, 'public', ctx)
 
-    expect((first as { shape: Record<string, unknown> }).shape.public).toEqual(safe)
-    expect(second.ok, 'the second resolution returned the wide-open shape').toBe(false)
-    expect((second as { problem: string }).problem).toMatch(/constrains nothing/)
+    expect((first as { shape: Record<string, unknown> }).shape.public).toEqual(
+      safe,
+    )
+    expect(
+      second.ok,
+      'the second resolution returned the wide-open shape',
+    ).toBe(false)
+    expect((second as { problem: string }).problem).toMatch(
+      /constrains nothing/,
+    )
   })
 
   it('does not resolve, or call anything, for a static shape', async () => {
@@ -335,7 +355,12 @@ describe('a dynamic shape is resolved exactly once', () => {
   })
 
   it('refuses when the function returns something unusable', async () => {
-    for (const bad of [() => ({}), () => undefined, () => ({ wheer: {} }), () => 42]) {
+    for (const bad of [
+      () => ({}),
+      () => undefined,
+      () => ({ wheer: {} }),
+      () => 42,
+    ]) {
       const resolution = await resolveGuardShapeOnce(bad, undefined, ctx)
       expect(resolution.ok, String(bad)).toBe(false)
     }
@@ -344,10 +369,16 @@ describe('a dynamic shape is resolved exactly once', () => {
   it('refuses a function shape when no context resolver is configured', async () => {
     // `callShapeFn` cannot produce a shape without one, so it yields null —
     // which must be a refusal, not an unguarded request.
-    const resolution = await resolveGuardShapeOnce(() => safe, undefined, undefined)
+    const resolution = await resolveGuardShapeOnce(
+      () => safe,
+      undefined,
+      undefined,
+    )
 
     expect(resolution.ok).toBe(false)
-    expect((resolution as { problem: string }).problem).toMatch(/returned nothing/)
+    expect((resolution as { problem: string }).problem).toMatch(
+      /returned nothing/,
+    )
   })
 })
 
@@ -371,7 +402,9 @@ describe('a `default` variant must be asked for', () => {
       validateStrict({ variants }, AT)
       throw new Error('should have thrown')
     } catch (error) {
-      expect((error as Error).message).toMatch(/unrecognised, blank and missing caller/)
+      expect((error as Error).message).toMatch(
+        /unrecognised, blank and missing caller/,
+      )
       expect((error as Error).message).toMatch(/most restrictive/)
     }
   })
@@ -395,7 +428,10 @@ describe('a `default` variant must be asked for', () => {
 
   it('does not change what `default` DOES once allowed', () => {
     // The opt-in governs whether the configuration is accepted, not the routing.
-    const op = normalizeOperation({ variants, allowDefaultVariant: true } as never)
+    const op = normalizeOperation({
+      variants,
+      allowDefaultVariant: true,
+    } as never)
 
     for (const caller of [undefined, '', '  ', 'unknown']) {
       expect(resolveOperationVariantKey(op.guardRouting, caller)).toEqual({

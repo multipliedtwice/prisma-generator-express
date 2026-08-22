@@ -36,10 +36,19 @@ const PRISMA_ERROR_MAP: Record<string, { status: number; message: string }> = {
   P2023: { status: 500, message: 'Inconsistent column data' },
   P2024: { status: 503, message: 'Connection pool timeout' },
   P2025: { status: 404, message: 'Record not found' },
-  P2026: { status: 501, message: 'Feature not supported by the current database provider' },
-  P2027: { status: 400, message: 'Multiple errors occurred during transaction execution' },
+  P2026: {
+    status: 501,
+    message: 'Feature not supported by the current database provider',
+  },
+  P2027: {
+    status: 400,
+    message: 'Multiple errors occurred during transaction execution',
+  },
   P2028: { status: 500, message: 'Transaction API error' },
-  P2030: { status: 400, message: 'Cannot find a fulltext index for the search' },
+  P2030: {
+    status: 400,
+    message: 'Cannot find a fulltext index for the search',
+  },
   P2033: { status: 400, message: 'Number out of range for the field type' },
   P2034: { status: 409, message: 'Transaction conflict, please retry' },
 }
@@ -59,11 +68,20 @@ function asErrorShape(error: unknown): ErrorShape {
 }
 
 function isProduction(): boolean {
-  return typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production'
+  return (
+    typeof process !== 'undefined' &&
+    process.env &&
+    process.env.NODE_ENV === 'production'
+  )
 }
 
 function isHttpStatus(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 400 && value <= 599
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 400 &&
+    value <= 599
+  )
 }
 
 export function mapError(error: unknown): HttpError {
@@ -77,18 +95,27 @@ export function mapError(error: unknown): HttpError {
       ? e.statusCode
       : null
   if (duckStatus !== null) {
-    const detail = typeof e.message === 'string' && e.message ? e.message : 'Internal server error'
+    const detail =
+      typeof e.message === 'string' && e.message
+        ? e.message
+        : 'Internal server error'
     return new HttpError(duckStatus, detail)
   }
 
-  if (e.name === 'ShapeError') return new HttpError(400, e.message || 'Shape validation failed')
-  if (e.name === 'CallerError') return new HttpError(400, e.message || 'Caller validation failed')
-  if (e.name === 'PolicyError') return new HttpError(403, e.message || 'Policy denied')
+  if (e.name === 'ShapeError')
+    return new HttpError(400, e.message || 'Shape validation failed')
+  if (e.name === 'CallerError')
+    return new HttpError(400, e.message || 'Caller validation failed')
+  if (e.name === 'PolicyError')
+    return new HttpError(403, e.message || 'Policy denied')
   if (e.name === 'ZodError') {
     const issues = e.issues
     const message = Array.isArray(issues)
-      ? (issues as Array<{ message?: string }>).map((i) => i.message ?? '').filter(Boolean).join('; ')
-      : (e.message || 'Validation failed')
+      ? (issues as Array<{ message?: string }>)
+          .map((i) => i.message ?? '')
+          .filter(Boolean)
+          .join('; ')
+      : e.message || 'Validation failed'
     return new HttpError(400, message)
   }
   if (typeof e.code === 'string') {
@@ -98,7 +125,9 @@ export function mapError(error: unknown): HttpError {
       const shouldStripDetail = isProd && mapped.status >= 500
       return new HttpError(
         mapped.status,
-        !shouldStripDetail && detail ? mapped.message + ': ' + detail : mapped.message,
+        !shouldStripDetail && detail
+          ? mapped.message + ': ' + detail
+          : mapped.message,
       )
     }
     if (e.code.startsWith('P')) {
@@ -108,19 +137,39 @@ export function mapError(error: unknown): HttpError {
     }
   }
   if (typeof e.name === 'string') {
-    if (e.name === 'PrismaClientValidationError') return new HttpError(400, e.message || 'Invalid query parameters')
-    if (e.name === 'PrismaClientKnownRequestError') return new HttpError(400, e.message || 'Database request error')
+    if (e.name === 'PrismaClientValidationError')
+      return new HttpError(400, e.message || 'Invalid query parameters')
+    if (e.name === 'PrismaClientKnownRequestError')
+      return new HttpError(400, e.message || 'Database request error')
     if (e.name === 'PrismaClientInitializationError') {
-      return new HttpError(503, isProd ? 'Service unavailable' : (e.message || 'Database connection failed'))
+      return new HttpError(
+        503,
+        isProd
+          ? 'Service unavailable'
+          : e.message || 'Database connection failed',
+      )
     }
     if (e.name === 'PrismaClientRustPanicError') {
-      return new HttpError(500, isProd ? 'Internal server error' : (e.message || 'Internal database engine error'))
+      return new HttpError(
+        500,
+        isProd
+          ? 'Internal server error'
+          : e.message || 'Internal database engine error',
+      )
     }
     if (e.name === 'PrismaClientUnknownRequestError') {
-      return new HttpError(500, isProd ? 'Internal server error' : (e.message || 'Unknown database error'))
+      return new HttpError(
+        500,
+        isProd
+          ? 'Internal server error'
+          : e.message || 'Unknown database error',
+      )
     }
   }
   const msg = error instanceof Error ? error.message : String(error)
   console.error(LOG_PREFIX, 'Unhandled error:', error)
-  return new HttpError(500, isProd ? 'Internal server error' : (msg || 'Internal server error'))
+  return new HttpError(
+    500,
+    isProd ? 'Internal server error' : msg || 'Internal server error',
+  )
 }

@@ -2,7 +2,9 @@ export const isObject = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(
+  value: unknown,
+): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object') return false
   if (Array.isArray(value)) return false
   const proto = Object.getPrototypeOf(value)
@@ -65,4 +67,22 @@ export function getEnv(): Record<string, string | undefined> {
   return typeof process !== 'undefined' && process.env
     ? process.env
     : ({} as Record<string, string | undefined>)
+}
+
+let dropGuardDeprecationWarned = false
+
+export function resolveDropGuardEnv(
+  env: Record<string, string | undefined>,
+): boolean {
+  if (env.PGE_DROP_GUARD === 'true') return true
+  if (env.E2E === 'true') {
+    if (!dropGuardDeprecationWarned) {
+      dropGuardDeprecationWarned = true
+      console.warn(
+        '[prisma-generator-express] E2E=true guard bypass is deprecated. Use PGE_DROP_GUARD=true.',
+      )
+    }
+    return true
+  }
+  return false
 }

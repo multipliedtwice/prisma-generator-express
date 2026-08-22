@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, afterEach } from 'vitest'
 import {
   isObject,
   isPlainObject,
   isSafeKey,
   normalizePrefix,
   removeTrailingSlash,
+  resolveDropGuardEnv,
   sanitizeKeys,
 } from '../../../src/copy/misc'
 
@@ -62,5 +63,40 @@ describe('misc', () => {
     expect(removeTrailingSlash('/')).toBe('')
     expect(removeTrailingSlash('/api/')).toBe('/api')
     expect(removeTrailingSlash('/api')).toBe('/api')
+  })
+})
+
+describe('resolveDropGuardEnv', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('honours PGE_DROP_GUARD=true', () => {
+    expect(resolveDropGuardEnv({ PGE_DROP_GUARD: 'true' })).toBe(true)
+    expect(resolveDropGuardEnv({ PGE_DROP_GUARD: 'false' })).toBe(false)
+    expect(resolveDropGuardEnv({})).toBe(false)
+  })
+
+  it('keeps E2E=true working as a deprecated alias with a warning', async () => {
+    vi.resetModules()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fresh = await import('../../../src/copy/misc')
+    expect(fresh.resolveDropGuardEnv({ E2E: 'true' })).toBe(true)
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]?.[0])).toContain('PGE_DROP_GUARD')
+    expect(fresh.resolveDropGuardEnv({ E2E: 'false' })).toBe(false)
+  })
+
+  it('prefers the new variable and warns at most once per process', async () => {
+    vi.resetModules()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fresh = await import('../../../src/copy/misc')
+    expect(
+      fresh.resolveDropGuardEnv({ PGE_DROP_GUARD: 'true', E2E: 'true' }),
+    ).toBe(true)
+    expect(warn).not.toHaveBeenCalled()
+    expect(fresh.resolveDropGuardEnv({ E2E: 'true' })).toBe(true)
+    expect(fresh.resolveDropGuardEnv({ E2E: 'true' })).toBe(true)
+    expect(warn).toHaveBeenCalledTimes(1)
   })
 })

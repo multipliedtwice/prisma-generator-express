@@ -3,6 +3,7 @@ import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import { WriteStrategy, FindManyPaginatedMode } from '../constants'
+import { modelPathSegment, PathCase } from '../utils/pathCasing'
 import { OPERATION_METADATA } from '../copy/operationDefinitions'
 
 function pathExpr(suffix: string): string {
@@ -55,11 +56,11 @@ function emitReadOp(
 
   const postReadLine = meta.supportsPostRead
     ? meta.name === 'findMany'
-      ? `      if (postReadsEnabled) {
+      ? `      if (resolvePostReadsEnabled(config.disablePostReads, opConfig.disablePostReads)) {
         const postPath = basePath ? \`\${basePath}/read\` : '/read'
         instance.post(postPath, handleRead(opConfig, ${handlerName}, parseBodyAsQueryHook, '${opKind}'))
       }`
-      : `      if (postReadsEnabled) instance.post(path, handleRead(opConfig, ${handlerName}, parseBodyAsQueryHook, '${opKind}'))`
+      : `      if (resolvePostReadsEnabled(config.disablePostReads, opConfig.disablePostReads)) instance.post(path, handleRead(opConfig, ${handlerName}, parseBodyAsQueryHook, '${opKind}'))`
     : ''
 
   return `    if (isEnabled(config.${meta.configKey})) {
@@ -94,6 +95,7 @@ export function generateFastifyRouterFunction({
   writeStrategy,
   findManyPaginatedMode,
   dropGuard,
+  pathCase,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
@@ -102,22 +104,26 @@ export function generateFastifyRouterFunction({
   writeStrategy: WriteStrategy
   findManyPaginatedMode: FindManyPaginatedMode
   dropGuard: boolean
+  pathCase: PathCase
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
-  const modelNameLower = modelName.toLowerCase()
-  const routerFunctionName = `${modelName}Router`
+  const modelSegment = modelPathSegment(model.name, pathCase)
+  const routerFunctionName = `${model.name}Router`
 
-  const handlerImports = OPERATION_METADATA
-    .map((m) => `  ${modelName}${m.name.charAt(0).toUpperCase() + m.name.slice(1)},`)
-    .join('\n')
+  const handlerImports = OPERATION_METADATA.map(
+    (m) => `  ${modelName}${m.name.charAt(0).toUpperCase() + m.name.slice(1)},`,
+  ).join('\n')
 
   const readOps = OPERATION_METADATA.filter((m) => m.kind === 'read')
-  const writeOps = OPERATION_METADATA.filter((m) => m.kind === 'write' || m.kind === 'batch')
-    .filter((m) => m.name !== 'updateEach')
+  const writeOps = OPERATION_METADATA.filter(
+    (m) => m.kind === 'write' || m.kind === 'batch',
+  ).filter((m) => m.name !== 'updateEach')
 
   const readOpBlocks = readOps.map((m) => emitReadOp(m, modelName)).join('\n\n')
-  const writeOpBlocks = writeOps.map((m) => emitWriteOp(m, modelName)).join('\n\n')
+  const writeOpBlocks = writeOps
+    .map((m) => emitWriteOp(m, modelName))
+    .join('\n\n')
 
   return `import type { FastifyInstance, FastifyRequest, FastifyReply, FastifyError } from 'fastify'
 import { startQueryBuilder } from '../queryBuilder${ext}'
@@ -128,10 +134,11 @@ import type {
   RouteConfig,
   FastifyHookHandler,
   FindManyPaginatedMode,
-  PaginationConfig,
+  PaginationConfig,,
+  PrismaClientLike,
 } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
-import { sanitizeKeys, normalizePrefix, getEnv, isPlainObject } from '../misc${ext}'
+import { sanitizeKeys, normalizePrefix, getEnv, isPlainObject, resolveDropGuardEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import {
   normalizeOperation,
@@ -139,6 +146,8 @@ import {
   validateCountSourceWhere,
   validateOperationConfig,
   validateUpdateEachConfig,
+  resolvePostReadsEnabled,
+  warnIfUnguardedRoutes,
 } from '../routeConfig${ext}'
 import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import type { OperationContext } from '../operationRuntime${ext}'
@@ -155,7 +164,7 @@ ${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, im
 const _env = getEnv()
 
 const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode}'
-const DROP_GUARD = ${dropGuard} || _env.E2E === 'true'
+const DROP_GUARD = ${dropGuard} || resolveDropGuardEnv(_env)
 
 type OperationConfigLike = {
   before?: FastifyHookHandler[]
@@ -322,7 +331,7 @@ function sendError(reply: FastifyReply, error: unknown): void {
   reply.code(httpError.status).send({ message: httpError.message })
 }
 
-export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
+export async function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClientLike = PrismaClientLike>(
   fastify: FastifyInstance,
   config: ${modelName}RouteConfig<TCtx, TPrisma> = {},
 ) {
@@ -334,6 +343,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
 
   await fastify.register(async (instance) => {
     const isEnabled = (value: unknown): boolean => value !== false && !!(config.enableAll || value)
+  warnIfUnguardedRoutes('${modelName}', ['findMany', 'findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findManyPaginated', 'count', 'aggregate', 'groupBy', 'create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'updateManyAndReturn', 'upsert', 'delete', 'deleteMany'], config, isEnabled)
 
     const opFor = (key: string): NormalizedOp => {
       const raw = (config as unknown as Record<string, unknown>)[key] as OperationConfigLike | undefined
@@ -342,7 +352,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
     }
 
     const customPrefix = normalizePrefix(config.customUrlPrefix || '')
-    const modelPrefix = config.addModelPrefix !== false ? '/${modelNameLower}' : ''
+    const modelPrefix = config.addModelPrefix !== false ? '/${modelSegment}' : ''
     const basePath = customPrefix + modelPrefix
 
     const openApiDisabled = config.disableOpenApi === true
@@ -351,7 +361,6 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
         || _env.DISABLE_OPENAPI === 'true'
       ))
 
-    const postReadsEnabled = !config.disablePostReads
 
     let _openApiJsonCache: unknown = undefined
     const getOpenApiJson = (): unknown => {
@@ -361,7 +370,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
           MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
           MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
           config,
-          { format: 'json', writeStrategy: '${writeStrategy}' },
+          { format: 'json', writeStrategy: '${writeStrategy}', pathSegment: '${modelSegment}' },
         )
       }
       return _openApiJsonCache
@@ -374,7 +383,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(
           MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
           MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
           config,
-          { format: 'yaml', writeStrategy: '${writeStrategy}' },
+          { format: 'yaml', writeStrategy: '${writeStrategy}', pathSegment: '${modelSegment}' },
         ) as string
       }
       return _openApiYamlCache

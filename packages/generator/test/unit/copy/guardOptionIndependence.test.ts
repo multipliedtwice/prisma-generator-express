@@ -34,7 +34,10 @@ import type { DMMF } from '@prisma/generator-helper'
 const AT = 'Post.findMany'
 
 /** Enable exactly one control, everything else upstream. */
-const only = (name: keyof GuardPolicy, value: boolean | string): Partial<GuardPolicy> => ({
+const only = (
+  name: keyof GuardPolicy,
+  value: boolean | string,
+): Partial<GuardPolicy> => ({
   ...UPSTREAM_GUARD_DEFAULTS,
   [name]: value,
 })
@@ -66,8 +69,8 @@ describe('the three construction-time controls do not imply one another', () => 
             validateOperationConfig(
               config as Parameters<typeof validateOperationConfig>[0],
               AT,
-              only(enabled, true)
-            )
+              only(enabled, true),
+            ),
           ).toThrow(error)
         })
       } else {
@@ -81,8 +84,8 @@ describe('the three construction-time controls do not imply one another', () => 
             validateOperationConfig(
               config as Parameters<typeof validateOperationConfig>[0],
               AT,
-              only(enabled, true)
-            )
+              only(enabled, true),
+            ),
           ).not.toThrow()
         })
       }
@@ -96,8 +99,8 @@ describe('validateGuardShapes reaches variants without requireDefaultVariantOptI
       validateOperationConfig(
         { variants: { public: { shape: {} } } },
         AT,
-        only('validateGuardShapes', true)
-      )
+        only('validateGuardShapes', true),
+      ),
     ).toThrow(/shape is empty/)
   })
 
@@ -106,8 +109,8 @@ describe('validateGuardShapes reaches variants without requireDefaultVariantOptI
       validateOperationConfig(
         { variants: { default: { shape: { where: {} } } } },
         AT,
-        only('validateGuardShapes', true)
-      )
+        only('validateGuardShapes', true),
+      ),
     ).not.toThrow()
   })
 })
@@ -118,8 +121,8 @@ describe('requireDefaultVariantOptIn does not drag in shape validation', () => {
       validateOperationConfig(
         { variants: { default: { shape: {} } }, allowDefaultVariant: true },
         AT,
-        only('requireDefaultVariantOptIn', true)
-      )
+        only('requireDefaultVariantOptIn', true),
+      ),
     ).not.toThrow()
   })
 })
@@ -151,8 +154,12 @@ describe('the defaults are the upstream behaviour, stated once', () => {
     const policy = resolveGuardPolicy({ enableUpdateEach: false })
 
     expect(policy.enableUpdateEach).toBe(false)
-    expect(policy.requireGuardShape).toBe(UPSTREAM_GUARD_DEFAULTS.requireGuardShape)
-    expect(policy.guardResolutionOrder).toBe(UPSTREAM_GUARD_DEFAULTS.guardResolutionOrder)
+    expect(policy.requireGuardShape).toBe(
+      UPSTREAM_GUARD_DEFAULTS.requireGuardShape,
+    )
+    expect(policy.guardResolutionOrder).toBe(
+      UPSTREAM_GUARD_DEFAULTS.guardResolutionOrder,
+    )
   })
 })
 
@@ -164,17 +171,20 @@ describe('the hardened profile is a set of values, not a mode', () => {
      * it would leave some controls at a default the user never saw.
      */
     expect(Object.keys(HARDENED_GUARD_PROFILE).sort()).toEqual(
-      Object.keys(UPSTREAM_GUARD_DEFAULTS).sort()
+      Object.keys(UPSTREAM_GUARD_DEFAULTS).sort(),
     )
   })
 
   it('differs from upstream on every single control', () => {
     // A control that is identical in both is one the preset is not actually
     // deciding, and it would sit in a UI looking like a choice that does nothing.
-    for (const key of Object.keys(UPSTREAM_GUARD_DEFAULTS) as Array<keyof GuardPolicy>) {
-      expect(HARDENED_GUARD_PROFILE[key], `${key} is the same in both profiles`).not.toBe(
-        UPSTREAM_GUARD_DEFAULTS[key]
-      )
+    for (const key of Object.keys(UPSTREAM_GUARD_DEFAULTS) as Array<
+      keyof GuardPolicy
+    >) {
+      expect(
+        HARDENED_GUARD_PROFILE[key],
+        `${key} is the same in both profiles`,
+      ).not.toBe(UPSTREAM_GUARD_DEFAULTS[key])
     }
   })
 
@@ -230,7 +240,7 @@ describe('the runtime copy and the compiled metadata agree', () => {
 describe('the metadata is machine-readable and cannot drift', () => {
   it('describes every control and no others', () => {
     expect(GUARD_OPTION_METADATA.map((o) => o.name).sort()).toEqual(
-      Object.keys(UPSTREAM_GUARD_DEFAULTS).sort()
+      Object.keys(UPSTREAM_GUARD_DEFAULTS).sort(),
     )
   })
 
@@ -245,24 +255,30 @@ describe('the metadata is machine-readable and cannot drift', () => {
     const applied = resolveGuardPolicy({})
 
     for (const option of GUARD_OPTION_METADATA) {
-      expect(option.default, `${option.name} advertises the wrong default`).toBe(
-        applied[option.name]
-      )
-      expect(option.hardened, `${option.name} advertises the wrong hardened value`).toBe(
-        HARDENED_GUARD_PROFILE[option.name]
-      )
+      expect(
+        option.default,
+        `${option.name} advertises the wrong default`,
+      ).toBe(applied[option.name])
+      expect(
+        option.hardened,
+        `${option.name} advertises the wrong hardened value`,
+      ).toBe(HARDENED_GUARD_PROFILE[option.name])
     }
   })
 
   it('gives every control a label, a description and a declared type', () => {
     for (const option of GUARD_OPTION_METADATA) {
       expect(option.label, `${option.name} has no label`).toBeTruthy()
-      expect(option.description.length, `${option.name} has no usable description`).toBeGreaterThan(
-        20
-      )
+      expect(
+        option.description.length,
+        `${option.name} has no usable description`,
+      ).toBeGreaterThan(20)
       expect(['boolean', 'enum']).toContain(option.type)
       if (option.type === 'enum') {
-        expect(option.values, `${option.name} is an enum with no values`).toBeTruthy()
+        expect(
+          option.values,
+          `${option.name} is an enum with no values`,
+        ).toBeTruthy()
         expect(option.values).toContain(option.default as string)
         expect(option.values).toContain(option.hardened as string)
       }
@@ -282,9 +298,14 @@ describe('the metadata is machine-readable and cannot drift', () => {
     expect(GUARD_METADATA_SCOPE.notDescribedYet.length).toBeGreaterThan(5)
     expect(GUARD_METADATA_SCOPE.notDescribedYet).toContain('dropGuard')
 
-    const described = new Set(GUARD_OPTION_METADATA.map((o) => o.name as string))
+    const described = new Set(
+      GUARD_OPTION_METADATA.map((o) => o.name as string),
+    )
     for (const missing of GUARD_METADATA_SCOPE.notDescribedYet) {
-      expect(described.has(missing), `${missing} is listed as missing but is described`).toBe(false)
+      expect(
+        described.has(missing),
+        `${missing} is listed as missing but is described`,
+      ).toBe(false)
     }
   })
 
@@ -293,7 +314,9 @@ describe('the metadata is machine-readable and cannot drift', () => {
     // Hono generator reads them. Saying so in the metadata stops a UI offering
     // them for an Express or Fastify project.
     for (const option of GUARD_OPTION_METADATA) {
-      expect(option.target, `${option.name} does not name its target`).toBe('hono')
+      expect(option.target, `${option.name} does not name its target`).toBe(
+        'hono',
+      )
     }
   })
 
@@ -341,20 +364,28 @@ describe('the emitted router reads each control separately', () => {
   })
 
   it('has no single umbrella switch left', () => {
-    expect(out, 'the umbrella flag is back').not.toMatch(/config\.requireGuard\b/)
+    expect(out, 'the umbrella flag is back').not.toMatch(
+      /config\.requireGuard\b/,
+    )
     expect(out).not.toMatch(/\bREQUIRE_GUARD\b/)
   })
 
   it('gates each runtime behaviour on its own control', () => {
     expect(out, 'E2E bypass').toContain('policy.allowE2EGuardBypass')
-    expect(out, 'resolved-shape validation').toContain('policy.validateResolvedShapes')
-    expect(out, 'hook ordering').toContain("POLICY.guardResolutionOrder === 'before-hooks'")
+    expect(out, 'resolved-shape validation').toContain(
+      'policy.validateResolvedShapes',
+    )
+    expect(out, 'hook ordering').toContain(
+      "POLICY.guardResolutionOrder === 'before-hooks'",
+    )
     expect(out, 'updateEach').toContain('!POLICY.enableUpdateEach')
   })
 
   it('passes the whole policy to construction-time validation', () => {
     // Rather than three booleans threaded separately, which is how one of them
     // ends up forgotten at a call site.
-    expect(out).toMatch(/validateOperationConfig\(raw, '.*' \+ String\(key\), POLICY\)/)
+    expect(out).toMatch(
+      /validateOperationConfig\(raw, '.*' \+ String\(key\), POLICY\)/,
+    )
   })
 })

@@ -58,17 +58,21 @@ describe('mapError', () => {
   it('strips details from server-side Prisma errors in production', () => {
     process.env.NODE_ENV = 'production'
 
-    expect(mapError({ code: 'P2024', message: 'database host' })).toMatchObject({
-      status: 503,
-      message: 'Connection pool timeout',
-    })
+    expect(mapError({ code: 'P2024', message: 'database host' })).toMatchObject(
+      {
+        status: 503,
+        message: 'Connection pool timeout',
+      },
+    )
   })
 
   it('logs and maps unknown Prisma codes', () => {
     process.env.NODE_ENV = 'test'
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    expect(mapError({ code: 'P2999', message: 'unknown prisma' })).toMatchObject({
+    expect(
+      mapError({ code: 'P2999', message: 'unknown prisma' }),
+    ).toMatchObject({
       status: 500,
       message: 'unknown prisma',
     })

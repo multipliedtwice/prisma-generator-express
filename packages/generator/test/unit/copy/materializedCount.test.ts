@@ -11,7 +11,7 @@ describe('quoteIdent', () => {
     expect(quoteIdent('_private2')).toBe('"_private2"')
   })
 
-  it.each(['bad-name', '1table', 'schema.table', 'name"']) (
+  it.each(['bad-name', '1table', 'schema.table', 'name"'])(
     'rejects invalid identifier %s',
     (name) => {
       expect(() => quoteIdent(name)).toThrowError(HttpError)

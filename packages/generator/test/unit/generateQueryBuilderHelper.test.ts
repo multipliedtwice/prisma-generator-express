@@ -88,8 +88,10 @@ describe('generated query builder helper', () => {
    * generates into a temporary staging directory ships a fallback that resolves
    * nowhere at all once that directory is renamed away.
    */
-  it('defaults to the consumer\'s own prisma/schema.prisma, whatever schemaPath was', () => {
-    const emitted = generateQueryBuilderHelper({ schemaPath: '/tmp/some-build-dir/prisma/schema.prisma' })
+  it("defaults to the consumer's own prisma/schema.prisma, whatever schemaPath was", () => {
+    const emitted = generateQueryBuilderHelper({
+      schemaPath: '/tmp/some-build-dir/prisma/schema.prisma',
+    })
 
     expect(emitted).not.toContain('/tmp/some-build-dir')
     expect(emitted).toContain("resolve(process.cwd(), 'prisma/schema.prisma')")
@@ -97,7 +99,9 @@ describe('generated query builder helper', () => {
 
   it('keeps the explicit caller override working', () => {
     // The escape hatch for a consumer whose layout is not Prisma's convention.
-    const emitted = generateQueryBuilderHelper({ schemaPath: '/tmp/x/schema.prisma' })
+    const emitted = generateQueryBuilderHelper({
+      schemaPath: '/tmp/x/schema.prisma',
+    })
 
     expect(emitted).toContain('const schemaPath = options.schemaPath ||')
     expect(emitted).toContain('schemaPath?: string')
@@ -106,7 +110,9 @@ describe('generated query builder helper', () => {
   it('emits the same helper whoever generated it', () => {
     // Byte-identical from two different generation contexts: the emitted text
     // carries nothing derived from where the generator ran.
-    expect(generateQueryBuilderHelper({ schemaPath: '/a/prisma/schema.prisma' })).toBe(
+    expect(
+      generateQueryBuilderHelper({ schemaPath: '/a/prisma/schema.prisma' }),
+    ).toBe(
       generateQueryBuilderHelper({ schemaPath: '/b/elsewhere/schema.prisma' }),
     )
   })

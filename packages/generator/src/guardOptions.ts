@@ -98,90 +98,94 @@ export type GuardOptionMetadata = {
  * them; declaring them on the shared base made Express and Fastify accept them in
  * TypeScript and ignore them at runtime, which is a false public API.
  */
-export const GUARD_OPTION_METADATA: readonly GuardOptionMetadata[] = Object.freeze([
-  {
-    name: 'requireGuardShape',
-    type: 'boolean',
-    default: UPSTREAM_GUARD_DEFAULTS.requireGuardShape,
-    hardened: HARDENED_GUARD_PROFILE.requireGuardShape,
-    label: 'Require a guard on every enabled operation',
-    description:
-      'Refuses at router construction when an operation defines neither "shape" nor "variants".',
-    warning:
-      "Off, an operation nobody configured passes the caller's own where/select/include straight to Prisma.",
-    target: 'hono',
-  },
-  {
-    name: 'validateGuardShapes',
-    type: 'boolean',
-    default: UPSTREAM_GUARD_DEFAULTS.validateGuardShapes,
-    hardened: HARDENED_GUARD_PROFILE.validateGuardShapes,
-    label: 'Validate guard shapes',
-    description:
-      'Refuses an empty shape, and one mixing guard keys with non-guard keys, at the top level and inside variants.',
-    warning:
-      'Off, "shape: {}" reads as guarded and constrains nothing. On, strict validation may reject existing route configs.',
-    target: 'hono',
-  },
-  {
-    name: 'requireDefaultVariantOptIn',
-    type: 'boolean',
-    default: UPSTREAM_GUARD_DEFAULTS.requireDefaultVariantOptIn,
-    hardened: HARDENED_GUARD_PROFILE.requireDefaultVariantOptIn,
-    label: 'Require confirmation for a "default" variant',
-    description:
-      'A variant named "default" must set allowDefaultVariant: true to be accepted.',
-    warning: 'A "default" variant answers every unrecognised, blank and missing caller.',
-    target: 'hono',
-  },
-  {
-    name: 'enableUpdateEach',
-    type: 'boolean',
-    default: UPSTREAM_GUARD_DEFAULTS.enableUpdateEach,
-    hardened: HARDENED_GUARD_PROFILE.enableUpdateEach,
-    label: 'Register the updateEach batch route',
-    description: 'Mounts POST <base>/each. Set false to refuse it at router construction.',
-    warning:
-      'updateEach bypasses guard shapes entirely; only a development-only warning stands between it and an unguarded mass update.',
-    target: 'hono',
-  },
-  {
-    name: 'guardResolutionOrder',
-    type: 'enum',
-    values: Object.freeze(['after-hooks', 'before-hooks']),
-    default: UPSTREAM_GUARD_DEFAULTS.guardResolutionOrder,
-    hardened: HARDENED_GUARD_PROFILE.guardResolutionOrder,
-    label: 'When guard failures are raised',
-    description:
-      'after-hooks is the upstream behaviour; before-hooks settles variant and shape resolution before any operation hook runs.',
-    warning:
-      'With after-hooks, a hook that returns a Response can answer a request whose guard was never established.',
-    target: 'hono',
-  },
-  {
-    name: 'allowE2EGuardBypass',
-    type: 'boolean',
-    default: UPSTREAM_GUARD_DEFAULTS.allowE2EGuardBypass,
-    hardened: HARDENED_GUARD_PROFILE.allowE2EGuardBypass,
-    label: 'Honour the E2E environment guard bypass',
-    description: 'Treats E2E=true in the environment as a request to drop the guard.',
-    warning:
-      'A runtime variable can weaken a deployed artifact after generation. On an edge runtime this is an ordinary config var.',
-    target: 'hono',
-  },
-  {
-    name: 'validateResolvedShapes',
-    type: 'boolean',
-    default: UPSTREAM_GUARD_DEFAULTS.validateResolvedShapes,
-    hardened: HARDENED_GUARD_PROFILE.validateResolvedShapes,
-    label: 'Validate what a shape function returns',
-    description:
-      'Checks a dynamically resolved shape before use and fails the request with 500 if it is unusable. Also resolves it exactly once.',
-    warning:
-      'Off, a shape function returning {} or undefined runs the operation unguarded, once per request.',
-    target: 'hono',
-  },
-])
+export const GUARD_OPTION_METADATA: readonly GuardOptionMetadata[] =
+  Object.freeze([
+    {
+      name: 'requireGuardShape',
+      type: 'boolean',
+      default: UPSTREAM_GUARD_DEFAULTS.requireGuardShape,
+      hardened: HARDENED_GUARD_PROFILE.requireGuardShape,
+      label: 'Require a guard on every enabled operation',
+      description:
+        'Refuses at router construction when an operation defines neither "shape" nor "variants".',
+      warning:
+        "Off, an operation nobody configured passes the caller's own where/select/include straight to Prisma.",
+      target: 'hono',
+    },
+    {
+      name: 'validateGuardShapes',
+      type: 'boolean',
+      default: UPSTREAM_GUARD_DEFAULTS.validateGuardShapes,
+      hardened: HARDENED_GUARD_PROFILE.validateGuardShapes,
+      label: 'Validate guard shapes',
+      description:
+        'Refuses an empty shape, and one mixing guard keys with non-guard keys, at the top level and inside variants.',
+      warning:
+        'Off, "shape: {}" reads as guarded and constrains nothing. On, strict validation may reject existing route configs.',
+      target: 'hono',
+    },
+    {
+      name: 'requireDefaultVariantOptIn',
+      type: 'boolean',
+      default: UPSTREAM_GUARD_DEFAULTS.requireDefaultVariantOptIn,
+      hardened: HARDENED_GUARD_PROFILE.requireDefaultVariantOptIn,
+      label: 'Require confirmation for a "default" variant',
+      description:
+        'A variant named "default" must set allowDefaultVariant: true to be accepted.',
+      warning:
+        'A "default" variant answers every unrecognised, blank and missing caller.',
+      target: 'hono',
+    },
+    {
+      name: 'enableUpdateEach',
+      type: 'boolean',
+      default: UPSTREAM_GUARD_DEFAULTS.enableUpdateEach,
+      hardened: HARDENED_GUARD_PROFILE.enableUpdateEach,
+      label: 'Register the updateEach batch route',
+      description:
+        'Mounts POST <base>/each. Set false to refuse it at router construction.',
+      warning:
+        'updateEach bypasses guard shapes entirely; only a development-only warning stands between it and an unguarded mass update.',
+      target: 'hono',
+    },
+    {
+      name: 'guardResolutionOrder',
+      type: 'enum',
+      values: Object.freeze(['after-hooks', 'before-hooks']),
+      default: UPSTREAM_GUARD_DEFAULTS.guardResolutionOrder,
+      hardened: HARDENED_GUARD_PROFILE.guardResolutionOrder,
+      label: 'When guard failures are raised',
+      description:
+        'after-hooks is the upstream behaviour; before-hooks settles variant and shape resolution before any operation hook runs.',
+      warning:
+        'With after-hooks, a hook that returns a Response can answer a request whose guard was never established.',
+      target: 'hono',
+    },
+    {
+      name: 'allowE2EGuardBypass',
+      type: 'boolean',
+      default: UPSTREAM_GUARD_DEFAULTS.allowE2EGuardBypass,
+      hardened: HARDENED_GUARD_PROFILE.allowE2EGuardBypass,
+      label: 'Honour the PGE_DROP_GUARD environment guard bypass',
+      description:
+        'Treats PGE_DROP_GUARD=true in the environment as a request to drop the guard. Deprecated alias: E2E=true.',
+      warning:
+        'A runtime variable can weaken a deployed artifact after generation. On an edge runtime this is an ordinary config var.',
+      target: 'hono',
+    },
+    {
+      name: 'validateResolvedShapes',
+      type: 'boolean',
+      default: UPSTREAM_GUARD_DEFAULTS.validateResolvedShapes,
+      hardened: HARDENED_GUARD_PROFILE.validateResolvedShapes,
+      label: 'Validate what a shape function returns',
+      description:
+        'Checks a dynamically resolved shape before use and fails the request with 500 if it is unusable. Also resolves it exactly once.',
+      warning:
+        'Off, a shape function returning {} or undefined runs the operation unguarded, once per request.',
+      target: 'hono',
+    },
+  ])
 
 /**
  * What this metadata does NOT cover.
@@ -208,19 +212,28 @@ export const GUARD_METADATA_SCOPE = Object.freeze({
 })
 
 /** Fill in the defaults. Absent means upstream, never an opinion. */
-export function resolveGuardPolicy(config: Partial<GuardPolicy> | undefined): GuardPolicy {
+export function resolveGuardPolicy(
+  config: Partial<GuardPolicy> | undefined,
+): GuardPolicy {
   return {
-    requireGuardShape: config?.requireGuardShape ?? UPSTREAM_GUARD_DEFAULTS.requireGuardShape,
+    requireGuardShape:
+      config?.requireGuardShape ?? UPSTREAM_GUARD_DEFAULTS.requireGuardShape,
     validateGuardShapes:
-      config?.validateGuardShapes ?? UPSTREAM_GUARD_DEFAULTS.validateGuardShapes,
+      config?.validateGuardShapes ??
+      UPSTREAM_GUARD_DEFAULTS.validateGuardShapes,
     requireDefaultVariantOptIn:
-      config?.requireDefaultVariantOptIn ?? UPSTREAM_GUARD_DEFAULTS.requireDefaultVariantOptIn,
-    enableUpdateEach: config?.enableUpdateEach ?? UPSTREAM_GUARD_DEFAULTS.enableUpdateEach,
+      config?.requireDefaultVariantOptIn ??
+      UPSTREAM_GUARD_DEFAULTS.requireDefaultVariantOptIn,
+    enableUpdateEach:
+      config?.enableUpdateEach ?? UPSTREAM_GUARD_DEFAULTS.enableUpdateEach,
     guardResolutionOrder:
-      config?.guardResolutionOrder ?? UPSTREAM_GUARD_DEFAULTS.guardResolutionOrder,
+      config?.guardResolutionOrder ??
+      UPSTREAM_GUARD_DEFAULTS.guardResolutionOrder,
     allowE2EGuardBypass:
-      config?.allowE2EGuardBypass ?? UPSTREAM_GUARD_DEFAULTS.allowE2EGuardBypass,
+      config?.allowE2EGuardBypass ??
+      UPSTREAM_GUARD_DEFAULTS.allowE2EGuardBypass,
     validateResolvedShapes:
-      config?.validateResolvedShapes ?? UPSTREAM_GUARD_DEFAULTS.validateResolvedShapes,
+      config?.validateResolvedShapes ??
+      UPSTREAM_GUARD_DEFAULTS.validateResolvedShapes,
   }
 }

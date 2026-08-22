@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs'
+import {
+  mkdtempSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+} from 'node:fs'
 import { join, resolve, basename } from 'node:path'
 import { createRequire } from 'node:module'
 
@@ -25,7 +31,10 @@ import { createRequire } from 'node:module'
  * testing the artifact instead of the intent.
  */
 
-const GENERATOR = basename(process.cwd()) === 'generator' ? process.cwd() : resolve('packages/generator')
+const GENERATOR =
+  basename(process.cwd()) === 'generator'
+    ? process.cwd()
+    : resolve('packages/generator')
 
 let workdir: string
 let packageRoot: string
@@ -45,7 +54,11 @@ beforeAll(() => {
   try {
     // Build first: `npm pack` ships whatever is on disk, so packing a stale or
     // absent dist would test nothing and pass.
-    execFileSync('npm', ['run', 'build'], { cwd: GENERATOR, stdio: 'pipe', encoding: 'utf-8' })
+    execFileSync('npm', ['run', 'build'], {
+      cwd: GENERATOR,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+    })
 
     const out = execFileSync('npm', ['pack', '--pack-destination', workdir], {
       cwd: GENERATOR,
@@ -78,18 +91,20 @@ describe('the packed tarball', () => {
   it('ships the compiled metadata module', () => {
     expect(
       existsSync(join(packageRoot, 'dist', 'guardOptions.js')),
-      'dist/guardOptions.js is not in the tarball'
+      'dist/guardOptions.js is not in the tarball',
     ).toBe(true)
     expect(
       existsSync(join(packageRoot, 'dist', 'guardOptions.d.ts')),
-      'the type declarations are not in the tarball'
+      'the type declarations are not in the tarball',
     ).toBe(true)
   })
 
   it('does NOT ship src/copy as a compiled module, which is why this file exists', () => {
     // src/** is shipped as source (the generator copies it into projects), but it
     // is not compiled. Asserting the absence keeps the reason visible.
-    expect(existsSync(join(packageRoot, 'dist', 'copy', 'routeConfig.js'))).toBe(false)
+    expect(
+      existsSync(join(packageRoot, 'dist', 'copy', 'routeConfig.js')),
+    ).toBe(false)
   })
 })
 
@@ -97,17 +112,23 @@ describe('importing it the way the CMS would', () => {
   it('resolves through the package entry point, not a deep path', () => {
     expect(packFailed).toBeNull()
 
-    const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf-8'))
+    const manifest = JSON.parse(
+      readFileSync(join(packageRoot, 'package.json'), 'utf-8'),
+    )
     const entry = join(packageRoot, manifest.main)
 
-    expect(existsSync(entry), `package.json main (${manifest.main}) is not in the tarball`).toBe(
-      true
-    )
+    expect(
+      existsSync(entry),
+      `package.json main (${manifest.main}) is not in the tarball`,
+    ).toBe(true)
 
     const requireFromConsumer = createRequire(join(packageRoot, 'package.json'))
     const pkg = requireFromConsumer(entry)
 
-    expect(pkg.GUARD_OPTION_METADATA, 'metadata is not exported from the entry point').toBeTruthy()
+    expect(
+      pkg.GUARD_OPTION_METADATA,
+      'metadata is not exported from the entry point',
+    ).toBeTruthy()
     expect(Array.isArray(pkg.GUARD_OPTION_METADATA)).toBe(true)
     expect(pkg.GUARD_OPTION_METADATA).toHaveLength(7)
   })
@@ -142,14 +163,23 @@ describe('importing it the way the CMS would', () => {
     for (const option of pkg.GUARD_OPTION_METADATA) {
       expect(option.name, 'an option has no name').toBeTruthy()
       expect(option.label, `${option.name} has no label`).toBeTruthy()
-      expect(option.description, `${option.name} has no description`).toBeTruthy()
+      expect(
+        option.description,
+        `${option.name} has no description`,
+      ).toBeTruthy()
       expect(option.warning, `${option.name} has no warning`).toBeTruthy()
-      expect(option.target, `${option.name} does not name its target`).toBe('hono')
-      expect(['boolean', 'enum']).toContain(option.type)
-      expect(option, `${option.name} does not advertise a default`).toHaveProperty('default')
-      expect(option, `${option.name} does not advertise a hardened value`).toHaveProperty(
-        'hardened'
+      expect(option.target, `${option.name} does not name its target`).toBe(
+        'hono',
       )
+      expect(['boolean', 'enum']).toContain(option.type)
+      expect(
+        option,
+        `${option.name} does not advertise a default`,
+      ).toHaveProperty('default')
+      expect(
+        option,
+        `${option.name} does not advertise a hardened value`,
+      ).toHaveProperty('hardened')
     }
   })
 
@@ -168,7 +198,7 @@ describe('importing it the way the CMS would', () => {
 
     const types = readFileSync(join(packageRoot, 'dist', 'index.d.ts'), 'utf-8')
     expect(types, 'the entry does not re-export the metadata types').toMatch(
-      /GUARD_OPTION_METADATA|guardOptions/
+      /GUARD_OPTION_METADATA|guardOptions/,
     )
   })
 })

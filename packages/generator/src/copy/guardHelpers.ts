@@ -3,12 +3,17 @@ import { HttpError } from './errorMapper'
 export type PrismaDelegateLike = {
   count: (args?: unknown) => Promise<unknown>
   findMany: (args?: unknown) => Promise<unknown>
-  guard?: (shape: Record<string, unknown>, caller?: string) => PrismaDelegateLike
+  guard?: (
+    shape: Record<string, unknown>,
+    caller?: string,
+  ) => PrismaDelegateLike
 }
 
 export function assertGuard(
   delegate: PrismaDelegateLike,
-): asserts delegate is PrismaDelegateLike & { guard: NonNullable<PrismaDelegateLike['guard']> } {
+): asserts delegate is PrismaDelegateLike & {
+  guard: NonNullable<PrismaDelegateLike['guard']>
+} {
   if (typeof delegate.guard !== 'function') {
     throw new HttpError(
       500,
@@ -18,9 +23,24 @@ export function assertGuard(
 }
 
 export const GUARD_SHAPE_CONFIG_KEYS = new Set([
-  'data', 'create', 'update', 'where', 'include', 'select', 'orderBy',
-  'cursor', 'take', 'skip', 'distinct', 'having', '_count', '_avg',
-  '_sum', '_min', '_max', 'by',
+  'data',
+  'create',
+  'update',
+  'where',
+  'include',
+  'select',
+  'orderBy',
+  'cursor',
+  'take',
+  'skip',
+  'distinct',
+  'having',
+  '_count',
+  '_avg',
+  '_sum',
+  '_min',
+  '_max',
+  'by',
 ])
 
 function keepWhereOnly(obj: Record<string, unknown>): Record<string, unknown> {
@@ -39,7 +59,8 @@ export function buildCountShape(
     return (...args: unknown[]) => keepWhereOnly(fn(...args))
   }
   const keys = Object.keys(shape)
-  const isSingleShape = keys.length === 0 || keys.every((k) => GUARD_SHAPE_CONFIG_KEYS.has(k))
+  const isSingleShape =
+    keys.length === 0 || keys.every((k) => GUARD_SHAPE_CONFIG_KEYS.has(k))
   if (isSingleShape) return keepWhereOnly(shape)
   const result: Record<string, unknown> = {}
   for (const [key, variant] of Object.entries(shape)) {

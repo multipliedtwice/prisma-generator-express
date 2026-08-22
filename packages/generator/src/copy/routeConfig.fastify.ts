@@ -9,6 +9,7 @@ import type {
   FindManyPaginatedMode,
   PaginationConfig,
   PaginationCountSource,
+  PrismaClientLike,
 } from './routeConfig'
 
 export type {
@@ -29,5 +30,7 @@ export type FastifyHookHandler = (
 export type OperationConfig<TShape = Record<string, unknown>> =
   BaseOperationConfig<FastifyHookHandler, TShape>
 
-export type RouteConfig<TShape = Record<string, unknown>, TCtx = unknown> =
-  BaseRouteConfig<FastifyHookHandler, FastifyRequest, TShape, TCtx>
+export type RouteConfig<
+  TShape = Record<string, unknown>,
+  TCtx = unknown,
+> = BaseRouteConfig<FastifyHookHandler, FastifyRequest, TShape, TCtx>

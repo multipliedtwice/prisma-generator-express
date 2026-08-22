@@ -4,18 +4,21 @@ import type { Target } from '../constants'
 
 export function generateUnifiedDocs(
   modelNames: string[],
+  pathSegments: Record<string, string>,
   target: Target,
   importStyle: ImportStyle,
 ): string {
   const ext = importExt(importStyle)
-  if (target === 'fastify') return generateFastify(modelNames, ext)
-  if (target === 'hono') return generateHono(modelNames, ext)
-  return generateExpress(modelNames, ext)
+  if (target === 'fastify')
+    return generateFastify(modelNames, pathSegments, ext)
+  if (target === 'hono') return generateHono(modelNames, pathSegments, ext)
+  return generateExpress(modelNames, pathSegments, ext)
 }
 
 const renderIndexFn = `function renderIndex(title: string, modelNames: string[], basePath: string): string {
+  const segments = MODEL_PATH_SEGMENTS as Record<string, string>
   const links = modelNames
-    .map((n) => '<li><a href="' + basePath + '/' + n.toLowerCase() + '">' + n + '</a></li>')
+    .map((n) => '<li><a href="' + basePath + '/' + (segments[n] ?? n.toLowerCase()) + '">' + n + '</a></li>')
     .join('')
 
   return '<!DOCTYPE html><html><head><meta charset="utf-8" /><title>' + title +
@@ -27,13 +30,19 @@ const renderIndexFn = `function renderIndex(title: string, modelNames: string[],
     '</div></body></html>'
 }`
 
-function generateExpress(modelNames: string[], ext: string): string {
+function generateExpress(
+  modelNames: string[],
+  pathSegments: Record<string, string>,
+  ext: string,
+): string {
   return `import type { Router } from 'express'
 import { getEnv, removeTrailingSlash } from './misc${ext}'
 
 const _env = getEnv()
 
 const MODELS = ${JSON.stringify(modelNames)} as const
+
+const MODEL_PATH_SEGMENTS = ${JSON.stringify(pathSegments)} as const
 
 interface UnifiedDocsConfig {
   title?: string
@@ -62,13 +71,19 @@ export default registerUnifiedDocs
 `
 }
 
-function generateFastify(modelNames: string[], ext: string): string {
+function generateFastify(
+  modelNames: string[],
+  pathSegments: Record<string, string>,
+  ext: string,
+): string {
   return `import type { FastifyInstance } from 'fastify'
 import { getEnv, removeTrailingSlash } from './misc${ext}'
 
 const _env = getEnv()
 
 const MODELS = ${JSON.stringify(modelNames)} as const
+
+const MODEL_PATH_SEGMENTS = ${JSON.stringify(pathSegments)} as const
 
 interface UnifiedDocsConfig {
   title?: string
@@ -100,13 +115,19 @@ export default registerUnifiedDocs
 `
 }
 
-function generateHono(modelNames: string[], ext: string): string {
+function generateHono(
+  modelNames: string[],
+  pathSegments: Record<string, string>,
+  ext: string,
+): string {
   return `import type { Hono } from 'hono'
 import { getEnv, removeTrailingSlash } from './misc${ext}'
 
 const _env = getEnv()
 
 const MODELS = ${JSON.stringify(modelNames)} as const
+
+const MODEL_PATH_SEGMENTS = ${JSON.stringify(pathSegments)} as const
 
 interface UnifiedDocsConfig {
   title?: string

@@ -10,6 +10,7 @@ import type {
   FindManyPaginatedMode,
   PaginationConfig,
   PaginationCountSource,
+  PrismaClientLike,
 } from './routeConfig'
 
 export type {
@@ -63,16 +64,13 @@ export type HonoAfterHook<TEnv extends HonoEnvBase = HonoEnvBase> = (
 ) => Promise<Response | void> | Response | void
 
 /** @deprecated use HonoBeforeHook or HonoAfterHook */
-export type HonoHookHandler<TEnv extends HonoEnvBase = HonoEnvBase> = HonoBeforeHook<TEnv>
+export type HonoHookHandler<TEnv extends HonoEnvBase = HonoEnvBase> =
+  HonoBeforeHook<TEnv>
 
 export type OperationConfig<
   TShape = Record<string, unknown>,
   TEnv extends HonoEnvBase = HonoEnvBase,
-> = BaseOperationConfig<
-  HonoBeforeHook<TEnv>,
-  TShape,
-  HonoAfterHook<TEnv>
->
+> = BaseOperationConfig<HonoBeforeHook<TEnv>, TShape, HonoAfterHook<TEnv>>
 
 export type UpdateEachConfig<TEnv extends HonoEnvBase = HonoEnvBase> = {
   before?: HonoBeforeHook<TEnv>[]
@@ -180,7 +178,8 @@ export type RouteConfig<
   guardResolutionOrder?: 'after-hooks' | 'before-hooks'
 
   /**
-   * Honour `E2E=true` in the environment as a guard bypass. **Default `true`.**
+   * Honour `PGE_DROP_GUARD=true` in the environment as a guard bypass
+   * (deprecated alias: `E2E=true`). **Default `true`.**
    *
    * Upstream behaviour, and a real hazard on an edge runtime where that variable
    * is an ordinary config var — set on staging, copied forward, flagged as

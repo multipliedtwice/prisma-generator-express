@@ -3,6 +3,7 @@ import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import { WriteStrategy, FindManyPaginatedMode } from '../constants'
+import { modelPathSegment, PathCase } from '../utils/pathCasing'
 import { OPERATION_METADATA } from '../copy/operationDefinitions'
 
 function pathExpr(basePath: string, suffix: string): string {
@@ -55,7 +56,7 @@ function emitReadOp(
   const opKind = opKindFor(meta.name)
 
   const postReadBlock = meta.supportsPostRead
-    ? `    if (postReadsEnabled) {
+    ? `    if (resolvePostReadsEnabled(config.disablePostReads, opConfig.disablePostReads)) {
       const postPath = ${meta.name === 'findMany' ? "basePath ? `${basePath}/read` : '/read'" : `path`}
       router.post(
         postPath,
@@ -83,6 +84,7 @@ function emitReadOp(
       requireVariantKey(),
       variantBeforeDispatcher(opConfig),
       maybeProgressiveSSE(opConfig, core.${meta.coreName}, '${meta.name}'),
+      ${meta.name === 'findMany' ? 'maybeNdjsonFindMany(core.findMany),' : ''}
       ${handlerName} as RequestHandler,
       variantAfterDispatcher(opConfig),
       ...opConfig.operationAfter,
@@ -127,6 +129,7 @@ export function generateRouterFunction({
   writeStrategy,
   findManyPaginatedMode,
   dropGuard,
+  pathCase,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
@@ -135,10 +138,11 @@ export function generateRouterFunction({
   writeStrategy: WriteStrategy
   findManyPaginatedMode: FindManyPaginatedMode
   dropGuard: boolean
+  pathCase: PathCase
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
-  const modelNameLower = modelName.toLowerCase()
+  const modelSegment = modelPathSegment(modelName, pathCase)
   const delegateKey = modelName.charAt(0).toLowerCase() + modelName.slice(1)
   const routerFunctionName = `${modelName}Router`
 
@@ -173,9 +177,10 @@ import type {
   QueryBuilderConfig,
   FindManyPaginatedMode,
   PaginationConfig,
+  PrismaClientLike,
 } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
-import { sanitizeKeys, normalizePrefix, getEnv, isPlainObject } from '../misc${ext}'
+import { sanitizeKeys, normalizePrefix, getEnv, isPlainObject, resolveDropGuardEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import {
   normalizeOperation,
@@ -183,6 +188,8 @@ import {
   validateCountSourceWhere,
   validateOperationConfig,
   validateUpdateEachConfig,
+  resolvePostReadsEnabled,
+  warnIfUnguardedRoutes,
 } from '../routeConfig${ext}'
 import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import type { OperationContext } from '../operationRuntime${ext}'
@@ -191,6 +198,7 @@ import { HttpError, mapError } from '../errorMapper${ext}'
 import { formatGuardVariantResolutionError } from '../guardVariantError${ext}'
 import type { GuardVariantResolution } from '../guardVariantRouting${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
+import { acceptsNdjson, runNdjsonFindMany } from '../ndjson${ext}'
 import {
   acceptsEventStream,
   runProgressiveEndpoint,
@@ -208,7 +216,7 @@ ${generateRouteConfigType(modelName, 'RequestHandler', guardShapesImport, import
 const _env = getEnv()
 
 const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode}'
-const DROP_GUARD = ${dropGuard} || _env.E2E === 'true'
+const DROP_GUARD = ${dropGuard} || resolveDropGuardEnv(_env)
 
 type OperationConfigLike = {
   before?: RequestHandler[]
@@ -233,7 +241,7 @@ type NormalizedOp = NormalizedOperationConfig<RequestHandler, RequestHandler> & 
 }
 
 type ExtendedRequest = Request & {
-  prisma?: unknown
+  prisma?: PrismaClientLike
   postgres?: unknown
   sqlite?: unknown
 }
@@ -360,7 +368,7 @@ function requireVariantKey(): RequestHandler {
   }
 }
 
-export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${modelName}RouteConfig<TCtx, TPrisma> = {}) {
+export function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClientLike = PrismaClientLike>(config: ${modelName}RouteConfig<TCtx, TPrisma> = {}) {
   validateCountSourceWhere(config.pagination?.countSource, '${modelName} pagination')
   validateCountSourceWhere(
     (config.findManyPaginated && typeof config.findManyPaginated === 'object' ? config.findManyPaginated : undefined)?.pagination?.countSource,
@@ -370,6 +378,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
   const router = express.Router()
 
   const isEnabled = (value: unknown): boolean => value !== false && !!(config.enableAll || value)
+  warnIfUnguardedRoutes('${modelName}', ['findMany', 'findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findManyPaginated', 'count', 'aggregate', 'groupBy', 'create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'updateManyAndReturn', 'upsert', 'delete', 'deleteMany'], config, isEnabled)
 
   const opFor = (key: string): NormalizedOp => {
     const raw = (config as unknown as Record<string, unknown>)[key] as OperationConfigLike | undefined
@@ -378,13 +387,12 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
   }
 
   const customPrefix = normalizePrefix(config.customUrlPrefix || '')
-  const modelPrefix = config.addModelPrefix !== false ? '/${modelNameLower}' : ''
+  const modelPrefix = config.addModelPrefix !== false ? '/${modelSegment}' : ''
   const basePath = customPrefix + modelPrefix
 
   const openApiDisabled = config.disableOpenApi === true
     || (config.disableOpenApi !== false && (_env.DISABLE_OPENAPI === 'true' || _env.NODE_ENV === 'production'))
 
-  const postReadsEnabled = !config.disablePostReads
 
   let _openApiJsonCache: unknown = undefined
   const getOpenApiJson = (): unknown => {
@@ -394,7 +402,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config as unknown as Parameters<typeof buildModelOpenApi>[3],
-        { format: 'json', writeStrategy: '${writeStrategy}' },
+        { format: 'json', writeStrategy: '${writeStrategy}', pathSegment: '${modelSegment}' },
       )
     }
     return _openApiJsonCache
@@ -407,7 +415,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config as unknown as Parameters<typeof buildModelOpenApi>[3],
-        { format: 'yaml', writeStrategy: '${writeStrategy}' },
+        { format: 'yaml', writeStrategy: '${writeStrategy}', pathSegment: '${modelSegment}' },
       ) as string
     }
     return _openApiYamlCache
@@ -526,6 +534,41 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
     }
   }
 
+  const maybeNdjsonFindMany = (
+    coreFn: (ctx: OperationContext) => Promise<unknown>,
+  ): RequestHandler => {
+    return async (req, res, next) => {
+      if (res.headersSent || res.writableEnded) return next()
+      if (req.method !== 'GET') return next()
+      if (!acceptsNdjson(req.headers.accept)) return next()
+
+      const locals = readLocals(res)
+      const rawArgs = (locals.parsedQuery ?? {}) as Record<string, unknown>
+      const args = { ...rawArgs }
+      const paginationCfg = mergePaginationConfig(config.pagination, undefined)
+      const requestedTake = typeof rawArgs.take === 'number' ? rawArgs.take : undefined
+      const initialSkip = typeof rawArgs.skip === 'number' ? rawArgs.skip : 0
+
+      try {
+        await runNdjsonFindMany({
+          res,
+          isClosed: () => req.destroyed,
+          fetchPage: (skip, pageTake) =>
+            coreFn({
+              ...buildContext(req, res),
+              parsedQuery: { ...args, skip, take: pageTake },
+            }),
+          initialSkip,
+          requestedTake,
+          defaultLimit: paginationCfg?.defaultLimit,
+          maxLimit: paginationCfg?.maxLimit ?? 1000,
+        })
+      } catch (err) {
+        next(err)
+      }
+    }
+  }
+
   const maybeProgressiveSSE = (
     opConfig: NormalizedOp,
     coreFn: (ctx: OperationContext) => Promise<unknown>,
@@ -552,6 +595,23 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
         }
 
         if (progressiveConfig.mode === 'autoInclude') {
+        if (progressiveConfig.experimental !== true) {
+          if (_env.NODE_ENV !== 'production') {
+            console.warn(
+              '[prisma-generator-express] auto-include progressive is experimental; set \`experimental: true\` on the progressive config to enable it. Falling back.'
+            )
+          }
+          if (progressiveConfig.fallback === 'error') {
+            emitTerminalSSEError(res, 'auto-include requires experimental: true')
+            return
+          }
+          await runSingleResultSSE({
+            req,
+            res,
+            coreQueryFn: () => coreFn(buildContext(req, res)),
+          })
+          return
+        }
           const isAutoIncludeReadable =
             baseOp === 'findUnique' || baseOp === 'findUniqueOrThrow' ||
             baseOp === 'findFirst' || baseOp === 'findFirstOrThrow' ||
@@ -619,11 +679,16 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any>(config: ${m
         }
 
         const ctx = await config.resolveContext(req)
+        const prismaClient = (req as ExtendedRequest).prisma
+        if (!prismaClient) {
+          emitTerminalSSEError(res, 'Progressive endpoint requires req.prisma to be set')
+          return
+        }
         await runProgressiveEndpoint({
           req,
           res,
           ctx,
-          prisma: (req as ExtendedRequest).prisma,
+          prisma: prismaClient,
           variant: variant as string,
           stages: progressiveConfig.stages,
           stageRegistry,

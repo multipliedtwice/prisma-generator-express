@@ -35,11 +35,7 @@ describe('parseQueryParams', () => {
   })
 
   it('parses string arrays', () => {
-    expect(parseQueryParams(['true', '3', 'null'])).toEqual([
-      true,
-      '3',
-      null,
-    ])
+    expect(parseQueryParams(['true', '3', 'null'])).toEqual([true, '3', null])
   })
 
   it('sanitizes object arrays', () => {

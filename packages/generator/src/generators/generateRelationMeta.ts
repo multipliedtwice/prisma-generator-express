@@ -32,13 +32,15 @@ function findOppositeField(
   const target = models.find((m) => m.name === targetModelName)
   if (!target) return null
   const isSelfRelation = targetModelName === selfModelName
-  return target.fields.find(
-    (f) =>
-      f.kind === 'object' &&
-      f.relationName === relationName &&
-      f.type === selfModelName &&
-      !(isSelfRelation && f.name === selfFieldName),
-  ) || null
+  return (
+    target.fields.find(
+      (f) =>
+        f.kind === 'object' &&
+        f.relationName === relationName &&
+        f.type === selfModelName &&
+        !(isSelfRelation && f.name === selfFieldName),
+    ) || null
+  )
 }
 
 function computeRelation(
@@ -61,7 +63,13 @@ function computeRelation(
     }
   }
 
-  const opposite = findOppositeField(models, field.type, field.relationName, selfModelName, field.name)
+  const opposite = findOppositeField(
+    models,
+    field.type,
+    field.relationName,
+    selfModelName,
+    field.name,
+  )
   if (opposite) {
     const oppFrom = (opposite.relationFromFields ?? []) as string[]
     const oppTo = (opposite.relationToFields ?? []) as string[]
@@ -118,7 +126,9 @@ export interface GenerateRelationMetaOptions {
   importStyle: ImportStyle
 }
 
-export function generateRelationMeta(options: GenerateRelationMetaOptions): string {
+export function generateRelationMeta(
+  options: GenerateRelationMetaOptions,
+): string {
   const ext = importExt(options.importStyle)
   const meta = buildModelMeta(options.model, options.allModels)
   return `import type { ModelRelationMap } from '../autoIncludePlanner${ext}'
@@ -132,7 +142,9 @@ export interface GenerateRelationModelsIndexOptions {
   importStyle: ImportStyle
 }
 
-export function generateRelationModelsIndex(options: GenerateRelationModelsIndexOptions): string {
+export function generateRelationModelsIndex(
+  options: GenerateRelationModelsIndexOptions,
+): string {
   const ext = importExt(options.importStyle)
   const imports = options.modelNames
     .map((n) => `import { ${n}Relations } from './${n}/${n}Relations${ext}'`)

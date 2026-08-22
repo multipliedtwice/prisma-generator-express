@@ -40,7 +40,17 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     errors: [400, 403, 500, 501, 503],
     responseDesc: 'Array of records',
     transport: 'GET query params',
-    argsSchema: ['where', 'select', 'include', 'omit', 'orderBy', 'cursor', 'take', 'skip', 'distinct'],
+    argsSchema: [
+      'where',
+      'select',
+      'include',
+      'omit',
+      'orderBy',
+      'cursor',
+      'take',
+      'skip',
+      'distinct',
+    ],
     requiredArgs: [],
     notes: 'Pagination limits may apply when configured.',
   },
@@ -100,7 +110,17 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     errors: [400, 403, 500, 501, 503],
     responseDesc: 'Single record or null',
     transport: 'GET query params',
-    argsSchema: ['where', 'select', 'include', 'omit', 'orderBy', 'cursor', 'take', 'skip', 'distinct'],
+    argsSchema: [
+      'where',
+      'select',
+      'include',
+      'omit',
+      'orderBy',
+      'cursor',
+      'take',
+      'skip',
+      'distinct',
+    ],
     requiredArgs: [],
     notes: 'Returns null (not 404) when no record matches.',
   },
@@ -120,7 +140,17 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     errors: [400, 403, 404, 500, 501, 503],
     responseDesc: 'Single record',
     transport: 'GET query params',
-    argsSchema: ['where', 'select', 'include', 'omit', 'orderBy', 'cursor', 'take', 'skip', 'distinct'],
+    argsSchema: [
+      'where',
+      'select',
+      'include',
+      'omit',
+      'orderBy',
+      'cursor',
+      'take',
+      'skip',
+      'distinct',
+    ],
     requiredArgs: [],
     notes: 'Returns 404 when no record matches.',
   },
@@ -140,9 +170,20 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     errors: [400, 403, 409, 500, 501, 503],
     responseDesc: '{ data: Record[], total: number, hasMore: boolean }',
     transport: 'GET query params',
-    argsSchema: ['where', 'select', 'include', 'omit', 'orderBy', 'cursor', 'take', 'skip', 'distinct'],
+    argsSchema: [
+      'where',
+      'select',
+      'include',
+      'omit',
+      'orderBy',
+      'cursor',
+      'take',
+      'skip',
+      'distinct',
+    ],
     requiredArgs: [],
-    notes: 'Wraps findMany with total count. hasMore is reliable for forward offset pagination (skip + take) only. Distinct count over 100k falls back to approximate total. 409 possible on transaction conflict.',
+    notes:
+      'Wraps findMany with total count. hasMore is reliable for forward offset pagination (skip + take) only. Distinct count over 100k falls back to approximate total. 409 possible on transaction conflict.',
   },
   {
     name: 'count',
@@ -162,7 +203,8 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     transport: 'GET query params',
     argsSchema: ['where', 'orderBy', 'cursor', 'take', 'skip', 'select'],
     requiredArgs: [],
-    notes: 'select here means count-specific field selection, not record field selection.',
+    notes:
+      'select here means count-specific field selection, not record field selection.',
   },
   {
     name: 'aggregate',
@@ -178,9 +220,21 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     excludeFromEnableAll: false,
     writeStrategyAffected: false,
     errors: [400, 403, 500, 501, 503],
-    responseDesc: 'Object with requested aggregate fields (_count, _avg, _sum, _min, _max)',
+    responseDesc:
+      'Object with requested aggregate fields (_count, _avg, _sum, _min, _max)',
     transport: 'GET query params',
-    argsSchema: ['where', 'orderBy', 'cursor', 'take', 'skip', '_count', '_avg', '_sum', '_min', '_max'],
+    argsSchema: [
+      'where',
+      'orderBy',
+      'cursor',
+      'take',
+      'skip',
+      '_count',
+      '_avg',
+      '_sum',
+      '_min',
+      '_max',
+    ],
     requiredArgs: [],
     notes: '_avg, _sum only apply to numeric fields.',
   },
@@ -198,11 +252,25 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     excludeFromEnableAll: false,
     writeStrategyAffected: false,
     errors: [400, 403, 500, 501, 503],
-    responseDesc: 'Array of objects, each with grouped field values and requested aggregates',
+    responseDesc:
+      'Array of objects, each with grouped field values and requested aggregates',
     transport: 'GET query params',
-    argsSchema: ['by', 'where', 'orderBy', 'having', 'take', 'skip', '_count', '_avg', '_sum', '_min', '_max'],
+    argsSchema: [
+      'by',
+      'where',
+      'orderBy',
+      'having',
+      'take',
+      'skip',
+      '_count',
+      '_avg',
+      '_sum',
+      '_min',
+      '_max',
+    ],
     requiredArgs: ['by'],
-    notes: 'by is a JSON-encoded array of scalar field names. orderBy is required when using skip or take. Response contains only the by-fields plus requested aggregates.',
+    notes:
+      'by is a JSON-encoded array of scalar field names. orderBy is required when using skip or take. Response contains only the by-fields plus requested aggregates.',
   },
   {
     name: 'create',
@@ -242,7 +310,8 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     transport: 'POST JSON body',
     argsSchema: ['data', 'skipDuplicates'],
     requiredArgs: ['data'],
-    notes: 'data is an array of scalar-only inputs. Nested relation writes are not supported. skipDuplicates silently ignores conflicts (not supported on all providers).',
+    notes:
+      'data is an array of scalar-only inputs. Nested relation writes are not supported. skipDuplicates silently ignores conflicts (not supported on all providers).',
   },
   {
     name: 'createManyAndReturn',
@@ -262,7 +331,8 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     transport: 'POST JSON body',
     argsSchema: ['data', 'skipDuplicates', 'select', 'include', 'omit'],
     requiredArgs: ['data'],
-    notes: 'Like createMany but returns created records. data items are scalar-only. Requires Prisma 5.14.0+, PostgreSQL/CockroachDB/SQLite only. The order of returned records is not guaranteed.',
+    notes:
+      'Like createMany but returns created records. data items are scalar-only. Requires Prisma 5.14.0+, PostgreSQL/CockroachDB/SQLite only. The order of returned records is not guaranteed.',
   },
   {
     name: 'update',
@@ -282,7 +352,8 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     transport: 'PUT JSON body',
     argsSchema: ['where', 'data', 'select', 'include', 'omit'],
     requiredArgs: ['where', 'data'],
-    notes: '404 when the record to update is not found. 409 on unique constraint violation or transaction conflict.',
+    notes:
+      '404 when the record to update is not found. 409 on unique constraint violation or transaction conflict.',
   },
   {
     name: 'updateMany',
@@ -302,7 +373,8 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     transport: 'PUT JSON body',
     argsSchema: ['where', 'data'],
     requiredArgs: ['where', 'data'],
-    notes: 'Updates all matching records with scalar-only data. Nested relation writes are not supported. Returns count, not records. 409 on unique constraint violation.',
+    notes:
+      'Updates all matching records with scalar-only data. Nested relation writes are not supported. Returns count, not records. 409 on unique constraint violation.',
   },
   {
     name: 'updateManyAndReturn',
@@ -322,7 +394,8 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     transport: 'PUT JSON body',
     argsSchema: ['where', 'data', 'select', 'include', 'omit'],
     requiredArgs: ['where', 'data'],
-    notes: 'Like updateMany but returns updated records. data is scalar-only. Requires Prisma 6.2.0+, PostgreSQL/CockroachDB/SQLite only. 409 on unique constraint violation.',
+    notes:
+      'Like updateMany but returns updated records. data is scalar-only. Requires Prisma 6.2.0+, PostgreSQL/CockroachDB/SQLite only. 409 on unique constraint violation.',
   },
   {
     name: 'upsert',
@@ -398,11 +471,13 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
     excludeFromEnableAll: true,
     writeStrategyAffected: false,
     errors: [400, 403, 409, 500, 501, 503],
-    responseDesc: 'Non-atomic: per-row { status, data } / { status, error } array. Atomic: array of records.',
+    responseDesc:
+      'Non-atomic: per-row { status, data } / { status, error } array. Atomic: array of records.',
     transport: 'POST JSON body (array)',
     argsSchema: [],
     requiredArgs: ['array of { where, data }'],
-    notes: 'Internal batch endpoint. Bypasses guard shapes. Not enabled by enableAll. Non-atomic max 1000 items, atomic max 100 items. Header x-batch-atomic:true switches to transactional mode.',
+    notes:
+      'Internal batch endpoint. Bypasses guard shapes. Not enabled by enableAll. Non-atomic max 1000 items, atomic max 100 items. Header x-batch-atomic:true switches to transactional mode.',
   },
 ]
 
@@ -410,9 +485,12 @@ export const OPERATION_BY_NAME: Record<string, OpMetadata> = Object.fromEntries(
   OPERATION_METADATA.map((m) => [m.name, m]),
 )
 
-export const READ_OPERATIONS: readonly OpMetadata[] = OPERATION_METADATA.filter((m) => m.kind === 'read')
+export const READ_OPERATIONS: readonly OpMetadata[] = OPERATION_METADATA.filter(
+  (m) => m.kind === 'read',
+)
 
-export const WRITE_OPERATIONS: readonly OpMetadata[] = OPERATION_METADATA.filter((m) => m.kind === 'write' || m.kind === 'batch')
+export const WRITE_OPERATIONS: readonly OpMetadata[] =
+  OPERATION_METADATA.filter((m) => m.kind === 'write' || m.kind === 'batch')
 
 export const READ_OPERATION_NAMES = new Set(READ_OPERATIONS.map((m) => m.name))
 

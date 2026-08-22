@@ -3,6 +3,7 @@ import { generateRouteConfigType } from './generateRouteConfigType'
 import { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import { WriteStrategy } from '../constants'
+import { modelPathSegment, PathCase } from '../utils/pathCasing'
 import { OPERATION_METADATA } from '../copy/operationDefinitions'
 
 function pathExpr(suffix: string): string {
@@ -44,7 +45,10 @@ function opKindFor(opName: string): string {
   }
 }
 
-function emitReadOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+function emitReadOp(
+  meta: (typeof OPERATION_METADATA)[number],
+  modelName: string,
+): string {
   const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
   const handlerName = `${modelName}${c}`
   const pathValue = pathExpr(meta.pathSuffix)
@@ -52,11 +56,11 @@ function emitReadOp(meta: (typeof OPERATION_METADATA)[number], modelName: string
 
   const postReadLine = meta.supportsPostRead
     ? meta.name === 'findMany'
-      ? `    if (postReadsEnabled) {
+      ? `    if (resolvePostReadsEnabled(config.disablePostReads, opConfig.disablePostReads)) {
       const postPath = basePath ? \`\${basePath}/read\` : '/read'
       app.post(postPath, handleRead(opConfig, ${handlerName}, parseBodyAsQueryMiddleware, '${opKind}'))
     }`
-      : `    if (postReadsEnabled) app.post(path, handleRead(opConfig, ${handlerName}, parseBodyAsQueryMiddleware, '${opKind}'))`
+      : `    if (resolvePostReadsEnabled(config.disablePostReads, opConfig.disablePostReads)) app.post(path, handleRead(opConfig, ${handlerName}, parseBodyAsQueryMiddleware, '${opKind}'))`
     : ''
 
   return `  if (isEnabled(config.${meta.configKey})) {
@@ -67,7 +71,10 @@ ${postReadLine}
   }`
 }
 
-function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: string): string {
+function emitWriteOp(
+  meta: (typeof OPERATION_METADATA)[number],
+  modelName: string,
+): string {
   const c = meta.name.charAt(0).toUpperCase() + meta.name.slice(1)
   const handlerName = `${modelName}${c}`
   const pathValue = pathExpr(meta.pathSuffix)
@@ -96,7 +103,7 @@ function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: strin
  *   - `requireDefaultVariantOptIn`  confirm a `default` variant
  *   - `enableUpdateEach`            register the batch route (default true)
  *   - `guardResolutionOrder`        settle the guard before or after hooks
- *   - `allowE2EGuardBypass`         honour E2E=true (default true)
+ *   - `allowE2EGuardBypass`         honour PGE_DROP_GUARD=true (default true)
  *   - `validateResolvedShapes`      check what a shape function returned
  *
  * `HARDENED_GUARD_PROFILE` selects all seven, as values to spread rather than a
@@ -106,7 +113,10 @@ function emitWriteOp(meta: (typeof OPERATION_METADATA)[number], modelName: strin
  *
  * The emitted router used to compute `DROP_GUARD = <flag> || _env.E2E === 'true'`,
  * so setting `E2E=true` in a deployed environment downgraded enforcement even
- * when the generator had been told to keep the guard. The two modes are not
+ * when the generator had been told to keep the guard. The bypass now lives once
+ * in the shared runtime as `resolveDropGuardEnv`: it honours `PGE_DROP_GUARD=true`
+ * and keeps `E2E=true` working as a deprecated alias with a one-time warning.
+ * The two modes are not
  * equivalent: with the guard, the shape goes to prisma-guard; with it dropped,
  * `applyDroppedGuard` applies projection defaults and forced `where` clauses and
  * nothing else is validated against the shape.
@@ -136,6 +146,7 @@ export function generateHonoRouterFunction({
   importStyle,
   writeStrategy,
   dropGuard,
+  pathCase,
 }: {
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
@@ -143,22 +154,26 @@ export function generateHonoRouterFunction({
   importStyle: ImportStyle
   writeStrategy: WriteStrategy
   dropGuard: boolean
+  pathCase: PathCase
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
-  const modelNameLower = modelName.toLowerCase()
+  const modelSegment = modelPathSegment(modelName, pathCase)
   const routerFunctionName = `${modelName}Router`
 
-  const handlerImports = OPERATION_METADATA
-    .map((m) => `  ${modelName}${m.name.charAt(0).toUpperCase() + m.name.slice(1)},`)
-    .join('\n')
+  const handlerImports = OPERATION_METADATA.map(
+    (m) => `  ${modelName}${m.name.charAt(0).toUpperCase() + m.name.slice(1)},`,
+  ).join('\n')
 
   const readOps = OPERATION_METADATA.filter((m) => m.kind === 'read')
-  const writeOps = OPERATION_METADATA.filter((m) => m.kind === 'write' || m.kind === 'batch')
-    .filter((m) => m.name !== 'updateEach')
+  const writeOps = OPERATION_METADATA.filter(
+    (m) => m.kind === 'write' || m.kind === 'batch',
+  ).filter((m) => m.name !== 'updateEach')
 
   const readOpBlocks = readOps.map((m) => emitReadOp(m, modelName)).join('\n\n')
-  const writeOpBlocks = writeOps.map((m) => emitWriteOp(m, modelName)).join('\n\n')
+  const writeOpBlocks = writeOps
+    .map((m) => emitWriteOp(m, modelName))
+    .join('\n\n')
 
   return `import { Hono } from 'hono'
 import type { Context } from 'hono'
@@ -174,10 +189,11 @@ import type {
   HonoEnvBase,
   HonoInternalVariables,
   GeneratedHonoEnv,
-  PaginationConfig,
+  PaginationConfig,,
+  PrismaClientLike,
 } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
-import { normalizePrefix, getEnv, sanitizeKeys, isPlainObject } from '../misc${ext}'
+import { normalizePrefix, getEnv, sanitizeKeys, isPlainObject, resolveDropGuardEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import {
   normalizeOperation,
@@ -187,6 +203,8 @@ import {
   validateCountSourceWhere,
   validateOperationConfig,
   validateUpdateEachConfig,
+  resolvePostReadsEnabled,
+  warnIfUnguardedRoutes,
 } from '../routeConfig${ext}'
 import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import { transformResult } from '../operationRuntime${ext}'
@@ -299,11 +317,11 @@ function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
   /**
    * The environment bypass, honoured unless the consumer turned it off.
    *
-   * \`E2E=true\` downgrading enforcement in a deployed environment is a real
-   * hazard, and it is also upstream behaviour — so it is a control, not a
-   * decision made here.
+   * \`PGE_DROP_GUARD=true\` downgrading enforcement in a deployed environment is
+   * a real hazard, and it is also upstream behaviour (under its deprecated
+   * \`E2E=true\` spelling) — so it is a control, not a decision made here.
    */
-  const dropGuard = DROP_GUARD || (policy.allowE2EGuardBypass && _env.E2E === 'true')
+  const dropGuard = DROP_GUARD || (policy.allowE2EGuardBypass && resolveDropGuardEnv(_env))
 
   return async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<void> => {
     /**
@@ -441,7 +459,7 @@ function sendError(c: HandlerContext, error: unknown): Response {
   return c.json({ message: httpError.message }, httpError.status as ContentfulStatusCode)
 }
 
-export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extends HonoEnvBase = HonoEnvBase>(config: ${modelName}RouteConfig<TCtx, TPrisma, TEnv> = {}): Hono<GeneratedHonoEnv<TEnv>> {
+export function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClientLike = PrismaClientLike, TEnv extends HonoEnvBase = HonoEnvBase>(config: ${modelName}RouteConfig<TCtx, TPrisma, TEnv> = {}): Hono<GeneratedHonoEnv<TEnv>> {
   validateCountSourceWhere(config.pagination?.countSource, '${modelName} pagination')
   validateCountSourceWhere(
     (config.findManyPaginated && typeof config.findManyPaginated === 'object' ? config.findManyPaginated : undefined)?.pagination?.countSource,
@@ -451,9 +469,10 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
   const app = new Hono<GeneratedHonoEnv<TEnv>>()
 
   const isEnabled = (value: unknown): boolean => value !== false && !!(config.enableAll || value)
+  warnIfUnguardedRoutes('${modelName}', ['findMany', 'findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findManyPaginated', 'count', 'aggregate', 'groupBy', 'create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'updateManyAndReturn', 'upsert', 'delete', 'deleteMany'], config, isEnabled)
 
   const customPrefix = normalizePrefix(config.customUrlPrefix || '')
-  const modelPrefix = config.addModelPrefix !== false ? '/${modelNameLower}' : ''
+    const modelPrefix = config.addModelPrefix !== false ? '/${modelSegment}' : ''
   const basePath = customPrefix + modelPrefix
 
   const openApiDisabled = config.disableOpenApi === true
@@ -462,7 +481,6 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
       || _env.DISABLE_OPENAPI === 'true'
     ))
 
-  const postReadsEnabled = !config.disablePostReads
 
   let _openApiJsonCache: unknown = undefined
   const getOpenApiJson = (): unknown => {
@@ -472,7 +490,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config as unknown as Parameters<typeof buildModelOpenApi>[3],
-        { format: 'json', writeStrategy: '${writeStrategy}' },
+        { format: 'json', writeStrategy: '${writeStrategy}', pathSegment: '${modelSegment}' },
       )
     }
     return _openApiJsonCache
@@ -485,7 +503,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma = any, TEnv extend
         MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
         MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
         config as unknown as Parameters<typeof buildModelOpenApi>[3],
-        { format: 'yaml', writeStrategy: '${writeStrategy}' },
+        { format: 'yaml', writeStrategy: '${writeStrategy}', pathSegment: '${modelSegment}' },
       ) as string
     }
     return _openApiYamlCache

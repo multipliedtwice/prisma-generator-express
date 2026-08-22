@@ -1,5 +1,5 @@
 import { GUARD_SHAPE_CONFIG_KEYS } from './guardHelpers'
-import { isPlainObject } from './misc'
+import { getEnv, isPlainObject } from './misc'
 import { resolveShape, type ContextResolver } from './projectionDefaults'
 import {
   resolveGuardVariantKey,
@@ -65,7 +65,21 @@ export type ProgressiveStageResult<T = unknown> =
   | ProgressivePatch[]
   | ProgressiveStopResult<T>
 
-export type ProgressiveStageContext<TContext = unknown, TPrisma = any> = {
+/**
+ * Minimal structural view of a Prisma-compatible client as the generated
+ * runtime uses it: dynamic model delegates called with method args. Real
+ * PrismaClient and $extends results are intended to be usable here; pass
+ * your client's type explicitly for precise inference.
+ */
+export type PrismaClientLike = Record<
+  string,
+  Record<string, (...args: never[]) => unknown>
+>
+
+export type ProgressiveStageContext<
+  TContext = unknown,
+  TPrisma extends PrismaClientLike = PrismaClientLike,
+> = {
   ctx: TContext
   req: unknown
   res: unknown
@@ -75,7 +89,11 @@ export type ProgressiveStageContext<TContext = unknown, TPrisma = any> = {
   signal: AbortSignal
 }
 
-export type ProgressiveStage<TContext = unknown, TPrisma = any, T = unknown> = (
+export type ProgressiveStage<
+  TContext = unknown,
+  TPrisma extends PrismaClientLike = PrismaClientLike,
+  T = unknown,
+> = (
   context: ProgressiveStageContext<TContext, TPrisma>,
 ) => Promise<ProgressiveStageResult<T>>
 
@@ -88,6 +106,8 @@ export type ManualProgressiveVariantConfig = {
 export type AutoIncludeProgressiveVariantConfig = {
   enabled?: boolean
   mode: 'autoInclude'
+  /** Auto-include streaming is experimental; routers refuse it unless this is set. */
+  experimental?: boolean
   fallback?: 'singleResult' | 'error'
 }
 
@@ -119,6 +139,12 @@ export type BaseOperationConfig<
   before?: TBefore[]
   after?: TAfter[]
   pagination?: Partial<PaginationConfig>
+  /**
+   * Disables the POST read variant for this operation only. Overrides the
+   * router-level `disablePostReads` (operation value wins, matching the
+   * pagination shallow-merge order).
+   */
+  disablePostReads?: boolean
   /**
    * Confirms that a variant literally named `default` is meant to answer every
    * unrecognised, blank and missing caller.
@@ -207,6 +233,7 @@ export interface NormalizedOperationConfig<TBefore, TAfter> {
   operationAfter: readonly TAfter[]
   variantHooks: NormalizedVariantHooks<TBefore, TAfter>
   pagination?: Readonly<Partial<PaginationConfig>>
+  disablePostReads?: boolean
 }
 
 type OperationConfigInput<TBefore, TAfter> = {
@@ -279,19 +306,29 @@ export const HARDENED_GUARD_PROFILE: Readonly<GuardPolicy> = Object.freeze({
 })
 
 /** Fill in the defaults. Absent means upstream, never an opinion. */
-export function resolveGuardPolicy(config: Partial<GuardPolicy> | undefined): GuardPolicy {
+export function resolveGuardPolicy(
+  config: Partial<GuardPolicy> | undefined,
+): GuardPolicy {
   return {
-    requireGuardShape: config?.requireGuardShape ?? UPSTREAM_GUARD_DEFAULTS.requireGuardShape,
-    validateGuardShapes: config?.validateGuardShapes ?? UPSTREAM_GUARD_DEFAULTS.validateGuardShapes,
+    requireGuardShape:
+      config?.requireGuardShape ?? UPSTREAM_GUARD_DEFAULTS.requireGuardShape,
+    validateGuardShapes:
+      config?.validateGuardShapes ??
+      UPSTREAM_GUARD_DEFAULTS.validateGuardShapes,
     requireDefaultVariantOptIn:
-      config?.requireDefaultVariantOptIn ?? UPSTREAM_GUARD_DEFAULTS.requireDefaultVariantOptIn,
-    enableUpdateEach: config?.enableUpdateEach ?? UPSTREAM_GUARD_DEFAULTS.enableUpdateEach,
+      config?.requireDefaultVariantOptIn ??
+      UPSTREAM_GUARD_DEFAULTS.requireDefaultVariantOptIn,
+    enableUpdateEach:
+      config?.enableUpdateEach ?? UPSTREAM_GUARD_DEFAULTS.enableUpdateEach,
     guardResolutionOrder:
-      config?.guardResolutionOrder ?? UPSTREAM_GUARD_DEFAULTS.guardResolutionOrder,
+      config?.guardResolutionOrder ??
+      UPSTREAM_GUARD_DEFAULTS.guardResolutionOrder,
     allowE2EGuardBypass:
-      config?.allowE2EGuardBypass ?? UPSTREAM_GUARD_DEFAULTS.allowE2EGuardBypass,
+      config?.allowE2EGuardBypass ??
+      UPSTREAM_GUARD_DEFAULTS.allowE2EGuardBypass,
     validateResolvedShapes:
-      config?.validateResolvedShapes ?? UPSTREAM_GUARD_DEFAULTS.validateResolvedShapes,
+      config?.validateResolvedShapes ??
+      UPSTREAM_GUARD_DEFAULTS.validateResolvedShapes,
   }
 }
 
@@ -302,8 +339,7 @@ function classifyGuardRouting(shape: unknown): NormalizedGuardRouting {
 
   const keys = Object.keys(shape)
   const isSingle =
-    keys.length === 0 ||
-    keys.every((key) => GUARD_SHAPE_CONFIG_KEYS.has(key))
+    keys.length === 0 || keys.every((key) => GUARD_SHAPE_CONFIG_KEYS.has(key))
 
   return isSingle ? { kind: 'single' } : { kind: 'named', keys }
 }
@@ -330,16 +366,22 @@ function validateShapeConfig(shape: unknown, location: string): void {
 
   if (!isPlainObject(shape)) {
     throw new Error(
-      location + ': shape must be an object or a function, got ' +
-      (shape === null ? 'null' : Array.isArray(shape) ? 'array' : typeof shape),
+      location +
+        ': shape must be an object or a function, got ' +
+        (shape === null
+          ? 'null'
+          : Array.isArray(shape)
+            ? 'array'
+            : typeof shape),
     )
   }
 
   const keys = Object.keys(shape)
   if (keys.length === 0) {
     throw new Error(
-      location + ': shape is empty, so it constrains nothing. Give it at least ' +
-      'one guard key, or use variants.',
+      location +
+        ': shape is empty, so it constrains nothing. Give it at least ' +
+        'one guard key, or use variants.',
     )
   }
 
@@ -347,10 +389,15 @@ function validateShapeConfig(shape: unknown, location: string): void {
   if (reserved.length > 0 && reserved.length !== keys.length) {
     const stray = keys.filter((key) => !GUARD_SHAPE_CONFIG_KEYS.has(key))
     throw new Error(
-      location + ': shape mixes guard keys (' + reserved.join(', ') + ') with ' +
-      'non-guard keys (' + stray.join(', ') + '). A shape whose keys are not all ' +
-      'guard keys is read as a VARIANT MAP, which is rarely intended — check for ' +
-      'a typo, or split them into "variants".',
+      location +
+        ': shape mixes guard keys (' +
+        reserved.join(', ') +
+        ') with ' +
+        'non-guard keys (' +
+        stray.join(', ') +
+        '). A shape whose keys are not all ' +
+        'guard keys is read as a VARIANT MAP, which is rarely intended — check for ' +
+        'a typo, or split them into "variants".',
     )
   }
 }
@@ -372,7 +419,9 @@ function validateShapeConfig(shape: unknown, location: string): void {
  * check exists to make.
  */
 export function validateOperationConfig(
-  config: { shape?: unknown; variants?: unknown; allowDefaultVariant?: unknown } | undefined,
+  config:
+    | { shape?: unknown; variants?: unknown; allowDefaultVariant?: unknown }
+    | undefined,
   location: string,
   policy: Partial<GuardPolicy> = {},
 ): void {
@@ -390,9 +439,10 @@ export function validateOperationConfig(
   if (!config) {
     if (requireGuardShape) {
       throw new Error(
-        location + ': no guard configured. Every generated operation must define ' +
-        '"shape" or "variants"; an unguarded operation would pass the caller\'s ' +
-        'own where/select/include straight to Prisma.',
+        location +
+          ': no guard configured. Every generated operation must define ' +
+          '"shape" or "variants"; an unguarded operation would pass the caller\'s ' +
+          'own where/select/include straight to Prisma.',
       )
     }
     return
@@ -471,14 +521,16 @@ function validateVariantMap(
     if (Object.prototype.hasOwnProperty.call(variants, 'default')) {
       if (allowDefaultVariant !== true) {
         throw new Error(
-          location + ': a variant named "default" answers every unrecognised, ' +
-          'blank and missing caller. Set allowDefaultVariant: true to confirm ' +
-          'that is intended, and make sure it is the most restrictive variant.',
+          location +
+            ': a variant named "default" answers every unrecognised, ' +
+            'blank and missing caller. Set allowDefaultVariant: true to confirm ' +
+            'that is intended, and make sure it is the most restrictive variant.',
         )
       }
     } else if (allowDefaultVariant !== undefined) {
       throw new Error(
-        location + ': allowDefaultVariant is set but no "default" variant exists.',
+        location +
+          ': allowDefaultVariant is set but no "default" variant exists.',
       )
     }
   }
@@ -486,8 +538,10 @@ function validateVariantMap(
   for (const [key, rawEntry] of entries) {
     if (GUARD_SHAPE_CONFIG_KEYS.has(key)) {
       throw new Error(
-        location + ': variant name "' + key +
-        '" collides with a reserved guard shape key',
+        location +
+          ': variant name "' +
+          key +
+          '" collides with a reserved guard shape key',
       )
     }
 
@@ -498,9 +552,7 @@ function validateVariantMap(
     }
 
     if (rawEntry.shape === undefined) {
-      throw new Error(
-        location + ': variant "' + key + '" is missing "shape"',
-      )
+      throw new Error(location + ': variant "' + key + '" is missing "shape"')
     }
 
     /**
@@ -535,9 +587,11 @@ export function describeResolvedGuardShape(resolved: unknown): string | null {
   }
 
   if (!isPlainObject(resolved)) {
-    return 'the shape function returned ' +
+    return (
+      'the shape function returned ' +
       (Array.isArray(resolved) ? 'an array' : typeof resolved) +
       ', which is not a guard shape'
+    )
   }
 
   const keys = Object.keys(resolved)
@@ -547,7 +601,9 @@ export function describeResolvedGuardShape(resolved: unknown): string | null {
 
   const stray = keys.filter((key) => !GUARD_SHAPE_CONFIG_KEYS.has(key))
   if (stray.length > 0) {
-    return 'the shape function returned non-guard keys (' + stray.join(', ') + ')'
+    return (
+      'the shape function returned non-guard keys (' + stray.join(', ') + ')'
+    )
   }
 
   return null
@@ -591,6 +647,8 @@ export function normalizeOperation<TBefore, TAfter>(
         ]),
       ),
       pagination: config.pagination,
+      disablePostReads: (config as { disablePostReads?: boolean })
+        .disablePostReads,
     }
   }
 
@@ -601,7 +659,61 @@ export function normalizeOperation<TBefore, TAfter>(
     operationAfter,
     variantHooks: {},
     pagination: config?.pagination,
+    disablePostReads: (config as { disablePostReads?: boolean })
+      .disablePostReads,
   }
+}
+
+const UNGUARDED_MODELS_WARNED = new Set<string>()
+
+/**
+ * Construction-time safety notice. The generator cannot see route configs —
+ * they are application code, evaluated long after `prisma generate` — so the
+ * emitted router inspects its own config at construction: when operations are
+ * enabled and none carries a guard shape or variants, every column of the
+ * table is reachable by any client.
+ */
+export function warnIfUnguardedRoutes(
+  modelName: string,
+  opKeys: readonly string[],
+  config: unknown,
+  isEnabled: (value: unknown) => boolean,
+): void {
+  // Route configs are interfaces without index signatures, so dynamic key
+  // access needs one narrowing here at the single point that does it.
+  const cfg = (config ?? {}) as Record<string, unknown>
+  const env = getEnv()
+  if (env.PGE_SUPPRESS_WARNINGS === 'true' || env.NODE_ENV === 'production')
+    return
+  let anyEnabled = false
+  for (const key of opKeys) {
+    if (!isEnabled(cfg[key])) continue
+    anyEnabled = true
+    const raw = cfg[key]
+    if (raw && typeof raw === 'object') {
+      const rec = raw as { shape?: unknown; variants?: unknown }
+      if (rec.shape !== undefined || rec.variants !== undefined) return
+    }
+  }
+  if (!anyEnabled || UNGUARDED_MODELS_WARNED.has(modelName)) return
+  UNGUARDED_MODELS_WARNED.add(modelName)
+  console.warn(
+    '[prisma-generator-express] ' +
+      modelName +
+      ': routes enabled without guard shapes - every column of this table is readable/writable by any client. ' +
+      'Configure operation shapes/variants, or set PGE_SUPPRESS_WARNINGS=true to silence.',
+  )
+}
+
+/**
+ * Effective POST-read availability for one operation.
+ * Operation-level value overrides the router-level global; absent means enabled.
+ */
+export function resolvePostReadsEnabled(
+  globalValue: boolean | undefined,
+  opValue: boolean | undefined,
+): boolean {
+  return !(opValue ?? globalValue ?? false)
 }
 
 export function resolveOperationVariantKey(
@@ -693,8 +805,11 @@ export function validateCountSourceWhere(
     if (value === null) continue
     if (typeof value === 'object') {
       throw new Error(
-        location + ': countSource.where["' + key + '"] must be scalar or null; got ' +
-        (Array.isArray(value) ? 'array' : 'object'),
+        location +
+          ': countSource.where["' +
+          key +
+          '"] must be scalar or null; got ' +
+          (Array.isArray(value) ? 'array' : 'object'),
       )
     }
   }

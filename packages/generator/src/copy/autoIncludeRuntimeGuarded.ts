@@ -90,7 +90,10 @@ function guarded(
   return d.guard(shape, caller) as GuardedDelegate
 }
 
-function createClientGoneChecker(res: Response, signal?: AbortSignal): () => boolean {
+function createClientGoneChecker(
+  res: Response,
+  signal?: AbortSignal,
+): () => boolean {
   return () => signal?.aborted === true || res.writableEnded || res.destroyed
 }
 
@@ -178,7 +181,10 @@ async function runStage(
 
   const targetModel = models[rel.type]
   if (!targetModel) {
-    throw new HttpError(500, 'Target model not in relation metadata: ' + rel.type)
+    throw new HttpError(
+      500,
+      'Target model not in relation metadata: ' + rel.type,
+    )
   }
 
   const stageArgs: Record<string, unknown> = { ...stage.stageArgs }
@@ -289,14 +295,24 @@ async function runGuardedAutoIncludeSingle(
         if (!okField) return
       } catch (err) {
         if (isAborted()) return
-        console.error(LOG_PREFIX, 'guarded stage failed:', stage.relationPath, err)
+        console.error(
+          LOG_PREFIX,
+          'guarded stage failed:',
+          stage.relationPath,
+          err,
+        )
         stageErrorMessage = mapError(err).message
         return
       }
 
       if (isAborted()) return
       completed++
-      const okProg = sendSSEProgress(res, stage.relationPath, completed, plan.stages.length)
+      const okProg = sendSSEProgress(
+        res,
+        stage.relationPath,
+        completed,
+        plan.stages.length,
+      )
       if (!okProg) return
     })
 
@@ -336,7 +352,8 @@ export async function runGuardedAutoIncludeProgressive(
   } catch (err) {
     return handleGuardedFallback(
       options,
-      'guarded auto-progressive fallback: getExtendedClient failed: ' + mapError(err).message,
+      'guarded auto-progressive fallback: getExtendedClient failed: ' +
+        mapError(err).message,
     )
   }
 
@@ -352,7 +369,8 @@ export async function runGuardedAutoIncludeProgressive(
   } catch (err) {
     return handleGuardedFallback(
       options,
-      'guarded auto-progressive fallback: resolve failed: ' + mapError(err).message,
+      'guarded auto-progressive fallback: resolve failed: ' +
+        mapError(err).message,
     )
   }
 

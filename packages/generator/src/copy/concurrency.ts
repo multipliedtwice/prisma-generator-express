@@ -8,13 +8,15 @@ export async function mapLimited<T>(
   const workerCount = Math.min(limit, items.length)
   const workers: Promise<void>[] = []
   for (let w = 0; w < workerCount; w++) {
-    workers.push((async () => {
-      for (;;) {
-        const i = index++
-        if (i >= items.length) return
-        await fn(items[i], i)
-      }
-    })())
+    workers.push(
+      (async () => {
+        for (;;) {
+          const i = index++
+          if (i >= items.length) return
+          await fn(items[i], i)
+        }
+      })(),
+    )
   }
   await Promise.all(workers)
 }

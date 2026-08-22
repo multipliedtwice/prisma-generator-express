@@ -15,7 +15,10 @@ function findClientGenerator(options: GeneratorOptions) {
   return byProvider || null
 }
 
-function getRelativeImportPath(fromDir: string, clientOutputPath: string): string {
+function getRelativeImportPath(
+  fromDir: string,
+  clientOutputPath: string,
+): string {
   let relativeImportPath = path.relative(fromDir, clientOutputPath)
   relativeImportPath = relativeImportPath.split(path.sep).join(path.posix.sep)
   if (!relativeImportPath.startsWith('.')) {

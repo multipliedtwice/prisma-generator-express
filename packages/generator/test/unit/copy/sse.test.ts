@@ -55,7 +55,7 @@ describe('acceptsEventStream', () => {
     expect(acceptsEventStream(value)).toBe(true)
   })
 
-  it.each([undefined, '', 'application/json', 'text/plain']) (
+  it.each([undefined, '', 'application/json', 'text/plain'])(
     'rejects %s',
     (value) => {
       expect(acceptsEventStream(value)).toBe(false)
@@ -71,15 +71,19 @@ describe('setByPath', () => {
     expect(target).toEqual({ user: { profile: { name: 'A' } } })
   })
 
-  it.each(['', '.name', 'user..name', '__proto__.polluted', 'constructor.x', 'prototype.x']) (
-    'rejects unsafe path %s',
-    (path) => {
-      const target = {}
+  it.each([
+    '',
+    '.name',
+    'user..name',
+    '__proto__.polluted',
+    'constructor.x',
+    'prototype.x',
+  ])('rejects unsafe path %s', (path) => {
+    const target = {}
 
-      expect(setByPath(target, path, true)).toBe(false)
-      expect(({} as Record<string, unknown>).polluted).toBeUndefined()
-    },
-  )
+    expect(setByPath(target, path, true)).toBe(false)
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+  })
 
   it('rejects traversal through non-plain values', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -102,6 +106,7 @@ describe('SSE writers', () => {
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
+      'X-Stream-Protocol-Version': '1',
     })
     expect(response.flushHeaders).toHaveBeenCalledOnce()
   })
@@ -186,9 +191,7 @@ describe('withSSE', () => {
       throw new Error('failed')
     })
 
-    expect(readEvents(chunks)).toEqual([
-      { type: 'error', message: 'failed' },
-    ])
+    expect(readEvents(chunks)).toEqual([{ type: 'error', message: 'failed' }])
     expect(response.end).toHaveBeenCalledOnce()
   })
 })

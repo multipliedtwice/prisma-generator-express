@@ -155,7 +155,8 @@ describe('planGuardedAutoInclude', () => {
       label: 'body relation absent from shape',
       body: { select: { posts: true } },
       shape: { select: { name: true } },
-      reason: 'body projects relation "posts" not present in guard shape at root',
+      reason:
+        'body projects relation "posts" not present in guard shape at root',
     },
     {
       label: 'implicit many-to-many relation',
@@ -185,13 +186,15 @@ describe('planGuardedAutoInclude', () => {
       label: 'stage body include',
       body: { select: { posts: { include: { author: true } } } },
       shape: { select: { posts: true } },
-      reason: 'stage body uses include for posts (guarded MVP supports select only)',
+      reason:
+        'stage body uses include for posts (guarded MVP supports select only)',
     },
     {
       label: 'stage shape omit',
       body: { select: { posts: true } },
       shape: { select: { posts: { omit: { title: true } } } },
-      reason: 'stage shape uses omit for posts (guarded MVP supports select only)',
+      reason:
+        'stage shape uses omit for posts (guarded MVP supports select only)',
     },
     {
       label: 'stage relation orderBy',
@@ -203,13 +206,15 @@ describe('planGuardedAutoInclude', () => {
       label: 'body child FK collision',
       body: { select: { posts: { where: { OR: [{ userId: 1 }] } } } },
       shape: { select: { posts: true } },
-      reason: 'FK collision: stage body where for posts already mentions child link field "userId"',
+      reason:
+        'FK collision: stage body where for posts already mentions child link field "userId"',
     },
     {
       label: 'shape child FK collision',
       body: { select: { posts: true } },
       shape: { select: { posts: { where: { userId: true } } } },
-      reason: 'FK collision: stage shape where for posts already mentions child link field "userId"',
+      reason:
+        'FK collision: stage shape where for posts already mentions child link field "userId"',
     },
   ])('falls back atomically for $label', ({ body, shape, reason }) => {
     const plan = planGuardedAutoInclude({

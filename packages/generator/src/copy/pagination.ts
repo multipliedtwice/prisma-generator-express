@@ -1,5 +1,9 @@
 import { HttpError, LOG_PREFIX } from './errorMapper'
-import { assertGuard, buildCountShape, type PrismaDelegateLike } from './guardHelpers'
+import {
+  assertGuard,
+  buildCountShape,
+  type PrismaDelegateLike,
+} from './guardHelpers'
 import { countFromMaterializedView } from './materializedCount'
 import { isPlainObject } from './misc'
 import type { PaginationConfig, PaginationCountSource } from './routeConfig'
@@ -13,11 +17,16 @@ export function applyPaginationLimits(
 ): Record<string, unknown> {
   if (!config) return query
   const result: Record<string, unknown> = { ...query }
-  if (!hasGuardShape && result.take === undefined && config.defaultLimit !== undefined) {
+  if (
+    !hasGuardShape &&
+    result.take === undefined &&
+    config.defaultLimit !== undefined
+  ) {
     result.take = config.defaultLimit
   }
   if (config.maxLimit !== undefined && result.take !== undefined) {
-    const takeNum = typeof result.take === 'number' ? result.take : Number(result.take)
+    const takeNum =
+      typeof result.take === 'number' ? result.take : Number(result.take)
     if (!Number.isFinite(takeNum)) {
       throw new HttpError(400, 'Invalid take: must be a finite number')
     }
@@ -65,7 +74,10 @@ export function mergePaginationConfig(
     ...(base ?? {}),
     ...(override ?? {}),
   }
-  const mergedCountSource = mergeCountSource(base?.countSource, override?.countSource)
+  const mergedCountSource = mergeCountSource(
+    base?.countSource,
+    override?.countSource,
+  )
   if (mergedCountSource) {
     merged.countSource = mergedCountSource
   } else {
@@ -76,7 +88,8 @@ export function mergePaginationConfig(
 
 export function normalizeDistinct(value: unknown): string[] {
   if (typeof value === 'string') return [value]
-  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string')
+  if (Array.isArray(value))
+    return value.filter((v): v is string => typeof v === 'string')
   return []
 }
 
@@ -118,10 +131,9 @@ export async function countForPagination(
     if (query.where) countArgs.where = query.where
     if (countShape) {
       assertGuard(delegate)
-      return (await delegate.guard(
-        countShape as Record<string, unknown>,
-        caller,
-      ).count(countArgs)) as number
+      return (await delegate
+        .guard(countShape as Record<string, unknown>, caller)
+        .count(countArgs)) as number
     }
     return (await delegate.count(countArgs)) as number
   }
@@ -140,7 +152,9 @@ export async function countForPagination(
     if (results.length > effectiveLimit) {
       console.warn(
         LOG_PREFIX,
-        'Distinct count exceeds ' + effectiveLimit + ', falling back to approximate total',
+        'Distinct count exceeds ' +
+          effectiveLimit +
+          ', falling back to approximate total',
       )
       return runCount()
     }

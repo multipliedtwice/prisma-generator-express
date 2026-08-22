@@ -34,9 +34,7 @@ describe('encodeQueryParams', () => {
     })
     const value = new URLSearchParams(encoded).get('where')
 
-    expect(value).toBe(
-      '{"id":"9007199254740993","values":["1","2"]}',
-    )
+    expect(value).toBe('{"id":"9007199254740993","values":["1","2"]}')
   })
 
   it('preserves object entry order', () => {

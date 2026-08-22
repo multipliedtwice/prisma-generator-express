@@ -66,22 +66,28 @@ describe('guard dropping is decided at generation time — under allowE2EGuardBy
       const line = out.split('\n').find((l) => l.includes('const DROP_GUARD'))
 
       expect(line, 'DROP_GUARD is no longer emitted').toBeDefined()
-      expect(line, `E2E still reachable with dropGuard=${dropGuard}`).not.toContain('E2E')
+      expect(
+        line,
+        `E2E still reachable with dropGuard=${dropGuard}`,
+      ).not.toContain('E2E')
       expect(line).not.toContain('_env')
     }
   })
 
-  it('reaches the E2E bypass only through its OWN control', () => {
+  it('reaches the env bypass only through its OWN control', () => {
     /**
      * 1.64.2 removed the bypass outright, which broke consumers who relied on it.
      * It is back, gated on `allowE2EGuardBypass` alone — not on a shared switch,
      * so turning off the bypass does not also change hook ordering or refuse a
-     * route.
+     * route. Since PGE_DROP_GUARD the raw environment strings live once in the
+     * shared misc runtime (`resolveDropGuardEnv`), never in a model router.
      */
     const out = emit(false)
-    const line = out.split('\n').find((l) => l.includes("_env.E2E === 'true'"))
+    const line = out
+      .split('\n')
+      .find((l) => l.includes('resolveDropGuardEnv(_env)'))
 
-    expect(line, 'the E2E bypass is gone entirely').toBeDefined()
+    expect(line, 'the env bypass call is gone entirely').toBeDefined()
     expect(line, 'the bypass is not gated on its own control').toContain(
       'policy.allowE2EGuardBypass',
     )
@@ -92,18 +98,23 @@ describe('guard dropping is decided at generation time — under allowE2EGuardBy
     expect(emit(true)).toContain('const DROP_GUARD = true')
   })
 
-  it('mentions E2E in exactly one place, behind its control', () => {
+  it('mentions no raw environment variable; the gated helper call is the only path', () => {
     /**
-     * Was "nowhere at all" in 1.64.2. The bypass is upstream behaviour that has to
-     * keep working, so the assertion is that EVERY code mention sits behind
-     * `allowE2EGuardBypass` — one occurrence, gated.
+     * Was "one E2E mention behind its control". With `resolveDropGuardEnv` the
+     * raw strings moved into the shared runtime once, so a model router must
+     * contain zero of them and exactly one gated helper call.
      */
     const mentions = emit(false)
       .split('\n')
       .filter((l) => /\bE2E\b/.test(l))
       .filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l))
-    expect(mentions, 'E2E appears in code in more than one place').toHaveLength(1)
-    expect(mentions[0]).toContain('policy.allowE2EGuardBypass')
+    expect(mentions, 'a raw env string leaked into the router').toHaveLength(0)
+
+    const calls = emit(false)
+      .split('\n')
+      .filter((l) => l.includes('resolveDropGuardEnv(_env)'))
+    expect(calls, 'the helper call appears more than once').toHaveLength(1)
+    expect(calls[0]).toContain('policy.allowE2EGuardBypass')
   })
 })
 
@@ -135,9 +146,10 @@ describe('a dynamic shape is resolved once, and the validated value travels on',
   it('hands prisma-guard the RESOLVED value, never the original shape', () => {
     // `vars.set('guardShape', …)` is what reaches `delegate.guard(ctx.guardShape, …)`.
     expect(out).toContain("vars.set('guardShape', effectiveShape)")
-    expect(out, 'the unresolved shape is still passed downstream').not.toContain(
-      "vars.set('guardShape', opConfig.guardShape)",
-    )
+    expect(
+      out,
+      'the unresolved shape is still passed downstream',
+    ).not.toContain("vars.set('guardShape', opConfig.guardShape)")
   })
 
   it('gives the dropped-guard path the same resolved value', () => {
@@ -152,7 +164,10 @@ describe('a dynamic shape is resolved once, and the validated value travels on',
       out.indexOf('const handleRead ='),
     )
     const resolvers = [...middleware.matchAll(/const resolveCtx\b/g)]
-    expect(resolvers, 'more than one context resolver is built per request').toHaveLength(1)
+    expect(
+      resolvers,
+      'more than one context resolver is built per request',
+    ).toHaveLength(1)
   })
 
   for (const { name, from, to } of [
@@ -169,10 +184,18 @@ describe('a dynamic shape is resolved once, and the validated value travels on',
       const body = out.slice(start, out.indexOf(to, start))
 
       const settled = body.indexOf('if (SETTLE_BEFORE_HOOKS) settleGuard(c)')
-      const hooks = body.indexOf('runBeforeHooks<TEnv>(opConfig.operationBefore')
+      const hooks = body.indexOf(
+        'runBeforeHooks<TEnv>(opConfig.operationBefore',
+      )
 
-      expect(settled, `${name}: no before-hooks guard settlement`).toBeGreaterThan(-1)
-      expect(settled, `${name}: a hook can answer despite an unusable guard`).toBeLessThan(hooks)
+      expect(
+        settled,
+        `${name}: no before-hooks guard settlement`,
+      ).toBeGreaterThan(-1)
+      expect(
+        settled,
+        `${name}: a hook can answer despite an unusable guard`,
+      ).toBeLessThan(hooks)
 
       // ...and the legacy ordering is still emitted, after the hooks.
       const legacy = body.indexOf('if (!SETTLE_BEFORE_HOOKS) settleGuard(c)')
@@ -199,7 +222,9 @@ describe('updateEach is refused — but only when enableUpdateEach is false', ()
      */
     expect(out).toContain('does not register updateEach')
     // Gated: the throw is reached only when the route is switched off.
-    expect(out).toMatch(/if \(!POLICY\.enableUpdateEach\) \{\s*\n\s*throw new Error\(/)
+    expect(out).toMatch(
+      /if \(!POLICY\.enableUpdateEach\) \{\s*\n\s*throw new Error\(/,
+    )
   })
 
   it('still registers the route when the flag is absent', () => {
@@ -232,11 +257,14 @@ describe('updateEach is refused — but only when enableUpdateEach is false', ()
       block.indexOf('should be protected by authentication middleware'),
     )
 
-    const warnings = [...out.matchAll(/console\.warn\(\s*\n?\s*'([^']*)/g)].map((m) => m[1])
+    const warnings = [...out.matchAll(/console\.warn\(\s*\n?\s*'([^']*)/g)].map(
+      (m) => m[1],
+    )
     for (const warning of warnings) {
-      expect(warning, `a warning is standing in for a guard: ${warning}`).not.toMatch(
-        /guard|auth|bypass|unguarded/i,
-      )
+      expect(
+        warning,
+        `a warning is standing in for a guard: ${warning}`,
+      ).not.toMatch(/guard|auth|bypass|unguarded/i)
     }
   })
 })
@@ -259,18 +287,30 @@ describe('variant resolution is settled before any operation hook runs', () => {
   for (const { name, from, to } of handlers) {
     it(`the ${name} handler raises a variant failure before its before-hooks`, () => {
       const start = out.indexOf(from)
-      expect(start, `${from} not found — this test is checking nothing`).toBeGreaterThan(-1)
+      expect(
+        start,
+        `${from} not found — this test is checking nothing`,
+      ).toBeGreaterThan(-1)
       const body = out.slice(start, out.indexOf(to, start))
 
       const strict = body.indexOf('if (SETTLE_BEFORE_HOOKS) settleGuard(c)')
       const legacy = body.indexOf('if (!SETTLE_BEFORE_HOOKS) settleGuard(c)')
-      const hooks = body.indexOf('runBeforeHooks<TEnv>(opConfig.operationBefore')
-
-      expect(hooks, 'no operation before-hooks in this handler').toBeGreaterThan(-1)
-      expect(strict, 'no before-hooks settlement in this handler').toBeGreaterThan(-1)
-      expect(strict, `${name}: a hook can answer before the variant is resolved`).toBeLessThan(
-        hooks,
+      const hooks = body.indexOf(
+        'runBeforeHooks<TEnv>(opConfig.operationBefore',
       )
+
+      expect(
+        hooks,
+        'no operation before-hooks in this handler',
+      ).toBeGreaterThan(-1)
+      expect(
+        strict,
+        'no before-hooks settlement in this handler',
+      ).toBeGreaterThan(-1)
+      expect(
+        strict,
+        `${name}: a hook can answer before the variant is resolved`,
+      ).toBeLessThan(hooks)
 
       /**
        * ...and the 1.64.1 ordering is preserved for everyone else. Moving the
@@ -278,7 +318,10 @@ describe('variant resolution is settled before any operation hook runs', () => {
        * a before-hook that legitimately answered first — an auth gate, a cache —
        * stopped being reached.
        */
-      expect(legacy, `${name}: the legacy ordering was not preserved`).toBeGreaterThan(hooks)
+      expect(
+        legacy,
+        `${name}: the legacy ordering was not preserved`,
+      ).toBeGreaterThan(hooks)
     })
   }
 
@@ -288,9 +331,9 @@ describe('variant resolution is settled before any operation hook runs', () => {
     const start = out.indexOf('const handleRead =')
     const body = out.slice(start, out.indexOf('const handleWrite =', start))
 
-    expect(body.indexOf("(c as unknown as HandlerContext).get('guardVariantKey')")).toBeGreaterThan(
-      body.indexOf('if (SETTLE_BEFORE_HOOKS) settleGuard(c)'),
-    )
+    expect(
+      body.indexOf("(c as unknown as HandlerContext).get('guardVariantKey')"),
+    ).toBeGreaterThan(body.indexOf('if (SETTLE_BEFORE_HOOKS) settleGuard(c)'))
     expect(body).toContain('variantHooks')
   })
 })

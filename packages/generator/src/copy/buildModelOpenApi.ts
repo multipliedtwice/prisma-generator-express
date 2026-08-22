@@ -55,22 +55,59 @@ type BuildOptions = {
   description?: string
   version?: string
   writeStrategy?: WriteStrategy
+  pathSegment?: string
 }
 
-const WHERE_PROP: SchemaObject = { type: 'object', description: 'Filter conditions' }
-const TAKE_PROP: SchemaObject = { type: 'integer', description: 'Limit results' }
+const WHERE_PROP: SchemaObject = {
+  type: 'object',
+  description: 'Filter conditions',
+}
+const TAKE_PROP: SchemaObject = {
+  type: 'integer',
+  description: 'Limit results',
+}
 const SKIP_PROP: SchemaObject = { type: 'integer', description: 'Skip results' }
-const CURSOR_PROP: SchemaObject = { type: 'object', description: 'Cursor for pagination' }
-const ORDERBY_PROP: SchemaObject = { description: 'Sort order (object or array of objects)' }
-const SELECT_PROP: SchemaObject = { type: 'object', description: 'Select fields' }
-const INCLUDE_PROP: SchemaObject = { type: 'object', description: 'Include relations' }
-const OMIT_PROP: SchemaObject = { type: 'object', description: 'Omit fields from response' }
-const DISTINCT_PROP: SchemaObject = { description: 'Distinct fields (string or array of strings)' }
-const AGG_COUNT: SchemaObject = { description: 'Count aggregate (true or field selection object)' }
-const AGG_AVG: SchemaObject = { type: 'object', description: 'Average aggregate (field selection object)' }
-const AGG_SUM: SchemaObject = { type: 'object', description: 'Sum aggregate (field selection object)' }
-const AGG_MIN: SchemaObject = { type: 'object', description: 'Min aggregate (field selection object)' }
-const AGG_MAX: SchemaObject = { type: 'object', description: 'Max aggregate (field selection object)' }
+const CURSOR_PROP: SchemaObject = {
+  type: 'object',
+  description: 'Cursor for pagination',
+}
+const ORDERBY_PROP: SchemaObject = {
+  description: 'Sort order (object or array of objects)',
+}
+const SELECT_PROP: SchemaObject = {
+  type: 'object',
+  description: 'Select fields',
+}
+const INCLUDE_PROP: SchemaObject = {
+  type: 'object',
+  description: 'Include relations',
+}
+const OMIT_PROP: SchemaObject = {
+  type: 'object',
+  description: 'Omit fields from response',
+}
+const DISTINCT_PROP: SchemaObject = {
+  description: 'Distinct fields (string or array of strings)',
+}
+const AGG_COUNT: SchemaObject = {
+  description: 'Count aggregate (true or field selection object)',
+}
+const AGG_AVG: SchemaObject = {
+  type: 'object',
+  description: 'Average aggregate (field selection object)',
+}
+const AGG_SUM: SchemaObject = {
+  type: 'object',
+  description: 'Sum aggregate (field selection object)',
+}
+const AGG_MIN: SchemaObject = {
+  type: 'object',
+  description: 'Min aggregate (field selection object)',
+}
+const AGG_MAX: SchemaObject = {
+  type: 'object',
+  description: 'Max aggregate (field selection object)',
+}
 
 const PROJECTION_PROPS: Record<string, SchemaObject> = {
   select: SELECT_PROP,
@@ -330,8 +367,18 @@ function applyWriteStrategy(
     verb: string
     targetOp: string
   }> = [
-    { method: 'post', successCode: '201', verb: 'Create', targetOp: 'createManyAndReturn' },
-    { method: 'put',  successCode: '200', verb: 'Update', targetOp: 'updateManyAndReturn' },
+    {
+      method: 'post',
+      successCode: '201',
+      verb: 'Create',
+      targetOp: 'createManyAndReturn',
+    },
+    {
+      method: 'put',
+      successCode: '200',
+      verb: 'Update',
+      targetOp: 'updateManyAndReturn',
+    },
   ]
 
   for (const entry of forceReturnOps) {
@@ -341,9 +388,11 @@ function applyWriteStrategy(
       target,
       entry.successCode,
       entry.verb + ' many ' + modelName + ' (forceReturn)',
-      'writeStrategy="forceReturn": this endpoint silently invokes ' + entry.targetOp +
-      ' and returns the ' + (entry.verb === 'Create' ? 'created' : 'updated') +
-      ' records instead of { count }.',
+      'writeStrategy="forceReturn": this endpoint silently invokes ' +
+        entry.targetOp +
+        ' and returns the ' +
+        (entry.verb === 'Create' ? 'created' : 'updated') +
+        ' records instead of { count }.',
     )
   }
 }
@@ -382,7 +431,9 @@ export function buildModelOpenApi(
   const basePath =
     normalizePrefix(prefixSource) +
     removeTrailingSlash(
-      config.addModelPrefix !== false ? `/${modelName.toLowerCase()}` : '',
+      config.addModelPrefix !== false
+        ? `/${options.pathSegment ?? modelName.toLowerCase()}`
+        : '',
     )
 
   const referencedEnumTypes = new Set(
@@ -794,20 +845,47 @@ function generatePaths(
   config: RouteConfig,
   fields: ModelField[],
 ) {
-  const postReads = !config.disablePostReads
+  const postReadsFor = (op: string): boolean => {
+    const raw: unknown = (config as Record<string, unknown>)[op]
+    const opValue =
+      raw && typeof raw === 'object'
+        ? (raw as { disablePostReads?: boolean }).disablePostReads
+        : undefined
+    return !(opValue ?? config.disablePostReads ?? false)
+  }
 
-  const createInputRef = { $ref: `#/components/schemas/${modelName}CreateInput` }
-  const updateInputRef = { $ref: `#/components/schemas/${modelName}UpdateInput` }
-  const createManyInputRef = { $ref: `#/components/schemas/${modelName}CreateManyInput` }
-  const updateManyMutationRef = { $ref: `#/components/schemas/${modelName}UpdateManyMutationInput` }
+  const createInputRef = {
+    $ref: `#/components/schemas/${modelName}CreateInput`,
+  }
+  const updateInputRef = {
+    $ref: `#/components/schemas/${modelName}UpdateInput`,
+  }
+  const createManyInputRef = {
+    $ref: `#/components/schemas/${modelName}CreateManyInput`,
+  }
+  const updateManyMutationRef = {
+    $ref: `#/components/schemas/${modelName}UpdateManyMutationInput`,
+  }
   const responseRef = { $ref: `#/components/schemas/${modelName}Response` }
-  const nullableResponseSchema = { oneOf: [responseRef, { type: 'null' as const }] }
-  const batchCountRef = { $ref: `#/components/schemas/${modelName}BatchCountResponse` }
+  const nullableResponseSchema = {
+    oneOf: [responseRef, { type: 'null' as const }],
+  }
+  const batchCountRef = {
+    $ref: `#/components/schemas/${modelName}BatchCountResponse`,
+  }
   const listRef = { $ref: `#/components/schemas/${modelName}ListResponse` }
-  const aggregateRef = { $ref: `#/components/schemas/${modelName}AggregateResponse` }
-  const groupByItemRef = { $ref: `#/components/schemas/${modelName}GroupByItem` }
-  const updateEachItemRef = { $ref: `#/components/schemas/${modelName}UpdateEachItemInput` }
-  const updateEachResponseRef = { $ref: `#/components/schemas/${modelName}UpdateEachResponse` }
+  const aggregateRef = {
+    $ref: `#/components/schemas/${modelName}AggregateResponse`,
+  }
+  const groupByItemRef = {
+    $ref: `#/components/schemas/${modelName}GroupByItem`,
+  }
+  const updateEachItemRef = {
+    $ref: `#/components/schemas/${modelName}UpdateEachItemInput`,
+  }
+  const updateEachResponseRef = {
+    $ref: `#/components/schemas/${modelName}UpdateEachResponse`,
+  }
 
   if (opEnabled(config, 'findMany')) {
     const meta = OPERATION_BY_NAME['findMany']
@@ -830,7 +908,7 @@ function generatePaths(
     addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findMany'), 'get', op)
 
-    if (postReads) {
+    if (postReadsFor('findMany')) {
       addPostReadOperation(
         spec,
         postReadPath(basePath, 'findMany'),
@@ -862,7 +940,7 @@ function generatePaths(
     addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findUnique'), 'get', op)
 
-    if (postReads) {
+    if (postReadsFor('findUnique')) {
       addPostReadOperation(
         spec,
         postReadPath(basePath, 'findUnique'),
@@ -893,7 +971,7 @@ function generatePaths(
     addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findUniqueOrThrow'), 'get', op)
 
-    if (postReads) {
+    if (postReadsFor('findUniqueOrThrow')) {
       addPostReadOperation(
         spec,
         postReadPath(basePath, 'findUniqueOrThrow'),
@@ -924,7 +1002,7 @@ function generatePaths(
     addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findFirst'), 'get', op)
 
-    if (postReads) {
+    if (postReadsFor('findFirst')) {
       addPostReadOperation(
         spec,
         postReadPath(basePath, 'findFirst'),
@@ -955,7 +1033,7 @@ function generatePaths(
     addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findFirstOrThrow'), 'get', op)
 
-    if (postReads) {
+    if (postReadsFor('findFirstOrThrow')) {
       addPostReadOperation(
         spec,
         postReadPath(basePath, 'findFirstOrThrow'),
@@ -987,7 +1065,7 @@ function generatePaths(
     addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'findManyPaginated'), 'get', op)
 
-    if (postReads) {
+    if (postReadsFor('findManyPaginated')) {
       addPostReadOperation(
         spec,
         postReadPath(basePath, 'findManyPaginated'),
@@ -1327,7 +1405,8 @@ function generatePaths(
                   },
                   {
                     type: 'object',
-                    description: 'Per-field count object when select is provided',
+                    description:
+                      'Per-field count object when select is provided',
                   },
                 ],
               },
@@ -1339,7 +1418,7 @@ function generatePaths(
     addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'count'), 'get', op)
 
-    if (postReads) {
+    if (postReadsFor('count')) {
       addPostReadOperation(
         spec,
         postReadPath(basePath, 'count'),
@@ -1380,7 +1459,7 @@ function generatePaths(
     addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'aggregate'), 'get', op)
 
-    if (postReads) {
+    if (postReadsFor('aggregate')) {
       addPostReadOperation(
         spec,
         postReadPath(basePath, 'aggregate'),
@@ -1416,7 +1495,7 @@ function generatePaths(
     addErrorResponses(op, meta.errors)
     addPath(spec, opPath(basePath, 'groupBy'), 'get', op)
 
-    if (postReads) {
+    if (postReadsFor('groupBy')) {
       addPostReadOperation(
         spec,
         postReadPath(basePath, 'groupBy'),
@@ -1581,12 +1660,30 @@ function mapFieldToSchema(field: ModelField): SchemaObject | RefObject {
 }
 
 function nestedListRelationOps(fieldType: string): SchemaObject {
-  const createInput: SchemaObject = { type: 'object', description: `${fieldType} create input` }
-  const uniqueId: SchemaObject = { type: 'object', description: 'Unique identifier' }
-  const uniqueConnect: SchemaObject = { type: 'object', description: 'Unique identifier to connect' }
-  const uniqueDisconnect: SchemaObject = { type: 'object', description: 'Unique identifier to disconnect' }
-  const uniqueDelete: SchemaObject = { type: 'object', description: 'Unique identifier to delete' }
-  const whereFilter: SchemaObject = { type: 'object', description: 'Where filter' }
+  const createInput: SchemaObject = {
+    type: 'object',
+    description: `${fieldType} create input`,
+  }
+  const uniqueId: SchemaObject = {
+    type: 'object',
+    description: 'Unique identifier',
+  }
+  const uniqueConnect: SchemaObject = {
+    type: 'object',
+    description: 'Unique identifier to connect',
+  }
+  const uniqueDisconnect: SchemaObject = {
+    type: 'object',
+    description: 'Unique identifier to disconnect',
+  }
+  const uniqueDelete: SchemaObject = {
+    type: 'object',
+    description: 'Unique identifier to delete',
+  }
+  const whereFilter: SchemaObject = {
+    type: 'object',
+    description: 'Where filter',
+  }
   const whereCreatePair: SchemaObject = {
     type: 'object',
     description: '{ where, create } pair',
@@ -1648,12 +1745,16 @@ function nestedSingleRelationOps(fieldType: string): SchemaObject {
         description: '{ where, create } pair',
         properties: { where: { type: 'object' }, create: { type: 'object' } },
       },
-      disconnect: { type: 'boolean', description: 'Disconnect the related record' },
+      disconnect: {
+        type: 'boolean',
+        description: 'Disconnect the related record',
+      },
       delete: { type: 'boolean', description: 'Delete the related record' },
       update: { type: 'object', description: `${fieldType} update input` },
       upsert: {
         type: 'object',
-        description: '{ create, update } pair — create if not exists, update if exists',
+        description:
+          '{ create, update } pair — create if not exists, update if exists',
         properties: {
           create: { type: 'object', description: `${fieldType} create input` },
           update: { type: 'object', description: `${fieldType} update input` },
@@ -1668,7 +1769,9 @@ function mapFieldToWriteSchema(
   mode: 'create' | 'update',
 ): SchemaObject | RefObject {
   if (field.kind === 'object') {
-    return field.isList ? nestedListRelationOps(field.type) : nestedSingleRelationOps(field.type)
+    return field.isList
+      ? nestedListRelationOps(field.type)
+      : nestedSingleRelationOps(field.type)
   }
 
   let baseSchema: SchemaObject | RefObject

@@ -53,9 +53,11 @@ describe('buildCountShape', () => {
     const result = buildCountShape(source)
 
     expect(typeof result).toBe('function')
-    expect((result as (...args: unknown[]) => unknown)('ctx', 'input')).toEqual({
-      where: { ctx: 'ctx', input: 'input' },
-    })
+    expect((result as (...args: unknown[]) => unknown)('ctx', 'input')).toEqual(
+      {
+        where: { ctx: 'ctx', input: 'input' },
+      },
+    )
     expect(source).toHaveBeenCalledWith('ctx', 'input')
   })
 

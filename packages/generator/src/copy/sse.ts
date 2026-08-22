@@ -5,6 +5,7 @@ import type {
   ProgressiveStage,
   ProgressiveStopResult,
   ProgressivePatch,
+  PrismaClientLike,
 } from './routeConfig'
 
 export function acceptsEventStream(accept: string | undefined): boolean {
@@ -17,7 +18,11 @@ export function acceptsEventStream(accept: string | undefined): boolean {
 
 const UNSAFE_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype'])
 
-export function setByPath(target: Record<string, unknown>, path: string, value: unknown): boolean {
+export function setByPath(
+  target: Record<string, unknown>,
+  path: string,
+  value: unknown,
+): boolean {
   const parts = path.split('.')
   if (parts.length === 0) return false
   for (const p of parts) {
@@ -31,8 +36,11 @@ export function setByPath(target: Record<string, unknown>, path: string, value: 
       if (process.env.NODE_ENV !== 'production') {
         console.warn(
           LOG_PREFIX,
-          'Dropping patch for "' + path +
-          '": cannot traverse non-plain-object at segment "' + part + '"',
+          'Dropping patch for "' +
+            path +
+            '": cannot traverse non-plain-object at segment "' +
+            part +
+            '"',
         )
       }
       return false
@@ -61,7 +69,10 @@ export type SseWritable = {
   destroyed: boolean
 }
 
-export function removeReqCloseListener(req: EventEmitterLike, listener: () => void): void {
+export function removeReqCloseListener(
+  req: EventEmitterLike,
+  listener: () => void,
+): void {
   if (typeof req.off === 'function') {
     req.off('close', listener)
   } else if (typeof req.removeListener === 'function') {
@@ -75,12 +86,15 @@ export function initSSE(res: SseWritable): void {
   res.setHeader('Cache-Control', 'no-cache, no-transform')
   res.setHeader('Connection', 'keep-alive')
   res.setHeader('X-Accel-Buffering', 'no')
+  res.setHeader('X-Stream-Protocol-Version', '1')
   if (typeof res.flushHeaders === 'function') res.flushHeaders()
 }
 
 export function flushSSE(res: SseWritable): void {
   if (typeof res.flush === 'function') {
-    try { res.flush() } catch {}
+    try {
+      res.flush()
+    } catch {}
   }
 }
 
@@ -96,11 +110,20 @@ export function sendSSE(res: SseWritable, payload: unknown): boolean {
   }
 }
 
-export function sendSSEProgress(res: SseWritable, stage: string, completed: number, total: number): boolean {
+export function sendSSEProgress(
+  res: SseWritable,
+  stage: string,
+  completed: number,
+  total: number,
+): boolean {
   return sendSSE(res, { type: 'progress', stage, completed, total })
 }
 
-export function sendSSEField(res: SseWritable, key: string, value: unknown): boolean {
+export function sendSSEField(
+  res: SseWritable,
+  key: string,
+  value: unknown,
+): boolean {
   return sendSSE(res, { type: 'field', key, value })
 }
 
@@ -126,7 +149,12 @@ export function sendSSENestedRelationBatch(
   depth: number,
   attachments: Array<{ locator: Array<number | string>; value: unknown }>,
 ): boolean {
-  return sendSSE(res, { type: 'nestedRelationBatch', relationPath, depth, attachments })
+  return sendSSE(res, {
+    type: 'nestedRelationBatch',
+    relationPath,
+    depth,
+    attachments,
+  })
 }
 
 export function sendSSEPageMeta(
@@ -157,7 +185,10 @@ export function safeSendError(res: SseWritable, message: string): void {
 
 type IntervalHandle = ReturnType<typeof setInterval>
 
-export function startSSEKeepalive(res: SseWritable, intervalMs: number = 15000): IntervalHandle {
+export function startSSEKeepalive(
+  res: SseWritable,
+  intervalMs: number = 15000,
+): IntervalHandle {
   const handle = setInterval(() => {
     if (res.writableEnded || res.destroyed) return
     try {
@@ -170,12 +201,17 @@ export function startSSEKeepalive(res: SseWritable, intervalMs: number = 15000):
   return handle
 }
 
-export function endSSE(res: SseWritable, keepaliveHandle: IntervalHandle | null): void {
+export function endSSE(
+  res: SseWritable,
+  keepaliveHandle: IntervalHandle | null,
+): void {
   if (keepaliveHandle) {
     clearInterval(keepaliveHandle)
   }
   if (!res.writableEnded && !res.destroyed) {
-    try { res.end() } catch {}
+    try {
+      res.end()
+    } catch {}
   }
 }
 
@@ -225,7 +261,9 @@ export interface RunSingleResultSSEOptions {
   coreQueryFn: () => Promise<unknown>
 }
 
-export async function runSingleResultSSE(options: RunSingleResultSSEOptions): Promise<void> {
+export async function runSingleResultSSE(
+  options: RunSingleResultSSEOptions,
+): Promise<void> {
   const { req, res, coreQueryFn } = options
   await withSSE({ res, label: 'single-result' }, async () => {
     if (req.destroyed) return
@@ -236,20 +274,26 @@ export async function runSingleResultSSE(options: RunSingleResultSSEOptions): Pr
 }
 
 function isStopResult(value: unknown): value is ProgressiveStopResult<unknown> {
-  return typeof value === 'object' && value !== null && (value as { stop?: unknown }).stop === true
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { stop?: unknown }).stop === true
+  )
 }
 
 export interface RunProgressiveOptions {
   req: EventEmitterLike
   res: SseWritable
   ctx: unknown
-  prisma: unknown
+  prisma: PrismaClientLike
   variant: string
   stages: string[]
   stageRegistry: Record<string, ProgressiveStage>
 }
 
-export async function runProgressiveEndpoint(options: RunProgressiveOptions): Promise<void> {
+export async function runProgressiveEndpoint(
+  options: RunProgressiveOptions,
+): Promise<void> {
   const { req, res, ctx, prisma, variant, stages, stageRegistry } = options
   const controller = new AbortController()
   const onClose = () => controller.abort()
@@ -266,9 +310,18 @@ export async function runProgressiveEndpoint(options: RunProgressiveOptions): Pr
         if (res.writableEnded || res.destroyed || signal.aborted) return
         const stageName = stages[i]
         const stage = stageRegistry[stageName]
-        if (!stage) throw new HttpError(500, 'Missing progressive stage: ' + stageName)
+        if (!stage)
+          throw new HttpError(500, 'Missing progressive stage: ' + stageName)
 
-        const result = await stage({ ctx, req, res, prisma, variant, accumulated, signal })
+        const result = await stage({
+          ctx,
+          req,
+          res,
+          prisma,
+          variant,
+          accumulated,
+          signal,
+        })
         if (res.writableEnded || res.destroyed) return
 
         if (isStopResult(result)) {

@@ -1,4 +1,5 @@
 name: CI
+
 on:
   push:
     branches:
@@ -6,8 +7,83 @@ on:
   pull_request:
     branches:
       - "*"
+
 jobs:
+  Test:
+    name: Typecheck, unit tests, format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - run: corepack enable
+      - uses: actions/cache@v4
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-modules-${{ hashFiles('**/yarn.lock') }}
+      - name: Install dependencies
+        run: yarn install
+      - name: Typecheck src + tests
+        run: yarn workspace prisma-generator-express test:typecheck
+      - name: Unit tests with coverage
+        working-directory: packages/generator
+        run: npx vitest run --coverage
+      - name: Prettier check
+        working-directory: packages/generator
+        run: npx prettier --check "src/**/*.ts" "test/**/*.ts"
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: packages/generator/coverage/lcov.info
+          fail_ci_if_error: false
+
+  Matrix:
+    name: Generate under Prisma ${{ matrix.prisma }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        prisma: ["6", "7"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - run: corepack enable
+      - uses: actions/cache@v4
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-modules-${{ hashFiles('**/yarn.lock') }}
+      - name: Install dependencies
+        run: yarn install
+      - name: Build generator
+        run: yarn workspace prisma-generator-express build
+      - name: Pin Prisma 6 (lockfile-wide, CI-only mutation; also flips demo workspace — irrelevant here)
+        if: matrix.prisma == '6'
+        run: |
+          yarn set resolution "prisma@npm:7.5.0" "npm:^6.16.2"
+          yarn set resolution "@prisma/client@npm:7.5.0" "npm:^6.16.2"
+          yarn install
+      - name: prisma generate (fixture)
+        working-directory: packages/generator
+        run: npx prisma generate --schema matrix/${{ matrix.prisma == '6' && 'schema.prisma' || 'schema-v7.prisma' }}
+      - name: Assert emitted artifacts
+        working-directory: packages/generator
+        run: |
+          test -f matrix/generated/User/UserRouter.ts
+          test -f matrix/generated/Post/PostRouter.ts
+          test -f matrix/generated/misc.ts
+          test -f matrix/generated/routeConfig.target.ts
+      - name: Strict typecheck of emitted output
+        working-directory: packages/generator
+        run: npx tsc -p matrix/tsconfig.json --noEmit
+
   Publish:
+    needs: [Test, Matrix]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:

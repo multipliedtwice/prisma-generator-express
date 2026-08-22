@@ -17,7 +17,10 @@ function decideWriteOp(
   defaultMethod: string,
   strategy: WriteStrategy,
 ): WriteOpDecision {
-  if (strategy === 'throwOnNonReturning' && (name === 'createMany' || name === 'updateMany')) {
+  if (
+    strategy === 'throwOnNonReturning' &&
+    (name === 'createMany' || name === 'updateMany')
+  ) {
     return { throw: true, method: defaultMethod }
   }
   if (strategy === 'forceReturn') {
@@ -27,7 +30,10 @@ function decideWriteOp(
   return { method: defaultMethod }
 }
 
-function renderPaginatedBody(modelNameLower: string, mode: FindManyPaginatedMode): string {
+function renderPaginatedBody(
+  modelNameLower: string,
+  mode: FindManyPaginatedMode,
+): string {
   if (mode === 'transaction') {
     return `
   const txClient = extended as { $transaction?: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T> }
@@ -69,15 +75,24 @@ export function generateModelCore(options: ModelCoreOptions): string {
   const modelName = options.model.name
   const modelNameLower = modelName.charAt(0).toLowerCase() + modelName.slice(1)
   const writeStrategy = options.writeStrategy
-  const paginatedBody = renderPaginatedBody(modelNameLower, options.findManyPaginatedMode)
+  const paginatedBody = renderPaginatedBody(
+    modelNameLower,
+    options.findManyPaginatedMode,
+  )
 
   const standardReadOps = [
-    'findFirst', 'findUnique', 'findUniqueOrThrow', 'findFirstOrThrow',
-    'count', 'aggregate', 'groupBy',
+    'findFirst',
+    'findUnique',
+    'findUniqueOrThrow',
+    'findFirstOrThrow',
+    'count',
+    'aggregate',
+    'groupBy',
   ]
 
   const standardReadHandlers = standardReadOps
-    .map((op) => `
+    .map(
+      (op) => `
 export async function ${op}(ctx: OperationContext): Promise<unknown> {
   const query = ctx.parsedQuery || {}
   const extended = await getExtendedClient(ctx)
@@ -87,37 +102,55 @@ export async function ${op}(ctx: OperationContext): Promise<unknown> {
     return delegate.guard(ctx.guardShape, ctx.guardCaller).${op}(query)
   }
   return delegate.${op}(query)
-}`)
+}`,
+    )
     .join('\n')
 
   const writeOps = [
     { name: 'create', method: 'create', requiredFields: ['data'] },
     { name: 'createMany', method: 'createMany', requiredFields: ['data'] },
-    { name: 'createManyAndReturn', method: 'createManyAndReturn', requiredFields: ['data'] },
+    {
+      name: 'createManyAndReturn',
+      method: 'createManyAndReturn',
+      requiredFields: ['data'],
+    },
     { name: 'update', method: 'update', requiredFields: ['where', 'data'] },
-    { name: 'updateMany', method: 'updateMany', requiredFields: ['where', 'data'] },
-    { name: 'updateManyAndReturn', method: 'updateManyAndReturn', requiredFields: ['where', 'data'] },
+    {
+      name: 'updateMany',
+      method: 'updateMany',
+      requiredFields: ['where', 'data'],
+    },
+    {
+      name: 'updateManyAndReturn',
+      method: 'updateManyAndReturn',
+      requiredFields: ['where', 'data'],
+    },
     { name: 'deleteUnique', method: 'delete', requiredFields: ['where'] },
     { name: 'deleteMany', method: 'deleteMany', requiredFields: ['where'] },
-    { name: 'upsert', method: 'upsert', requiredFields: ['where', 'create', 'update'] },
+    {
+      name: 'upsert',
+      method: 'upsert',
+      requiredFields: ['where', 'create', 'update'],
+    },
   ]
 
-  const writeHandlers = writeOps.map((op) => {
-    const decision = decideWriteOp(op.name, op.method, writeStrategy)
+  const writeHandlers = writeOps
+    .map((op) => {
+      const decision = decideWriteOp(op.name, op.method, writeStrategy)
 
-    if (decision.throw) {
-      return `
+      if (decision.throw) {
+        return `
 export async function ${op.name}(_ctx: OperationContext): Promise<unknown> {
   throw new HttpError(501, '${op.name} is disabled by writeStrategy="${writeStrategy}"')
 }`
-    }
+      }
 
-    const method = decision.method
-    const validationLines = op.requiredFields
-      .map((field) => `  requireBodyField(body, '${field}')`)
-      .join('\n')
+      const method = decision.method
+      const validationLines = op.requiredFields
+        .map((field) => `  requireBodyField(body, '${field}')`)
+        .join('\n')
 
-    return `
+      return `
 export async function ${op.name}(ctx: OperationContext): Promise<unknown> {
   const body = validateBody(ctx.body)
 ${validationLines}
@@ -129,7 +162,8 @@ ${validationLines}
   }
   return delegate.${method}(body)
 }`
-  }).join('\n')
+    })
+    .join('\n')
 
   return `import {
   OperationContext,

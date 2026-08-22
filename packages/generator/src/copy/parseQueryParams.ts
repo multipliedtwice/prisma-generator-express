@@ -15,8 +15,7 @@ const parseQueryValue = (value: string, key?: string): unknown => {
     try {
       const parsed = JSON.parse(value)
       return sanitizeKeys(parsed)
-    } catch {
-    }
+    } catch {}
   }
   if (value === 'true') return true
   if (value === 'false') return false

@@ -67,12 +67,7 @@ describe('applyDroppedGuard', () => {
   it('does not replace a client projection', async () => {
     const readQuery = { select: { email: true } }
 
-    await run(
-      { select: { id: true } },
-      undefined,
-      'read',
-      { readQuery },
-    )
+    await run({ select: { id: true } }, undefined, 'read', { readQuery })
 
     expect(readQuery).toEqual({ select: { email: true } })
   })
@@ -96,13 +91,7 @@ describe('applyDroppedGuard', () => {
     }))
     const resolveContext = vi.fn(async () => 7)
 
-    const result = await run(
-      shape,
-      undefined,
-      'read',
-      {},
-      resolveContext,
-    )
+    const result = await run(shape, undefined, 'read', {}, resolveContext)
 
     expect(result.createdRead).toEqual({ where: { tenantId: 7 } })
     expect(shape).toHaveBeenCalledWith(7)
@@ -149,12 +138,9 @@ describe('applyDroppedGuard', () => {
   it('overrides conflicting forced fields for unique reads', async () => {
     const readQuery = { where: { id: 1, tenantId: 8 } }
 
-    await run(
-      { where: { tenantId: forced(7) } },
-      undefined,
-      'readUnique',
-      { readQuery },
-    )
+    await run({ where: { tenantId: forced(7) } }, undefined, 'readUnique', {
+      readQuery,
+    })
 
     expect(readQuery).toEqual({ where: { id: 1, tenantId: 7 } })
   })

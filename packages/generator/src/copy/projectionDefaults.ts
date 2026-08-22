@@ -64,8 +64,7 @@ function emptyForced(): WhereForced {
 
 function hasForced(f: WhereForced): boolean {
   return (
-    Object.keys(f.conditions).length > 0 ||
-    Object.keys(f.relations).length > 0
+    Object.keys(f.conditions).length > 0 || Object.keys(f.relations).length > 0
   )
 }
 
@@ -423,7 +422,10 @@ export async function applyDroppedGuard(
     : emptyForced()
 
   const forcedData =
-    opKind === 'create' || opKind === 'createMany' || opKind === 'update' || opKind === 'updateMany'
+    opKind === 'create' ||
+    opKind === 'createMany' ||
+    opKind === 'update' ||
+    opKind === 'updateMany'
       ? isPlainObject(resolved.data)
         ? extractForcedFromDataConfig(resolved.data)
         : {}

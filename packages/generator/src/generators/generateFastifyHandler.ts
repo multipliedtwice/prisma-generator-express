@@ -12,12 +12,14 @@ export function generateFastifyHandler(options: {
 
   const readOps = OPERATION_METADATA.filter((m) => m.kind === 'read')
   const writeOps = OPERATION_METADATA.filter(
-    (m) => (m.kind === 'write' || m.kind === 'batch') && m.name !== 'updateEach',
+    (m) =>
+      (m.kind === 'write' || m.kind === 'batch') && m.name !== 'updateEach',
   )
 
-  const readHandlers = readOps.map((meta) => {
-    const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
-    return `
+  const readHandlers = readOps
+    .map((meta) => {
+      const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
+      return `
 export async function ${exportName}(
   request: FastifyRequest,
   _reply: FastifyReply,
@@ -25,11 +27,13 @@ export async function ${exportName}(
   const data = await core.${meta.coreName}(buildContext(request))
   ;(request as FastifyExtended).resultData = data
 }`
-  }).join('\n')
+    })
+    .join('\n')
 
-  const writeHandlers = writeOps.map((meta) => {
-    const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
-    return `
+  const writeHandlers = writeOps
+    .map((meta) => {
+      const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
+      return `
 export async function ${exportName}(
   request: FastifyRequest,
   _reply: FastifyReply,
@@ -39,7 +43,8 @@ export async function ${exportName}(
   ext.resultData = data
   ext.resultStatus = ${meta.successStatus}
 }`
-  }).join('\n')
+    })
+    .join('\n')
 
   const updateEachExportName = `${modelName}UpdateEach`
   const updateEachHandler = `

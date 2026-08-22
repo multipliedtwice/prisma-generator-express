@@ -4,6 +4,7 @@ import type {
   BaseRouteConfig,
   ProgressiveStage,
   ProgressiveVariantConfig,
+  PrismaClientLike,
   QueryBuilderConfig,
   OpenApiServerConfig,
   OpenApiSecuritySchemeConfig,
@@ -21,6 +22,7 @@ export type {
   FindManyPaginatedMode,
   PaginationConfig,
   PaginationCountSource,
+  PrismaClientLike,
 }
 
 export type {
@@ -40,13 +42,13 @@ export type OperationConfig<TShape = Record<string, unknown>> =
 export type ReadOperationConfig<
   TShape = Record<string, unknown>,
   TCtx = unknown,
-  TPrisma = any,
+  TPrisma extends PrismaClientLike = PrismaClientLike,
 > = BaseOperationConfig<RequestHandler, TShape> & {
   progressive?: Record<string, ProgressiveVariantConfig>
   progressiveStages?: Record<string, ProgressiveStage<TCtx, TPrisma>>
 }
 
-type ReadOperationOverrides<TShape, TCtx, TPrisma> = {
+type ReadOperationOverrides<TShape, TCtx, TPrisma extends PrismaClientLike> = {
   findFirst?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
   findFirstOrThrow?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
   findUnique?: ReadOperationConfig<TShape, TCtx, TPrisma> | false
@@ -61,6 +63,6 @@ type ReadOperationOverrides<TShape, TCtx, TPrisma> = {
 export type RouteConfig<
   TShape = Record<string, unknown>,
   TCtx = unknown,
-  TPrisma = any,
+  TPrisma extends PrismaClientLike = PrismaClientLike,
 > = BaseRouteConfig<RequestHandler, Request, TShape, TCtx> &
   ReadOperationOverrides<TShape, TCtx, TPrisma>
