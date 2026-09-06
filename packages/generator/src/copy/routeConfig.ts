@@ -71,10 +71,18 @@ export type ProgressiveStageResult<T = unknown> =
  * PrismaClient and $extends results are intended to be usable here; pass
  * your client's type explicitly for precise inference.
  */
-export type PrismaClientLike = Record<
-  string,
-  Record<string, (...args: never[]) => unknown>
->
+/**
+ * DELIBERATELY LOOSE. A real `PrismaClient` — and every `$extends` result —
+ * must satisfy this, and neither is a plain map of method maps: a model
+ * delegate carries `fields` refs, and the client carries `$`-prefixed members.
+ * The f6411dc shape (`Record<string, Record<string, fn>>`) refused the actual
+ * client in every emitted `app.ts` (TS2344). Delegates are resolved at runtime
+ * by `getDelegate`, which owns the narrow contract.
+ */
+export type PrismaClientLike = {
+  $extends?: (extension: never) => unknown
+  $transaction?: (fn: never) => Promise<unknown>
+}
 
 export type ProgressiveStageContext<
   TContext = unknown,
