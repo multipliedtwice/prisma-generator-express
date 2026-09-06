@@ -136,6 +136,7 @@ import type {
   FindManyPaginatedMode,
   PaginationConfig,
   PrismaClientLike,
+  QueryBuilderConfig,
 } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
 import { sanitizeKeys, normalizePrefix, getEnv, isPlainObject, resolveDropGuardEnv } from '../misc${ext}'
@@ -209,14 +210,14 @@ function normalizeFastifyOperation(
   return normalizeOperation<FastifyHookHandler, FastifyHookHandler>(config)
 }
 
-function isQueryBuilderEnabled(config: RouteConfig): boolean {
+function isQueryBuilderEnabled(config: { queryBuilder?: QueryBuilderConfig | false }): boolean {
   if (config.queryBuilder === false) return false
   if (typeof config.queryBuilder === 'object' && config.queryBuilder.enabled === false) return false
   if (_env.NODE_ENV === 'production') return false
   return true
 }
 
-function getQueryBuilderConfig(config: RouteConfig) {
+function getQueryBuilderConfig(config: { queryBuilder?: QueryBuilderConfig | false }) {
   if (config.queryBuilder === false) return null
   if (typeof config.queryBuilder === 'object') return config.queryBuilder
   return {}
@@ -383,7 +384,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma extends Pris
           '${modelName}',
           MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
           MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
-          config,
+          config as unknown as Parameters<typeof buildModelOpenApi>[3],
           { format: 'json', writeStrategy: '${writeStrategy}', pathSegment: '${modelSegment}' },
         )
       }
@@ -396,7 +397,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma extends Pris
           '${modelName}',
           MODEL_FIELDS as unknown as Parameters<typeof buildModelOpenApi>[1],
           MODEL_ENUMS as unknown as Parameters<typeof buildModelOpenApi>[2],
-          config,
+          config as unknown as Parameters<typeof buildModelOpenApi>[3],
           { format: 'yaml', writeStrategy: '${writeStrategy}', pathSegment: '${modelSegment}' },
         ) as string
       }

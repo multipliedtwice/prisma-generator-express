@@ -307,7 +307,7 @@ async function parseWriteBodyMiddleware(c: HandlerContext): Promise<void> {
   c.set('body', body)
 }
 
-function makeShapeMiddleware<TCtx, TPrisma, TEnv extends HonoEnvBase>(
+function makeShapeMiddleware<TCtx, TPrisma extends PrismaClientLike, TEnv extends HonoEnvBase>(
   config: ${modelName}RouteConfig<TCtx, TPrisma, TEnv>,
   opConfig: NormalizedOp<TEnv>,
   opKind: OpKind,

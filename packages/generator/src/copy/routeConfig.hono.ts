@@ -21,6 +21,7 @@ export type {
   FindManyPaginatedMode,
   PaginationConfig,
   PaginationCountSource,
+  PrismaClientLike,
 }
 
 export type HonoEnvBase = {

@@ -62,8 +62,8 @@ export async function writeEmittedRouterProject(args: {
     model: args.model,
     enums: [] as DMMF.DatamodelEnum[],
     guardShapesImport: null,
-    importStyle: 'ts' as never,
-    writeStrategy: 'transaction' as never,
+    importStyle: 'none' as never,
+    writeStrategy: 'regular' as never,
     findManyPaginatedMode: 'transaction' as never,
     pathCase: 'raw' as never,
     dropGuard: args.dropGuard ?? false,
@@ -80,17 +80,17 @@ export async function writeEmittedRouterProject(args: {
       : args.target === 'fastify'
         ? generateFastifyHandler
         : generateUnifiedHandler
-  )({ model: args.model, importStyle: 'ts' as never })
+  )({ model: args.model, importStyle: 'none' as never })
   const coreText = generateModelCore({
     model: args.model,
-    importStyle: 'ts' as never,
-    writeStrategy: 'transaction' as never,
+    importStyle: 'none' as never,
+    writeStrategy: 'regular' as never,
     findManyPaginatedMode: 'transaction' as never,
   })
   const metadataText = generateModelMetadata({
     model: args.model,
     enums: [],
-    importStyle: 'ts' as never,
+    importStyle: 'none' as never,
   })
 
   const modelDir = join(dir, modelName)
@@ -107,14 +107,14 @@ export async function writeEmittedRouterProject(args: {
         generateRelationMeta({
           model: args.model,
           allModels: [args.model],
-          importStyle: 'ts' as never,
+          importStyle: 'none' as never,
         }),
       ),
       'utf8',
     )
     await writeFile(
       join(dir, 'relationModels.ts'),
-      await emit(generateRelationModelsIndex({ modelNames: [modelName], importStyle: 'ts' as never })),
+      await emit(generateRelationModelsIndex({ modelNames: [modelName], importStyle: 'none' as never })),
       'utf8',
     )
   }
