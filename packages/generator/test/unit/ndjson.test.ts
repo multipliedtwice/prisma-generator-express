@@ -30,7 +30,7 @@ const fakeRes = () => {
       chunks.push(c)
     },
     end: () => {
-      ;(fakeRes as unknown).valueOf // noop reference guard
+      void fakeRes // noop reference guard
     },
   }
 }
@@ -53,11 +53,9 @@ describe('runNdjsonFindMany', () => {
   ) => {
     let call = 0
     const calls: Array<[number, number]> = []
-    const res = fakeRes() as never as Parameters<
-      typeof runNdjsonFindMany
-    >[0]['res']
+    const res = fakeRes()
     await runNdjsonFindMany({
-      res,
+      res: res as never as Parameters<typeof runNdjsonFindMany>[0]['res'],
       isClosed: () => false,
       fetchPage: async (skip, take) => {
         calls.push([skip, take])

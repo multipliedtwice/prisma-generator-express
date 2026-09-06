@@ -134,7 +134,7 @@ import type {
   RouteConfig,
   FastifyHookHandler,
   FindManyPaginatedMode,
-  PaginationConfig,,
+  PaginationConfig,
   PrismaClientLike,
 } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'
@@ -164,7 +164,10 @@ ${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, im
 const _env = getEnv()
 
 const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode}'
-const DROP_GUARD = ${dropGuard} || resolveDropGuardEnv(_env)
+// Fixed at generation time. The environment bypass is resolved per hook,
+// because it requires the configuration's explicit \`allowE2EGuardBypass: true\`:
+// false or omitted means the environment cannot drop guards for this target.
+const DROP_GUARD = ${dropGuard}
 
 type OperationConfigLike = {
   before?: FastifyHookHandler[]
@@ -247,6 +250,17 @@ function makeShapeHook(
   opConfig: NormalizedOp,
   opKind: OpKind,
 ): (request: FastifyRequest) => Promise<void> {
+  /**
+   * The environment bypass, and it is OPT-IN for this target.
+   *
+   * \`PGE_DROP_GUARD=true\` (deprecated alias \`E2E=true\`) downgrading enforcement
+   * in a deployed environment is a real hazard: on most platforms it is an
+   * ordinary config var, set on staging, copied forward, flagged as
+   * security-relevant nowhere. It is honoured only when this configuration
+   * states \`allowE2EGuardBypass: true\` — false or omitted means the environment
+   * cannot drop guards. The generation-time \`DROP_GUARD\` literal is unchanged.
+   */
+  const dropGuard = DROP_GUARD || (config.allowE2EGuardBypass === true && resolveDropGuardEnv(_env))
   return async (request: FastifyRequest) => {
     const fx = request as FastifyExtended
     const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
@@ -272,7 +286,7 @@ function makeShapeHook(
     if (resolvedKey !== undefined) fx.guardVariantKey = resolvedKey
 
     if (opConfig.guardShape) {
-      if (!DROP_GUARD) {
+      if (!dropGuard) {
         fx.guardShape = opConfig.guardShape
       } else {
         await applyDroppedGuard(

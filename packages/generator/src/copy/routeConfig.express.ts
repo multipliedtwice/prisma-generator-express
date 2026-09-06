@@ -65,4 +65,14 @@ export type RouteConfig<
   TCtx = unknown,
   TPrisma extends PrismaClientLike = PrismaClientLike,
 > = BaseRouteConfig<RequestHandler, Request, TShape, TCtx> &
-  ReadOperationOverrides<TShape, TCtx, TPrisma>
+  ReadOperationOverrides<TShape, TCtx, TPrisma> & {
+    /**
+     * Honour `PGE_DROP_GUARD=true` in the environment as a guard bypass
+     * (deprecated alias: `E2E=true`). **Default `false` for this target.**
+     *
+     * Only the explicit `true` enables it; false or omitted means the
+     * environment cannot drop guards. The generation-time `dropGuard` literal
+     * is independent of this control and unchanged.
+     */
+    allowE2EGuardBypass?: boolean
+  }

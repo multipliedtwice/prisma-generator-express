@@ -3182,7 +3182,7 @@ generator express {
 | `target` | `"express"`, `"fastify"`, `"hono"` | `"express"` | Selects the generated router target. |
 | `writeStrategy` | `"regular"`, `"throwOnNonReturning"`, `"forceReturn"` | `"regular"` | Controls only `createMany` and `updateMany`. See [Write strategy](#write-strategy). |
 | `findManyPaginatedMode` | `"promiseAll"`, `"transaction"` | `"promiseAll"` | Controls whether generated `findManyPaginated` handlers run data and count with `Promise.all` or inside an interactive transaction. See [findManyPaginated execution mode](#findmanypaginated-execution-mode). |
-| `dropGuard` | `true`, `false` | `false` | When `true`, generated routers never pass guard shapes to Prisma. Runtime `PGE_DROP_GUARD=true` also disables guard in emitted routers, even when generator `dropGuard` is `false`. Route-level and operation-level `dropGuard` config fields do not exist. |
+| `dropGuard` | `true`, `false` | `false` | When `true`, generated routers never pass guard shapes to Prisma. Runtime `PGE_DROP_GUARD=true` can additionally disable guard in emitted routers, but only under the `allowE2EGuardBypass` route-config gate: Hono honours it unless the config sets `allowE2EGuardBypass: false` (upstream default `true`), while Express and Fastify honour it only when the config states `allowE2EGuardBypass: true` — false or omitted means the environment cannot drop guards for those targets. Route-level and operation-level `dropGuard` config fields do not exist. |
 
 > Route-level and operation-level `dropGuard` config fields were removed because they were never read at runtime. Use generator `dropGuard = true` or runtime `PGE_DROP_GUARD = true`.
 
@@ -3472,7 +3472,7 @@ In E2E, the generated router should skip guard and let the E2E Prisma extension 
 
 ### Behavior
 
-Generated routers resolve the effective guard-drop flag through the shared runtime helper `resolveDropGuardEnv` (see [Environment variables](#environment-variables)).
+Generated routers resolve the effective guard-drop flag through the shared runtime helper `resolveDropGuardEnv` (see [Environment variables](#environment-variables)), gated on the `allowE2EGuardBypass` route-config control. Hono honours the environment unless the config sets `allowE2EGuardBypass: false` (upstream default `true`). Express and Fastify honour it only when the config states `allowE2EGuardBypass: true`; false or omitted means the environment cannot drop guards for those targets. The generation-time `dropGuard` option is independent of this gate.
 
 When `DROP_GUARD` is true, the generated router calls Prisma directly instead of calling `delegate.guard(...)`. Before doing so, it still applies forced values and default projection behavior using vendored, dependency-free generated runtime helpers.
 
@@ -3506,6 +3506,10 @@ Then generated routers drop guard only when runtime env has:
 ```env
 PGE_DROP_GUARD=true
 ```
+
+and the route config permits the environment bypass: Hono unless it sets
+`allowE2EGuardBypass: false`, Express and Fastify only when it states
+`allowE2EGuardBypass: true`.
 
 ### E2E scalar-list support
 

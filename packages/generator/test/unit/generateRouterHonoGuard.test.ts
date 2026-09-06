@@ -44,6 +44,7 @@ const emit = (dropGuard: boolean) =>
     importStyle: 'esm' as never,
     writeStrategy: 'transaction' as never,
     dropGuard,
+    pathCase: 'raw' as never,
   })
 
 describe('guard dropping is decided at generation time — under allowE2EGuardBypass', () => {

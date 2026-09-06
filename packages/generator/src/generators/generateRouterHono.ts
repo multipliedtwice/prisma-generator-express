@@ -189,7 +189,7 @@ import type {
   HonoEnvBase,
   HonoInternalVariables,
   GeneratedHonoEnv,
-  PaginationConfig,,
+  PaginationConfig,
   PrismaClientLike,
 } from '../routeConfig.target${ext}'
 import { parseQueryParams } from '../parseQueryParams${ext}'

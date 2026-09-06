@@ -57,6 +57,7 @@ const emitted = generateHonoRouterFunction({
   importStyle: 'esm' as never,
   writeStrategy: 'transaction' as never,
   dropGuard: false,
+  pathCase: 'raw' as never,
 })
 
 /**

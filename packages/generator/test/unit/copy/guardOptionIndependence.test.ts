@@ -361,6 +361,7 @@ describe('the emitted router reads each control separately', () => {
     importStyle: 'js',
     writeStrategy: 'regular',
     dropGuard: false,
+    pathCase: 'raw' as never,
   })
 
   it('has no single umbrella switch left', () => {

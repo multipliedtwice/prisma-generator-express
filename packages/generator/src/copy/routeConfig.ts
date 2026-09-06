@@ -249,6 +249,7 @@ type OperationConfigInput<TBefore, TAfter> = {
     }
   >
   pagination?: Partial<PaginationConfig>
+  disablePostReads?: boolean
 }
 
 /**
@@ -647,8 +648,7 @@ export function normalizeOperation<TBefore, TAfter>(
         ]),
       ),
       pagination: config.pagination,
-      disablePostReads: (config as { disablePostReads?: boolean })
-        .disablePostReads,
+      disablePostReads: config.disablePostReads,
     }
   }
 
@@ -659,8 +659,7 @@ export function normalizeOperation<TBefore, TAfter>(
     operationAfter,
     variantHooks: {},
     pagination: config?.pagination,
-    disablePostReads: (config as { disablePostReads?: boolean })
-      .disablePostReads,
+    disablePostReads: config?.disablePostReads,
   }
 }
 

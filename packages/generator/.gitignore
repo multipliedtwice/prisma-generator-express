@@ -1,3 +1,5 @@
 
 # transient: test/consumer packs the tarball here and removes it afterwards
 .consumer-pack-*
+# transient: test/unit/emittedRouterProject.ts lays out emitted routers here
+.emitted-router-*

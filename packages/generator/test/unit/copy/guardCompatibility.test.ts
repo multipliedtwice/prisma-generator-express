@@ -215,6 +215,7 @@ describe('the emitted router keeps the 1.64.1 runtime shape', () => {
     importStyle: 'js',
     writeStrategy: 'regular',
     dropGuard: false,
+    pathCase: 'raw' as never,
   })
 
   it('registers updateEach, which 1.64.2 removed outright', () => {
