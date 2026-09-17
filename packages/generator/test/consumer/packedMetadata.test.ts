@@ -60,7 +60,22 @@ beforeAll(() => {
       encoding: 'utf-8',
     })
 
-    const out = execFileSync('npm', ['pack', '--pack-destination', workdir], {
+    /**
+     * `--ignore-scripts`, because `prepack` MUTATES THE WORKING TREE.
+     *
+     * `prepack` is `node copy.js && npm run build`, and `copy.js` copies the
+     * repository-root `README.md` and `LICENSE` over this package's own tracked
+     * copies. That is correct when publishing and wrong here: running the suite
+     * left `packages/generator/README.md` modified, and a consumer of this
+     * repository that asserts a clean worktree — as the CMS pinning this
+     * submodule does — then failed on a test run that had passed.
+     *
+     * Nothing is lost by skipping it. The build half already ran explicitly
+     * above, and the copy half is asserted instead of performed: the two files
+     * `copy.js` would write are checked below to already match their sources, so
+     * the tarball carries the same bytes `prepack` would have produced.
+     */
+    const out = execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', workdir], {
       cwd: GENERATOR,
       stdio: 'pipe',
       encoding: 'utf-8',
@@ -200,5 +215,42 @@ describe('importing it the way the CMS would', () => {
     expect(types, 'the entry does not re-export the metadata types').toMatch(
       /GUARD_OPTION_METADATA|guardOptions/,
     )
+  })
+})
+
+/**
+ * WHAT `prepack` WOULD HAVE WRITTEN, ASSERTED RATHER THAN WRITTEN.
+ *
+ * `copy.js` keeps this package's `README.md` and `LICENSE` identical to the
+ * repository root's, so a consumer installing from npm reads the same document
+ * as somebody reading the repository. That is worth keeping true, and it does
+ * not need a test run to mutate tracked files to stay true — the pack above
+ * skips the script, and these check the property it exists to maintain.
+ *
+ * A failure here means the root copies moved and this package's did not. Run
+ * `node copy.js` to bring them back into line, and commit the result.
+ */
+describe('the documents copy.js keeps in step', () => {
+  const REPO_ROOT = resolve(GENERATOR, '..', '..')
+  const read = (...segments: string[]) => readFileSync(join(...segments), 'utf-8')
+
+  for (const filename of ['README.md', 'LICENSE']) {
+    it(`has ${filename} identical to the repository root's`, () => {
+      expect(
+        read(GENERATOR, filename),
+        `${filename} has drifted from the root copy — run \`node copy.js\``
+      ).toBe(read(REPO_ROOT, filename))
+    })
+  }
+
+  it('packs the root documents into the tarball', () => {
+    expect(packFailed).toBeNull()
+
+    for (const filename of ['README.md', 'LICENSE']) {
+      expect(
+        read(packageRoot, filename),
+        `the tarball's ${filename} is not the one a publish would ship`
+      ).toBe(read(REPO_ROOT, filename))
+    }
   })
 })
