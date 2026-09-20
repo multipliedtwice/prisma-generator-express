@@ -174,6 +174,7 @@ const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode
 const DROP_GUARD = ${dropGuard}
 
 type OperationConfigLike = {
+  authorize?: FastifyHookHandler
   override?: RuntimeOperationOverride
   before?: FastifyHookHandler[]
   after?: FastifyHookHandler[]
@@ -457,6 +458,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma extends Pris
       opKind: OpKind,
     ) => async (request: FastifyRequest, reply: FastifyReply) => {
       try {
+        if (await runHooks(opConfig.authorize ? [opConfig.authorize] : [], request, reply)) return
         parseFn(request)
         await makeShapeHook(config, opConfig, opKind)(request)
         if (await runHooks(opConfig.operationBefore, request, reply)) return
@@ -489,6 +491,7 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma extends Pris
       opKind: OpKind,
     ) => async (request: FastifyRequest, reply: FastifyReply) => {
       try {
+        if (await runHooks(opConfig.authorize ? [opConfig.authorize] : [], request, reply)) return
         await makeShapeHook(config, opConfig, opKind)(request)
         if (await runHooks(opConfig.operationBefore, request, reply)) return
 

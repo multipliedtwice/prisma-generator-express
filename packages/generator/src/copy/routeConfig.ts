@@ -145,6 +145,7 @@ export type BaseOperationConfig<
   TShape = Record<string, unknown>,
   TAfter = TBefore,
 > = OperationShapeConfig<TShape, TBefore, TAfter> & {
+  authorize?: TBefore
   before?: TBefore[]
   after?: TAfter[]
   override?: RuntimeOperationOverride
@@ -237,6 +238,7 @@ export type NormalizedVariantHooks<TBefore, TAfter> = Readonly<
 >
 
 export interface NormalizedOperationConfig<TBefore, TAfter> {
+  authorize?: TBefore
   override?: RuntimeOperationOverride
   guardShape?: Record<string, unknown>
   guardRouting: NormalizedGuardRouting
@@ -248,6 +250,7 @@ export interface NormalizedOperationConfig<TBefore, TAfter> {
 }
 
 type OperationConfigInput<TBefore, TAfter> = {
+  authorize?: TBefore
   override?: RuntimeOperationOverride
   before?: TBefore[]
   after?: TAfter[]
@@ -650,6 +653,7 @@ export function normalizeOperation<TBefore, TAfter>(
         keys: entries.map(([key]) => key),
       },
       override: config.override,
+      authorize: config.authorize,
       operationBefore,
       operationAfter,
       variantHooks: Object.fromEntries(
@@ -670,6 +674,7 @@ export function normalizeOperation<TBefore, TAfter>(
     guardShape: config?.shape as Record<string, unknown> | undefined,
     guardRouting: classifyGuardRouting(config?.shape),
     override: config?.override,
+    authorize: config?.authorize,
     operationBefore,
     operationAfter,
     variantHooks: {},

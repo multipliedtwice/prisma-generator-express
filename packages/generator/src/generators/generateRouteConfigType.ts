@@ -111,6 +111,7 @@ export function generateRouteConfigType(
     const isRead = READ_OPERATION_NAMES.has(routerOp)
     const commonLines = [
       `    override?: ${overrideType(routerOp)}`,
+      `    authorize?: ${beforeRef}`,
       `    before?: ${beforeRef}[]`,
       `    after?: ${afterRef}[]`,
       `    pagination?: Partial<PaginationConfig>`,

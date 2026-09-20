@@ -237,6 +237,7 @@ const DROP_GUARD = ${dropGuard}
 type JsonLike = string | number | boolean | null | unknown[] | Record<string, unknown>
 
 type OperationConfigLike<TEnv extends HonoEnvBase> = {
+  authorize?: HonoBeforeHook<TEnv>
   override?: RuntimeOperationOverride
   before?: HonoBeforeHook<TEnv>[]
   after?: HonoAfterHook<TEnv>[]
@@ -577,6 +578,8 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClie
     opKind: OpKind,
   ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
     try {
+      const authorized = await runBeforeHooks<TEnv>(opConfig.authorize ? [opConfig.authorize] : [], c)
+      if (authorized) return authorized
       await parseFn(c as unknown as HandlerContext)
       await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
 
@@ -612,6 +615,8 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClie
     opKind: OpKind,
   ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
     try {
+      const authorized = await runBeforeHooks<TEnv>(opConfig.authorize ? [opConfig.authorize] : [], c)
+      if (authorized) return authorized
       await parseWriteBodyMiddleware(c as unknown as HandlerContext)
       await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
 

@@ -65,6 +65,28 @@ for (const target of ['express', 'fastify', 'hono'] as const) {
       expect(result.body).toEqual(wrap ? [] : [{ id: 'replacement', site_id: 'tenant-a' }])
     })
 
+    it('refuses access before hooks, guarded delegates and operation overrides', async () => {
+      const events: string[] = []
+      const recorded = recordingDelegate()
+      const authorize = target === 'express'
+        ? ((_req, res) => { events.push('access'); res.status(403).json({ error: 'not_permitted' }) }) satisfies RequestHandler
+        : target === 'fastify'
+          ? async (_req: object, reply: { code: (status: number) => { send: (body: object) => void } }) => { events.push('access'); reply.code(403).send({ error: 'not_permitted' }) }
+          : () => { events.push('access'); return new Response('{"error":"not_permitted"}', { status: 403 }) }
+      const result = await request(target, {
+        addModelPrefix: false, disableOpenApi: true, queryBuilder: false,
+        guardResolutionOrder: 'after-hooks',
+        findMany: {
+          authorize, shape,
+          before: [() => { events.push('before') }],
+          override: () => { events.push('override'); return [] },
+        },
+      }, recorded.prisma)
+      expect(result.status).toBe(403)
+      expect(events).toEqual(['access'])
+      expect(recorded.findManyCalls).toHaveLength(0)
+    })
+
     it('refuses a missing guard before calling replacement', async () => {
       let called = false
       const result = await request(target, { addModelPrefix: false, disableOpenApi: true, queryBuilder: false, findMany: { override: () => { called = true; return [] } } }, recordingDelegate().prisma)

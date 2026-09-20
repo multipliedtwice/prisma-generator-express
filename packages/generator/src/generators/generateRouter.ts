@@ -60,6 +60,7 @@ function emitReadOp(
       const postPath = ${meta.name === 'findMany' ? "basePath ? `${basePath}/read` : '/read'" : `path`}
       router.post(
         postPath,
+        ...(opConfig.authorize ? [opConfig.authorize] : []),
         parseBodyAsQuery,
         setShape(opConfig, '${opKind}'),
         ...opConfig.operationBefore,
@@ -78,6 +79,7 @@ function emitReadOp(
     const path = ${pathValue}
     router.get(
       path,
+      ...(opConfig.authorize ? [opConfig.authorize] : []),
       parseQuery,
       setShape(opConfig, '${opKind}'),
       ...opConfig.operationBefore,
@@ -109,6 +111,7 @@ function emitWriteOp(
     const path = ${pathValue}
     router.${meta.method}(
       path,
+      ...(opConfig.authorize ? [opConfig.authorize] : []),
       setShape(opConfig, '${opKind}'),
       ...opConfig.operationBefore,
       requireVariantKey(),
@@ -225,6 +228,7 @@ const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode
 const DROP_GUARD = ${dropGuard}
 
 type OperationConfigLike = {
+  authorize?: RequestHandler
   override?: RuntimeOperationOverride
   before?: RequestHandler[]
   after?: RequestHandler[]
@@ -771,6 +775,7 @@ ${writeOpBlocks}
     const path = basePath ? \`\${basePath}/each\` : '/each'
     router.post(
       path,
+      ...(opConfig.authorize ? [opConfig.authorize] : []),
       setShape(opConfig, 'noop'),
       ...opConfig.operationBefore,
       async (req: Request, res: Response, next: NextFunction) => {
