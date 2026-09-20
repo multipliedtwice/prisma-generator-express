@@ -1,9 +1,9 @@
-import { DMMF } from '@prisma/generator-helper'
+import type { DMMF } from '@prisma/generator-helper'
 import { generateRouteConfigType } from './generateRouteConfigType'
-import { ImportStyle } from '../utils/resolveImportStyle'
+import type { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
-import { WriteStrategy } from '../constants'
-import { modelPathSegment, PathCase } from '../utils/pathCasing'
+import type { WriteStrategy } from '../constants'
+import { modelPathSegment, type PathCase } from '../utils/pathCasing'
 import { OPERATION_METADATA } from '../copy/operationDefinitions'
 
 function pathExpr(suffix: string): string {
@@ -143,6 +143,7 @@ export function generateHonoRouterFunction({
   model,
   enums,
   guardShapesImport,
+  clientImport,
   importStyle,
   writeStrategy,
   dropGuard,
@@ -151,6 +152,7 @@ export function generateHonoRouterFunction({
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
   guardShapesImport: string | null
+  clientImport?: string
   importStyle: ImportStyle
   writeStrategy: WriteStrategy
   dropGuard: boolean
@@ -206,6 +208,7 @@ import {
   resolvePostReadsEnabled,
   warnIfUnguardedRoutes,
 } from '../routeConfig${ext}'
+import type { RuntimeOperationOverride } from '../operationRuntime${ext}'
 import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import { transformResult } from '../operationRuntime${ext}'
 import { mapError } from '../errorMapper${ext}'
@@ -215,7 +218,7 @@ import { applyDroppedGuard } from '../projectionDefaults${ext}'
 import type { OpKind } from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
-${generateRouteConfigType(modelName, 'HonoBeforeHook', guardShapesImport, importStyle, 'hono')}
+${generateRouteConfigType(modelName, 'HonoBeforeHook', guardShapesImport, importStyle, 'hono', clientImport)}
 const _env = getEnv()
 
 // Fixed at generation time. The \`allowE2EGuardBypass\` control decides whether the
@@ -234,6 +237,7 @@ const DROP_GUARD = ${dropGuard}
 type JsonLike = string | number | boolean | null | unknown[] | Record<string, unknown>
 
 type OperationConfigLike<TEnv extends HonoEnvBase> = {
+  override?: RuntimeOperationOverride
   before?: HonoBeforeHook<TEnv>[]
   after?: HonoAfterHook<TEnv>[]
   shape?: unknown
@@ -336,6 +340,9 @@ function makeShapeMiddleware<TCtx, TPrisma extends PrismaClientLike, TEnv extend
      * in.
      */
     const vars = c as unknown as HandlerContext
+    vars.set('operationOverride', opConfig.override)
+    let context: Promise<unknown> | undefined
+    vars.set('resolveOperationContext', () => context ??= Promise.resolve(config.resolveContext?.(c)))
 
     const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
     if (merged) vars.set('routeConfig', { pagination: merged })
@@ -359,7 +366,7 @@ function makeShapeMiddleware<TCtx, TPrisma extends PrismaClientLike, TEnv extend
 
     if (opConfig.guardShape) {
       const resolveCtx = typeof config.resolveContext === 'function'
-        ? () => (config.resolveContext as unknown as (ctx: Context<GeneratedHonoEnv<TEnv>>) => unknown | Promise<unknown>)(c)
+        ? vars.get('resolveOperationContext')
         : undefined
 
       /**

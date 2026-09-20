@@ -9,10 +9,10 @@ export type PrismaDelegateLike = {
   ) => PrismaDelegateLike
 }
 
-export function assertGuard(
-  delegate: PrismaDelegateLike,
-): asserts delegate is PrismaDelegateLike & {
-  guard: NonNullable<PrismaDelegateLike['guard']>
+export function assertGuard<T extends PrismaDelegateLike>(
+  delegate: T,
+): asserts delegate is T & {
+  guard: NonNullable<T['guard']>
 } {
   if (typeof delegate.guard !== 'function') {
     throw new HttpError(

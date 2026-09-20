@@ -1,3 +1,5 @@
+import { resolveGuardShapeOnce } from './routeConfig'
+import { assertGuard } from './guardHelpers'
 import { HttpError, LOG_PREFIX } from './errorMapper'
 import { sanitizeKeys, isPlainObject } from './misc'
 import type {
@@ -24,12 +26,15 @@ export type {
 
 export interface OperationContext {
   prisma: unknown
+  operationOverride?: RuntimeOperationOverride
+  resolveOperationContext?: () => unknown | Promise<unknown>
   postgres?: unknown
   sqlite?: unknown
   parsedQuery?: Record<string, unknown>
   body?: unknown
   guardShape?: Record<string, unknown>
   guardCaller?: string
+  guardVariantKey?: string
   paginationConfig?: PaginationConfig
   findManyPaginatedMode?: FindManyPaginatedMode
 }
@@ -187,4 +192,49 @@ export function transformResult(value: unknown): unknown {
     return changed ? out : value
   }
   return value
+}
+
+export const OPERATION_OVERRIDE_VERSION = 1
+
+export type OperationOverride<TInput, TResult, TContext, TPrisma> = {
+  invoke(options: {
+    input: TInput
+    args: TInput
+    context: TContext
+    prisma: TPrisma
+    core: () => Promise<TResult>
+  }): TResult | Promise<TResult>
+}['invoke']
+
+export type RuntimeOperationOverride = OperationOverride<
+  Record<string, unknown>, unknown, unknown,
+  Readonly<Record<string, Readonly<Record<string, (...args: never[]) => Promise<unknown>>>>>
+>
+
+export async function executeOperationOverride<TResult>(
+  ctx: OperationContext,
+  model: string,
+  operation: keyof Omit<PrismaDelegate, 'guard'> | 'findManyPaginated',
+  input: Record<string, unknown>,
+  core: () => Promise<TResult>,
+): Promise<TResult> {
+  if (!ctx.operationOverride) return core()
+  if (!ctx.guardShape) throw new HttpError(500, 'An operation override requires a guard shape')
+  const context = await ctx.resolveOperationContext?.()
+  const resolved = await resolveGuardShapeOnce(ctx.guardShape, ctx.guardVariantKey ?? ctx.guardCaller, () => context)
+  if (!resolved.ok || !isPlainObject(resolved.shape)) {
+    throw new HttpError(500, 'An operation override requires a resolved guard shape')
+  }
+  ctx.guardShape = resolved.shape
+  const delegate = getDelegate(await getExtendedClient(ctx), model)
+  assertGuard(delegate)
+  const guarded = delegate.guard(resolved.shape, ctx.guardCaller)
+  const methods = operation === 'findManyPaginated' ? ['findMany', 'count'] as const : [operation]
+  const exposed: Record<string, (...args: never[]) => Promise<unknown>> = {}
+  for (const method of methods) exposed[method] = guarded[method].bind(guarded)
+  return await ctx.operationOverride({
+    input, args: input, context,
+    prisma: Object.freeze({ [model]: Object.freeze(exposed) }),
+    core,
+  }) as TResult
 }

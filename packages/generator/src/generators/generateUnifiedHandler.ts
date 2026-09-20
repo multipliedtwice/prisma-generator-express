@@ -1,5 +1,5 @@
-import { DMMF } from '@prisma/generator-helper'
-import { ImportStyle } from '../utils/resolveImportStyle'
+import type { DMMF } from '@prisma/generator-helper'
+import type { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import { OPERATION_METADATA } from '../copy/operationDefinitions'
 
@@ -36,7 +36,7 @@ export async function ${exportName}(
 
   return `import type { Request, Response, NextFunction } from 'express'
 import * as core from './${modelName}Core${ext}'
-import { OperationContext } from '../operationRuntime${ext}'
+import type { OperationContext, RuntimeOperationOverride } from '../operationRuntime${ext}'
 import { mapError } from '../errorMapper${ext}'
 
 type ExtendedRequest = Request & {
@@ -50,6 +50,9 @@ type LocalsBag = {
   routeConfig?: { pagination?: unknown }
   guardShape?: Record<string, unknown>
   guardCaller?: string
+  guardVariantKey?: string
+  operationOverride?: RuntimeOperationOverride
+  resolveOperationContext?: () => unknown | Promise<unknown>
   data?: unknown
 }
 
@@ -57,6 +60,8 @@ function buildContext(req: Request, res: Response): OperationContext {
   const extReq = req as ExtendedRequest
   const locals = res.locals as LocalsBag
   return {
+    operationOverride: locals.operationOverride,
+    resolveOperationContext: locals.resolveOperationContext,
     prisma: extReq.prisma,
     postgres: extReq.postgres,
     sqlite: extReq.sqlite,
@@ -64,6 +69,7 @@ function buildContext(req: Request, res: Response): OperationContext {
     body: req.body,
     guardShape: locals.guardShape,
     guardCaller: locals.guardCaller,
+    guardVariantKey: locals.guardVariantKey,
     paginationConfig: (locals.routeConfig?.pagination) as OperationContext['paginationConfig'],
   }
 }

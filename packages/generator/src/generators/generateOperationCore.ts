@@ -1,7 +1,8 @@
-import { DMMF } from '@prisma/generator-helper'
-import { ImportStyle } from '../utils/resolveImportStyle'
+import { OPERATION_METADATA } from '../copy/operationDefinitions'
+import type { DMMF } from '@prisma/generator-helper'
+import type { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
-import { WriteStrategy, FindManyPaginatedMode } from '../constants'
+import type { WriteStrategy, FindManyPaginatedMode } from '../constants'
 
 export interface ModelCoreOptions {
   model: DMMF.Model
@@ -93,7 +94,7 @@ export function generateModelCore(options: ModelCoreOptions): string {
   const standardReadHandlers = standardReadOps
     .map(
       (op) => `
-export async function ${op}(ctx: OperationContext): Promise<unknown> {
+async function default_${op}(ctx: OperationContext): Promise<unknown> {
   const query = ctx.parsedQuery || {}
   const extended = await getExtendedClient(ctx)
   const delegate = getDelegate(extended, '${modelNameLower}')
@@ -140,7 +141,7 @@ export async function ${op}(ctx: OperationContext): Promise<unknown> {
 
       if (decision.throw) {
         return `
-export async function ${op.name}(_ctx: OperationContext): Promise<unknown> {
+async function default_${op.name}(_ctx: OperationContext): Promise<unknown> {
   throw new HttpError(501, '${op.name} is disabled by writeStrategy="${writeStrategy}"')
 }`
       }
@@ -151,7 +152,7 @@ export async function ${op.name}(_ctx: OperationContext): Promise<unknown> {
         .join('\n')
 
       return `
-export async function ${op.name}(ctx: OperationContext): Promise<unknown> {
+async function default_${op.name}(ctx: OperationContext): Promise<unknown> {
   const body = validateBody(ctx.body)
 ${validationLines}
   const extended = await getExtendedClient(ctx)
@@ -165,9 +166,17 @@ ${validationLines}
     })
     .join('\n')
 
+  const wrappers = OPERATION_METADATA.filter((op) => op.name !== 'updateEach').map((op) => `
+export async function ${op.coreName}(ctx: OperationContext): Promise<${op.name === 'findManyPaginated' ? '{ data: unknown[]; total: number; hasMore: boolean }' : 'unknown'}> {
+  const input = ${op.kind === 'read' ? 'ctx.parsedQuery || {}' : 'validateBody(ctx.body)'}
+${op.requiredBodyFields.map((field) => `  requireBodyField(input, '${field}')`).join('\n')}
+  return executeOperationOverride(ctx, '${modelNameLower}', '${op.name}', input, () => default_${op.coreName}(ctx))
+}`).join('\n')
+
   return `import {
-  OperationContext,
-  PrismaClientLike,
+  type OperationContext,
+  executeOperationOverride,
+  type PrismaClientLike,
   getExtendedClient,
   getDelegate,
   validateBody,
@@ -178,7 +187,7 @@ import { applyPaginationLimits, countForPagination } from '../pagination${ext}'
 import { assertGuard } from '../guardHelpers${ext}'
 import { mapLimited } from '../concurrency${ext}'
 
-export async function findMany(ctx: OperationContext): Promise<unknown> {
+async function default_findMany(ctx: OperationContext): Promise<unknown> {
   const rawQuery = ctx.parsedQuery || {}
   const query = applyPaginationLimits(rawQuery, ctx.paginationConfig, !!ctx.guardShape)
   const extended = await getExtendedClient(ctx)
@@ -189,10 +198,11 @@ export async function findMany(ctx: OperationContext): Promise<unknown> {
   }
   return delegate.findMany(query)
 }
+${wrappers}
 ${standardReadHandlers}
 ${writeHandlers}
 
-export async function findManyPaginated(
+async function default_findManyPaginated(
   ctx: OperationContext,
 ): Promise<{ data: unknown[]; total: number; hasMore: boolean }> {
   const rawQuery = ctx.parsedQuery || {}

@@ -1,5 +1,5 @@
-import { DMMF } from '@prisma/generator-helper'
-import { ImportStyle } from '../utils/resolveImportStyle'
+import type { DMMF } from '@prisma/generator-helper'
+import type { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import { OPERATION_METADATA } from '../copy/operationDefinitions'
 
@@ -59,7 +59,7 @@ export async function ${updateEachExportName}(
 
   return `import type { FastifyRequest, FastifyReply } from 'fastify'
 import * as core from './${modelName}Core${ext}'
-import type { OperationContext, FindManyPaginatedMode } from '../operationRuntime${ext}'
+import type { RuntimeOperationOverride, OperationContext, FindManyPaginatedMode } from '../operationRuntime${ext}'
 
 type FastifyExtended = FastifyRequest & {
   prisma?: unknown
@@ -69,6 +69,9 @@ type FastifyExtended = FastifyRequest & {
   routeConfig?: { pagination?: OperationContext['paginationConfig'] }
   guardShape?: Record<string, unknown>
   guardCaller?: string
+  guardVariantKey?: string
+  operationOverride?: RuntimeOperationOverride
+  resolveOperationContext?: () => unknown | Promise<unknown>
   findManyPaginatedMode?: FindManyPaginatedMode
   resultData?: unknown
   resultStatus?: number
@@ -77,6 +80,8 @@ type FastifyExtended = FastifyRequest & {
 function buildContext(request: FastifyRequest): OperationContext {
   const req = request as FastifyExtended
   return {
+    operationOverride: req.operationOverride,
+    resolveOperationContext: req.resolveOperationContext,
     prisma: req.prisma,
     postgres: req.postgres,
     sqlite: req.sqlite,
@@ -84,6 +89,7 @@ function buildContext(request: FastifyRequest): OperationContext {
     body: request.body,
     guardShape: req.guardShape,
     guardCaller: req.guardCaller,
+    guardVariantKey: req.guardVariantKey,
     paginationConfig: req.routeConfig?.pagination,
     findManyPaginatedMode: req.findManyPaginatedMode,
   }

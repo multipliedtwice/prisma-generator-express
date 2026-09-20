@@ -44,6 +44,7 @@ import {
 import { generateModelMetadata } from './generators/generateModelMetadata'
 import {
   getRelativeClientPath,
+  getRelativeClientTypeImport,
   getGuardShapesImport,
 } from './generators/generateImportPrismaStatement'
 import { writeFileSafely } from './utils/writeFileSafely'
@@ -254,6 +255,7 @@ generatorHandler({
               model: model as DMMF.Model,
               enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
               guardShapesImport,
+              clientImport: getRelativeClientTypeImport(options, model.name),
               importStyle,
               writeStrategy,
               findManyPaginatedMode,
@@ -265,6 +267,7 @@ generatorHandler({
                 model: model as DMMF.Model,
                 enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
                 guardShapesImport,
+                clientImport: getRelativeClientTypeImport(options, model.name),
                 importStyle,
                 writeStrategy,
                 dropGuard,
@@ -274,6 +277,7 @@ generatorHandler({
                 model: model as DMMF.Model,
                 enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
                 guardShapesImport,
+                clientImport: getRelativeClientTypeImport(options, model.name),
                 importStyle,
                 writeStrategy,
                 findManyPaginatedMode,

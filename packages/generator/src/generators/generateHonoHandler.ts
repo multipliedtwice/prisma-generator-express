@@ -1,5 +1,5 @@
-import { DMMF } from '@prisma/generator-helper'
-import { ImportStyle } from '../utils/resolveImportStyle'
+import type { DMMF } from '@prisma/generator-helper'
+import type { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import { OPERATION_METADATA } from '../copy/operationDefinitions'
 
@@ -49,13 +49,15 @@ export async function ${updateEachExportName}(c: HandlerContext): Promise<void> 
 
   return `import type { Context } from 'hono'
 import * as core from './${modelName}Core${ext}'
-import type { OperationContext } from '../operationRuntime${ext}'
+import type { RuntimeOperationOverride, OperationContext } from '../operationRuntime${ext}'
 import type { HonoInternalVariables } from '../routeConfig.target${ext}'
 
 type HandlerContext = Context<{ Variables: HonoInternalVariables }>
 
 function buildContext(c: HandlerContext): OperationContext {
   return {
+    operationOverride: c.get('operationOverride'),
+    resolveOperationContext: c.get('resolveOperationContext'),
     prisma: c.get('prisma'),
     postgres: c.get('postgres'),
     sqlite: c.get('sqlite'),
@@ -63,6 +65,7 @@ function buildContext(c: HandlerContext): OperationContext {
     body: c.get('body'),
     guardShape: c.get('guardShape'),
     guardCaller: c.get('guardCaller'),
+    guardVariantKey: c.get('guardVariantKey'),
     paginationConfig: c.get('routeConfig')?.pagination,
   }
 }

@@ -1,9 +1,9 @@
-import { DMMF } from '@prisma/generator-helper'
+import type { DMMF } from '@prisma/generator-helper'
 import { generateRouteConfigType } from './generateRouteConfigType'
-import { ImportStyle } from '../utils/resolveImportStyle'
+import type { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
-import { WriteStrategy, FindManyPaginatedMode } from '../constants'
-import { modelPathSegment, PathCase } from '../utils/pathCasing'
+import type { WriteStrategy, FindManyPaginatedMode } from '../constants'
+import { modelPathSegment, type PathCase } from '../utils/pathCasing'
 import { OPERATION_METADATA } from '../copy/operationDefinitions'
 
 function pathExpr(suffix: string): string {
@@ -91,6 +91,7 @@ export function generateFastifyRouterFunction({
   model,
   enums,
   guardShapesImport,
+  clientImport,
   importStyle,
   writeStrategy,
   findManyPaginatedMode,
@@ -100,6 +101,7 @@ export function generateFastifyRouterFunction({
   model: DMMF.Model
   enums: DMMF.DatamodelEnum[]
   guardShapesImport: string | null
+  clientImport?: string
   importStyle: ImportStyle
   writeStrategy: WriteStrategy
   findManyPaginatedMode: FindManyPaginatedMode
@@ -150,6 +152,7 @@ import {
   resolvePostReadsEnabled,
   warnIfUnguardedRoutes,
 } from '../routeConfig${ext}'
+import type { RuntimeOperationOverride } from '../operationRuntime${ext}'
 import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import type { OperationContext } from '../operationRuntime${ext}'
 import { transformResult } from '../operationRuntime${ext}'
@@ -161,7 +164,7 @@ import { applyDroppedGuard } from '../projectionDefaults${ext}'
 import type { OpKind } from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
-${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, importStyle, 'fastify')}
+${generateRouteConfigType(modelName, 'FastifyHookHandler', guardShapesImport, importStyle, 'fastify', clientImport)}
 const _env = getEnv()
 
 const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode}'
@@ -171,6 +174,7 @@ const FIND_MANY_PAGINATED_MODE: FindManyPaginatedMode = '${findManyPaginatedMode
 const DROP_GUARD = ${dropGuard}
 
 type OperationConfigLike = {
+  override?: RuntimeOperationOverride
   before?: FastifyHookHandler[]
   after?: FastifyHookHandler[]
   shape?: unknown
@@ -198,6 +202,8 @@ type FastifyExtended = FastifyRequest & {
   routeConfig?: { pagination?: PaginationConfig }
   guardShape?: Record<string, unknown>
   guardCaller?: string
+  operationOverride?: RuntimeOperationOverride
+  resolveOperationContext?: () => unknown | Promise<unknown>
   guardVariantKey?: string
   guardVariantFailure?: Extract<GuardVariantResolution, { ok: false }>
   resultData?: unknown
@@ -264,6 +270,9 @@ function makeShapeHook(
   const dropGuard = DROP_GUARD || (config.allowE2EGuardBypass === true && resolveDropGuardEnv(_env))
   return async (request: FastifyRequest) => {
     const fx = request as FastifyExtended
+    fx.operationOverride = opConfig.override
+    let context: Promise<unknown> | undefined
+    fx.resolveOperationContext = () => context ??= Promise.resolve(config.resolveContext?.(request))
     const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
     if (merged) fx.routeConfig = { pagination: merged }
 

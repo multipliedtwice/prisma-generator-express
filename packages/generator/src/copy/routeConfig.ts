@@ -1,3 +1,4 @@
+import type { RuntimeOperationOverride } from './operationRuntime'
 import { GUARD_SHAPE_CONFIG_KEYS } from './guardHelpers'
 import { getEnv, isPlainObject } from './misc'
 import { resolveShape, type ContextResolver } from './projectionDefaults'
@@ -146,6 +147,7 @@ export type BaseOperationConfig<
 > = OperationShapeConfig<TShape, TBefore, TAfter> & {
   before?: TBefore[]
   after?: TAfter[]
+  override?: RuntimeOperationOverride
   pagination?: Partial<PaginationConfig>
   /**
    * Disables the POST read variant for this operation only. Overrides the
@@ -235,6 +237,7 @@ export type NormalizedVariantHooks<TBefore, TAfter> = Readonly<
 >
 
 export interface NormalizedOperationConfig<TBefore, TAfter> {
+  override?: RuntimeOperationOverride
   guardShape?: Record<string, unknown>
   guardRouting: NormalizedGuardRouting
   operationBefore: readonly TBefore[]
@@ -245,6 +248,7 @@ export interface NormalizedOperationConfig<TBefore, TAfter> {
 }
 
 type OperationConfigInput<TBefore, TAfter> = {
+  override?: RuntimeOperationOverride
   before?: TBefore[]
   after?: TAfter[]
   shape?: unknown
@@ -630,6 +634,7 @@ export function validateUpdateEachConfig(
 export function normalizeOperation<TBefore, TAfter>(
   config: OperationConfigInput<TBefore, TAfter> | undefined,
 ): NormalizedOperationConfig<TBefore, TAfter> {
+  if (config?.override !== undefined && typeof config.override !== 'function') throw new Error('An operation accepts exactly one override function')
   const operationBefore = config?.before ?? []
   const operationAfter = config?.after ?? []
 
@@ -644,6 +649,7 @@ export function normalizeOperation<TBefore, TAfter>(
         kind: 'named',
         keys: entries.map(([key]) => key),
       },
+      override: config.override,
       operationBefore,
       operationAfter,
       variantHooks: Object.fromEntries(
@@ -663,6 +669,7 @@ export function normalizeOperation<TBefore, TAfter>(
   return {
     guardShape: config?.shape as Record<string, unknown> | undefined,
     guardRouting: classifyGuardRouting(config?.shape),
+    override: config?.override,
     operationBefore,
     operationAfter,
     variantHooks: {},

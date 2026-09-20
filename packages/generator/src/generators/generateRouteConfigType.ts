@@ -1,4 +1,4 @@
-import { ImportStyle } from '../utils/resolveImportStyle'
+import type { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
 import type { Target } from '../constants'
 import {
@@ -16,7 +16,7 @@ function capitalize(str: string): string {
 
 function requestTypeFor(target: Target): string {
   if (target === 'fastify') return `import('fastify').FastifyRequest`
-  if (target === 'hono') return `import('hono').Context<TEnv>`
+  if (target === 'hono') return `import('hono').Context<GeneratedHonoEnv<TEnv>>`
   return `import('express').Request`
 }
 
@@ -53,6 +53,7 @@ export function generateRouteConfigType(
   guardShapesImport: string | null,
   importStyle: ImportStyle,
   target: Target,
+  clientImport?: string,
 ): string {
   const ext = importExt(importStyle)
   const m = modelName
@@ -64,13 +65,25 @@ export function generateRouteConfigType(
   const afterRef = afterHookRef(target, hookHandlerType)
   const requestType = requestTypeFor(target)
 
+  const clientPath = clientImport ? `${clientImport}${ext}` : '@prisma/client'
+  const delegate = `${m.charAt(0).toLowerCase() + m.slice(1)}`
+  const modelDelegate = clientImport ? `PrismaClient['${delegate}']` : `(TPrisma extends Record<'${delegate}', infer D> ? D : never)`
+  const overrideImports = `import type { Prisma${clientImport ? ', PrismaClient' : ''} } from '${clientPath}'\nimport type { OperationOverride } from '../operationRuntime${ext}'\n`
+  const overrideType = (op: string) => {
+    const method = op === 'findManyPaginated' ? 'findMany' : op
+    const args = `Prisma.Args<${modelDelegate}, '${method}'>`
+    const result = `Prisma.Result<${modelDelegate}, ${args}, '${method}'>`
+    const output = op === 'findManyPaginated' ? `{ data: ${result}; total: number; hasMore: boolean }` : result
+    const methods = op === 'findManyPaginated' ? "'findMany' | 'count'" : `'${method}'`
+    return `OperationOverride<${args}, ${output}, TCtx, Readonly<{ ${delegate}: Pick<${modelDelegate}, Extract<keyof ${modelDelegate}, ${methods}>> }>>`
+  }
   const typeImports = supportsProgressive
     ? `import type { ProgressiveVariantConfig, ProgressiveStage } from '../routeConfig.target${ext}'\n`
     : ''
 
   if (!guardShapesImport) {
     return (
-      typeImports + `export type ${m}RouteConfig${generics} = ${baseConfig}\n`
+      overrideImports + typeImports + `export type ${m}RouteConfig${generics} = Omit<${baseConfig}, ${ROUTER_OPERATIONS.map((op) => `'${op}'`).join(' | ')}> & {\n${ROUTER_OPERATIONS.map((op) => `  ${op}?: (Omit<Exclude<${baseConfig}['${op}'], false | undefined>, 'override'> & { override?: ${overrideType(op)} }) | false`).join('\n')}\n}\n`
     )
   }
 
@@ -97,6 +110,7 @@ export function generateRouteConfigType(
     const c = capitalize(routerOp)
     const isRead = READ_OPERATION_NAMES.has(routerOp)
     const commonLines = [
+      `    override?: ${overrideType(routerOp)}`,
       `    before?: ${beforeRef}[]`,
       `    after?: ${afterRef}[]`,
       `    pagination?: Partial<PaginationConfig>`,
@@ -135,7 +149,7 @@ export function generateRouteConfigType(
   const omitKeys = ROUTER_OPERATIONS.map((k) => `'${k}'`).join('\n  | ')
 
   return (
-    typeImports +
+    overrideImports + typeImports +
     `import type {\n  ${opShapeImports}\n} from '${guardShapesImport}${ext}'\n\n` +
     `${shapeOrFnAliases}\n\n` +
     `export type ${m}RouteConfig${generics} = Omit<\n` +

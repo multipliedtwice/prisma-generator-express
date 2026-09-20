@@ -1,3 +1,4 @@
+import type { RuntimeOperationOverride } from './operationRuntime'
 import type { Context } from 'hono'
 import type { GuardVariantResolution } from './guardVariantRouting'
 import type {
@@ -30,6 +31,8 @@ export type HonoEnvBase = {
 }
 
 export type HonoInternalVariables = {
+  operationOverride?: RuntimeOperationOverride
+  resolveOperationContext?: () => unknown | Promise<unknown>
   prisma?: unknown
   postgres?: unknown
   sqlite?: unknown
@@ -53,7 +56,7 @@ export type HonoInternalVariables = {
 
 export type GeneratedHonoEnv<TEnv extends HonoEnvBase = HonoEnvBase> = {
   Variables: HonoInternalVariables & TEnv['Variables']
-  Bindings: TEnv['Bindings']
+  Bindings: NonNullable<TEnv['Bindings']>
 }
 
 export type HonoBeforeHook<TEnv extends HonoEnvBase = HonoEnvBase> = (

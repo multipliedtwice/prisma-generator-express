@@ -1,4 +1,4 @@
-import { ImportStyle } from './resolveImportStyle'
+import type { ImportStyle } from './resolveImportStyle'
 
 export function importExt(style: ImportStyle): string {
   if (style === 'js') return '.js'
