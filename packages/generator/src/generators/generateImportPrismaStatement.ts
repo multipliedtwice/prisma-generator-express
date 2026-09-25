@@ -83,7 +83,10 @@ export function getGuardShapesImport(
   return getRelativeImportPath(fromDir, shapesPath)
 }
 
-export function getRelativeClientTypeImport(options: GeneratorOptions, modelName: string): string {
+export function getRelativeClientTypeImport(
+  options: GeneratorOptions,
+  modelName: string,
+): string {
   const client = findClientGenerator(options)
   const entry = client?.provider.value === 'prisma-client' ? 'client' : 'index'
   return getRelativeClientPath(options, modelName) + '/' + entry

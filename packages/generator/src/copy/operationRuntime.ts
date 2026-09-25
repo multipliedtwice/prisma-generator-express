@@ -207,8 +207,15 @@ export type OperationOverride<TInput, TResult, TContext, TPrisma> = {
 }['invoke']
 
 export type RuntimeOperationOverride = OperationOverride<
-  Record<string, unknown>, unknown, unknown,
-  Readonly<Record<string, Readonly<Record<string, (...args: never[]) => Promise<unknown>>>>>
+  Record<string, unknown>,
+  unknown,
+  unknown,
+  Readonly<
+    Record<
+      string,
+      Readonly<Record<string, (...args: never[]) => Promise<unknown>>>
+    >
+  >
 >
 
 export async function executeOperationOverride<TResult>(
@@ -219,22 +226,35 @@ export async function executeOperationOverride<TResult>(
   core: () => Promise<TResult>,
 ): Promise<TResult> {
   if (!ctx.operationOverride) return core()
-  if (!ctx.guardShape) throw new HttpError(500, 'An operation override requires a guard shape')
+  if (!ctx.guardShape)
+    throw new HttpError(500, 'An operation override requires a guard shape')
   const context = await ctx.resolveOperationContext?.()
-  const resolved = await resolveGuardShapeOnce(ctx.guardShape, ctx.guardVariantKey ?? ctx.guardCaller, () => context)
+  const resolved = await resolveGuardShapeOnce(
+    ctx.guardShape,
+    ctx.guardVariantKey ?? ctx.guardCaller,
+    () => context,
+  )
   if (!resolved.ok || !isPlainObject(resolved.shape)) {
-    throw new HttpError(500, 'An operation override requires a resolved guard shape')
+    throw new HttpError(
+      500,
+      'An operation override requires a resolved guard shape',
+    )
   }
   ctx.guardShape = resolved.shape
   const delegate = getDelegate(await getExtendedClient(ctx), model)
   assertGuard(delegate)
   const guarded = delegate.guard(resolved.shape, ctx.guardCaller)
-  const methods = operation === 'findManyPaginated' ? ['findMany', 'count'] as const : [operation]
+  const methods =
+    operation === 'findManyPaginated'
+      ? (['findMany', 'count'] as const)
+      : [operation]
   const exposed: Record<string, (...args: never[]) => Promise<unknown>> = {}
   for (const method of methods) exposed[method] = guarded[method].bind(guarded)
-  return await ctx.operationOverride({
-    input, args: input, context,
+  return (await ctx.operationOverride({
+    input,
+    args: input,
+    context,
     prisma: Object.freeze({ [model]: Object.freeze(exposed) }),
     core,
-  }) as TResult
+  })) as TResult
 }

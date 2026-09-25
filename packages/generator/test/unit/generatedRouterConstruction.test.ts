@@ -37,9 +37,12 @@ describe('a real emitted Hono router with unconfigured operations', () => {
 
     const mod = await importEmittedRouter(project.routerPath)
     const factory = mod.ArticleRouter
-    if (typeof factory !== 'function') throw new Error('the emitted router exports no factory')
+    if (typeof factory !== 'function')
+      throw new Error('the emitted router exports no factory')
 
-    const app = (factory as (config: Record<string, unknown>) => unknown)({ enableAll: true })
+    const app = (factory as (config: Record<string, unknown>) => unknown)({
+      enableAll: true,
+    })
     expect(app, 'construction returned nothing').toBeTruthy()
   })
 })
@@ -54,18 +57,28 @@ describe('§8.3 claim 2 — normalizeOperation on a missing config (the artifact
     const op = normalizeOperation(undefined)
 
     expect(op.guardRouting).toEqual({ kind: 'none' })
-    expect(op.guardShape, 'an unconfigured operation carries no shape').toBeUndefined()
-    expect(op.disablePostReads, 'absent config invented a POST-reads opinion').toBeUndefined()
+    expect(
+      op.guardShape,
+      'an unconfigured operation carries no shape',
+    ).toBeUndefined()
+    expect(
+      op.disablePostReads,
+      'absent config invented a POST-reads opinion',
+    ).toBeUndefined()
     expect(op.operationBefore).toEqual([])
     expect(op.operationAfter).toEqual([])
     expect(op.variantHooks).toEqual({})
   })
 
   it('reads disablePostReads through the config type, identically in both branches', () => {
-    expect(normalizeOperation({ disablePostReads: true }).disablePostReads).toBe(true)
     expect(
-      normalizeOperation({ variants: { admin: { shape: {} } }, disablePostReads: true })
-        .disablePostReads,
+      normalizeOperation({ disablePostReads: true }).disablePostReads,
+    ).toBe(true)
+    expect(
+      normalizeOperation({
+        variants: { admin: { shape: {} } },
+        disablePostReads: true,
+      }).disablePostReads,
     ).toBe(true)
   })
 })

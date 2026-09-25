@@ -166,12 +166,16 @@ ${validationLines}
     })
     .join('\n')
 
-  const wrappers = OPERATION_METADATA.filter((op) => op.name !== 'updateEach').map((op) => `
+  const wrappers = OPERATION_METADATA.filter((op) => op.name !== 'updateEach')
+    .map(
+      (op) => `
 export async function ${op.coreName}(ctx: OperationContext): Promise<${op.name === 'findManyPaginated' ? '{ data: unknown[]; total: number; hasMore: boolean }' : 'unknown'}> {
   const input = ${op.kind === 'read' ? 'ctx.parsedQuery || {}' : 'validateBody(ctx.body)'}
 ${op.requiredBodyFields.map((field) => `  requireBodyField(input, '${field}')`).join('\n')}
   return executeOperationOverride(ctx, '${modelNameLower}', '${op.name}', input, () => default_${op.coreName}(ctx))
-}`).join('\n')
+}`,
+    )
+    .join('\n')
 
   return `import {
   type OperationContext,

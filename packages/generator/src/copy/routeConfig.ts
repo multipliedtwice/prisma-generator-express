@@ -637,7 +637,8 @@ export function validateUpdateEachConfig(
 export function normalizeOperation<TBefore, TAfter>(
   config: OperationConfigInput<TBefore, TAfter> | undefined,
 ): NormalizedOperationConfig<TBefore, TAfter> {
-  if (config?.override !== undefined && typeof config.override !== 'function') throw new Error('An operation accepts exactly one override function')
+  if (config?.override !== undefined && typeof config.override !== 'function')
+    throw new Error('An operation accepts exactly one override function')
   const operationBefore = config?.before ?? []
   const operationAfter = config?.after ?? []
 

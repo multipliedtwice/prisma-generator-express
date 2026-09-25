@@ -1,4 +1,11 @@
-import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import prettier from 'prettier'
@@ -50,13 +57,22 @@ export async function writeEmittedRouterProject(args: {
    * repository's node_modules. Gitignored as `.emitted-router-*`, and removed
    * by each test's cleanup.
    */
-  const dir = await mkdtemp(resolve(__dirname, `../../.emitted-router-${args.target}-`))
+  const dir = await mkdtemp(
+    resolve(__dirname, `../../.emitted-router-${args.target}-`),
+  )
   for (const name of await readdir(COPY_DIR)) {
     if (!name.endsWith('.ts')) continue
     await copyFile(join(COPY_DIR, name), join(dir, name))
   }
-  await copyFile(join(COPY_DIR, `routeConfig.${args.target}.ts`), join(dir, 'routeConfig.target.ts'))
-  await writeFile(join(dir, 'queryBuilder.ts'), await emit(generateQueryBuilderHelper()), 'utf8')
+  await copyFile(
+    join(COPY_DIR, `routeConfig.${args.target}.ts`),
+    join(dir, 'routeConfig.target.ts'),
+  )
+  await writeFile(
+    join(dir, 'queryBuilder.ts'),
+    await emit(generateQueryBuilderHelper()),
+    'utf8',
+  )
 
   const shared = {
     model: args.model,
@@ -97,9 +113,21 @@ export async function writeEmittedRouterProject(args: {
   await mkdir(modelDir, { recursive: true })
   const routerPath = join(modelDir, `${modelName}Router.ts`)
   await writeFile(routerPath, await emit(routerText), 'utf8')
-  await writeFile(join(modelDir, `${modelName}Handlers.ts`), await emit(handlerText), 'utf8')
-  await writeFile(join(modelDir, `${modelName}Core.ts`), await emit(coreText), 'utf8')
-  await writeFile(join(modelDir, `${modelName}Metadata.ts`), await emit(metadataText), 'utf8')
+  await writeFile(
+    join(modelDir, `${modelName}Handlers.ts`),
+    await emit(handlerText),
+    'utf8',
+  )
+  await writeFile(
+    join(modelDir, `${modelName}Core.ts`),
+    await emit(coreText),
+    'utf8',
+  )
+  await writeFile(
+    join(modelDir, `${modelName}Metadata.ts`),
+    await emit(metadataText),
+    'utf8',
+  )
   if (args.target === 'express') {
     await writeFile(
       join(modelDir, `${modelName}Relations.ts`),
@@ -114,7 +142,12 @@ export async function writeEmittedRouterProject(args: {
     )
     await writeFile(
       join(dir, 'relationModels.ts'),
-      await emit(generateRelationModelsIndex({ modelNames: [modelName], importStyle: 'none' as never })),
+      await emit(
+        generateRelationModelsIndex({
+          modelNames: [modelName],
+          importStyle: 'none' as never,
+        }),
+      ),
       'utf8',
     )
   }
@@ -124,8 +157,13 @@ export async function writeEmittedRouterProject(args: {
   }
 }
 
-export async function importEmittedRouter(routerPath: string): Promise<Record<string, unknown>> {
-  return (await import(pathToFileURL(routerPath).href)) as Record<string, unknown>
+export async function importEmittedRouter(
+  routerPath: string,
+): Promise<Record<string, unknown>> {
+  return (await import(pathToFileURL(routerPath).href)) as Record<
+    string,
+    unknown
+  >
 }
 
 /**

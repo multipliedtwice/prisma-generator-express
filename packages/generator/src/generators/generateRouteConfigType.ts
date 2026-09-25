@@ -67,14 +67,20 @@ export function generateRouteConfigType(
 
   const clientPath = clientImport ? `${clientImport}${ext}` : '@prisma/client'
   const delegate = `${m.charAt(0).toLowerCase() + m.slice(1)}`
-  const modelDelegate = clientImport ? `PrismaClient['${delegate}']` : `(TPrisma extends Record<'${delegate}', infer D> ? D : never)`
+  const modelDelegate = clientImport
+    ? `PrismaClient['${delegate}']`
+    : `(TPrisma extends Record<'${delegate}', infer D> ? D : never)`
   const overrideImports = `import type { Prisma${clientImport ? ', PrismaClient' : ''} } from '${clientPath}'\nimport type { OperationOverride } from '../operationRuntime${ext}'\n`
   const overrideType = (op: string) => {
     const method = op === 'findManyPaginated' ? 'findMany' : op
     const args = `Prisma.Args<${modelDelegate}, '${method}'>`
     const result = `Prisma.Result<${modelDelegate}, ${args}, '${method}'>`
-    const output = op === 'findManyPaginated' ? `{ data: ${result}; total: number; hasMore: boolean }` : result
-    const methods = op === 'findManyPaginated' ? "'findMany' | 'count'" : `'${method}'`
+    const output =
+      op === 'findManyPaginated'
+        ? `{ data: ${result}; total: number; hasMore: boolean }`
+        : result
+    const methods =
+      op === 'findManyPaginated' ? "'findMany' | 'count'" : `'${method}'`
     return `OperationOverride<${args}, ${output}, TCtx, Readonly<{ ${delegate}: Pick<${modelDelegate}, Extract<keyof ${modelDelegate}, ${methods}>> }>>`
   }
   const typeImports = supportsProgressive
@@ -83,7 +89,9 @@ export function generateRouteConfigType(
 
   if (!guardShapesImport) {
     return (
-      overrideImports + typeImports + `export type ${m}RouteConfig${generics} = Omit<${baseConfig}, ${ROUTER_OPERATIONS.map((op) => `'${op}'`).join(' | ')}> & {\n${ROUTER_OPERATIONS.map((op) => `  ${op}?: (Omit<Exclude<${baseConfig}['${op}'], false | undefined>, 'override'> & { override?: ${overrideType(op)} }) | false`).join('\n')}\n}\n`
+      overrideImports +
+      typeImports +
+      `export type ${m}RouteConfig${generics} = Omit<${baseConfig}, ${ROUTER_OPERATIONS.map((op) => `'${op}'`).join(' | ')}> & {\n${ROUTER_OPERATIONS.map((op) => `  ${op}?: (Omit<Exclude<${baseConfig}['${op}'], false | undefined>, 'override'> & { override?: ${overrideType(op)} }) | false`).join('\n')}\n}\n`
     )
   }
 
@@ -150,7 +158,8 @@ export function generateRouteConfigType(
   const omitKeys = ROUTER_OPERATIONS.map((k) => `'${k}'`).join('\n  | ')
 
   return (
-    overrideImports + typeImports +
+    overrideImports +
+    typeImports +
     `import type {\n  ${opShapeImports}\n} from '${guardShapesImport}${ext}'\n\n` +
     `${shapeOrFnAliases}\n\n` +
     `export type ${m}RouteConfig${generics} = Omit<\n` +

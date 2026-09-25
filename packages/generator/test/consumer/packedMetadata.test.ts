@@ -75,11 +75,15 @@ beforeAll(() => {
      * `copy.js` would write are checked below to already match their sources, so
      * the tarball carries the same bytes `prepack` would have produced.
      */
-    const out = execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', workdir], {
-      cwd: GENERATOR,
-      stdio: 'pipe',
-      encoding: 'utf-8',
-    })
+    const out = execFileSync(
+      'npm',
+      ['pack', '--ignore-scripts', '--pack-destination', workdir],
+      {
+        cwd: GENERATOR,
+        stdio: 'pipe',
+        encoding: 'utf-8',
+      },
+    )
 
     const tarball = out.trim().split('\n').pop()!.trim()
     const tarballPath = join(workdir, basename(tarball))
@@ -232,13 +236,14 @@ describe('importing it the way the CMS would', () => {
  */
 describe('the documents copy.js keeps in step', () => {
   const REPO_ROOT = resolve(GENERATOR, '..', '..')
-  const read = (...segments: string[]) => readFileSync(join(...segments), 'utf-8')
+  const read = (...segments: string[]) =>
+    readFileSync(join(...segments), 'utf-8')
 
   for (const filename of ['README.md', 'LICENSE']) {
     it(`has ${filename} identical to the repository root's`, () => {
       expect(
         read(GENERATOR, filename),
-        `${filename} has drifted from the root copy — run \`node copy.js\``
+        `${filename} has drifted from the root copy — run \`node copy.js\``,
       ).toBe(read(REPO_ROOT, filename))
     })
   }
@@ -249,7 +254,7 @@ describe('the documents copy.js keeps in step', () => {
     for (const filename of ['README.md', 'LICENSE']) {
       expect(
         read(packageRoot, filename),
-        `the tarball's ${filename} is not the one a publish would ship`
+        `the tarball's ${filename} is not the one a publish would ship`,
       ).toBe(read(REPO_ROOT, filename))
     }
   })

@@ -32,7 +32,11 @@ import {
  */
 const GUARD_SHAPE = { where: { site_id: 'tenant-1' } }
 
-type GateCase = { gate: boolean | undefined; env: string | undefined; dropped: boolean }
+type GateCase = {
+  gate: boolean | undefined
+  env: string | undefined
+  dropped: boolean
+}
 const CASES: GateCase[] = [
   { gate: true, env: 'true', dropped: true },
   { gate: false, env: 'true', dropped: false },
@@ -73,7 +77,10 @@ describe('Fastify: the env bypass is honoured only under the explicit gate', () 
   let routerPath: string | undefined
   const router = async () => {
     if (routerPath === undefined) {
-      const project = await writeEmittedRouterProject({ target: 'fastify', model: ARTICLE_MODEL })
+      const project = await writeEmittedRouterProject({
+        target: 'fastify',
+        model: ARTICLE_MODEL,
+      })
       cleanups.push(project.cleanup)
       routerPath = project.routerPath
     }
@@ -100,7 +107,10 @@ describe('Fastify: the env bypass is honoured only under the explicit gate', () 
 
       expect(response.statusCode).toBe(200)
       if (gateCase.dropped) {
-        expect(guardCalls, 'the dropped path still consulted the guard').toEqual([])
+        expect(
+          guardCalls,
+          'the dropped path still consulted the guard',
+        ).toEqual([])
         expect(findManyCalls.length).toBeGreaterThan(0)
       } else {
         expect(guardCalls, 'the guard was bypassed').toEqual([GUARD_SHAPE])
@@ -113,7 +123,10 @@ describe('Express: the env bypass is honoured only under the explicit gate', () 
   let routerPath: string | undefined
   const router = async () => {
     if (routerPath === undefined) {
-      const project = await writeEmittedRouterProject({ target: 'express', model: ARTICLE_MODEL })
+      const project = await writeEmittedRouterProject({
+        target: 'express',
+        model: ARTICLE_MODEL,
+      })
       cleanups.push(project.cleanup)
       routerPath = project.routerPath
     }
@@ -134,7 +147,9 @@ describe('Express: the env bypass is honoured only under the explicit gate', () 
   for (const gateCase of CASES) {
     it(label(gateCase), async () => {
       const mod = await router()
-      const factory = mod.ArticleRouter as (config: Record<string, unknown>) => unknown
+      const factory = mod.ArticleRouter as (
+        config: Record<string, unknown>,
+      ) => unknown
       const { prisma, guardCalls, findManyCalls } = recordingDelegate()
 
       const app = express()
@@ -148,7 +163,10 @@ describe('Express: the env bypass is honoured only under the explicit gate', () 
 
       expect(status).toBe(200)
       if (gateCase.dropped) {
-        expect(guardCalls, 'the dropped path still consulted the guard').toEqual([])
+        expect(
+          guardCalls,
+          'the dropped path still consulted the guard',
+        ).toEqual([])
         expect(findManyCalls.length).toBeGreaterThan(0)
       } else {
         expect(guardCalls, 'the guard was bypassed').toEqual([GUARD_SHAPE])
