@@ -3,7 +3,10 @@ import { writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { describe, it, expect, afterAll } from 'vitest'
-import { ARTICLE_MODEL, writeEmittedRouterProject } from './emittedRouterProject'
+import {
+  ARTICLE_MODEL,
+  writeEmittedRouterProject,
+} from './emittedRouterProject'
 
 /**
  * THE EMITTED TREE TYPECHECKS UNDER `tsc`, for every target.
@@ -33,29 +36,68 @@ const TSCONFIG = `{
 }
 `
 
+const CONSUMER_PRELUDE = `import type { PrismaClientLike } from './routeConfig'
+import { ArticleRouter } from './Article/ArticleRouter'
+
+type Ctx = { tenantId: string }
+type ArticleRow = { id: string; site_id: string }
+type ExtendedPrisma = PrismaClientLike & {
+  article: {
+    findMany: (args?: { where?: { site_id?: string }; take?: number }) => Promise<ArticleRow[]>
+    count: (args?: { where?: { site_id?: string } }) => Promise<number>
+  }
+}
+`
+
+const CONSUMER_CONFIG = `{
+  resolveContext: (): Ctx => ({ tenantId: 'tenant-a' }),
+  findMany: {
+    override: ({ context, core }) => {
+      const tenant: string = context.tenantId
+      return core()
+    },
+  },
+}`
+
+const CONSUMER_CALL: Record<'hono' | 'express' | 'fastify', string> = {
+  hono: `ArticleRouter<Ctx, ExtendedPrisma>(${CONSUMER_CONFIG})\n`,
+  express: `ArticleRouter<Ctx, ExtendedPrisma>(${CONSUMER_CONFIG})\n`,
+  fastify: `import type { FastifyInstance } from 'fastify'\ndeclare const fastify: FastifyInstance\nvoid ArticleRouter<Ctx, ExtendedPrisma>(fastify, ${CONSUMER_CONFIG})\n`,
+}
+
 const cleanups: Array<() => Promise<void>> = []
 afterAll(async () => {
   for (const cleanup of cleanups) await cleanup()
 })
 
-describe.each(['hono', 'express', 'fastify'] as const)('%s emitted tree', (target) => {
-  it('compiles under tsc --strict, exactly as the artifact typechecks itself', async () => {
-    const project = await writeEmittedRouterProject({ target, model: ARTICLE_MODEL })
-    cleanups.push(project.cleanup)
-    const root = dirname(dirname(project.routerPath))
-    writeFileSync(join(root, 'tsconfig.json'), TSCONFIG)
-
-    try {
-      execFileSync('node', [TSC, '--noEmit', '-p', 'tsconfig.json'], {
-        cwd: root,
-        encoding: 'utf8',
-        stdio: 'pipe',
+describe.each(['hono', 'express', 'fastify'] as const)(
+  '%s emitted tree',
+  (target) => {
+    it('compiles under tsc --strict, exactly as the artifact typechecks itself', async () => {
+      const project = await writeEmittedRouterProject({
+        target,
+        model: ARTICLE_MODEL,
       })
-    } catch (error) {
-      const failure = error as { stdout?: string; stderr?: string }
-      expect.fail(
-        `the emitted ${target} tree does not typecheck:\n${failure.stdout ?? ''}${failure.stderr ?? ''}`
+      cleanups.push(project.cleanup)
+      const root = dirname(dirname(project.routerPath))
+      writeFileSync(join(root, 'tsconfig.json'), TSCONFIG)
+      writeFileSync(
+        join(root, 'consumer.ts'),
+        CONSUMER_PRELUDE + CONSUMER_CALL[target],
       )
-    }
-  }, 120_000)
-})
+
+      try {
+        execFileSync('node', [TSC, '--noEmit', '-p', 'tsconfig.json'], {
+          cwd: root,
+          encoding: 'utf8',
+          stdio: 'pipe',
+        })
+      } catch (error) {
+        const failure = error as { stdout?: string; stderr?: string }
+        expect.fail(
+          `the emitted ${target} tree does not typecheck:\n${failure.stdout ?? ''}${failure.stderr ?? ''}`,
+        )
+      }
+    }, 120_000)
+  },
+)

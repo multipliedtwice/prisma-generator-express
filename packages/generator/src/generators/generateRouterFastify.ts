@@ -245,16 +245,16 @@ function parseBodyAsQueryHook(request: FastifyRequest): void {
   (request as FastifyExtended).parsedQuery = sanitizeKeys(body as Record<string, unknown>)
 }
 
-function buildResolveContext(
-  config: ${modelName}RouteConfig,
+function buildResolveContext<TCtx, TPrisma extends PrismaClientLike>(
+  config: ${modelName}RouteConfig<TCtx, TPrisma>,
   request: FastifyRequest,
 ): (() => unknown | Promise<unknown>) | undefined {
   if (typeof config.resolveContext !== 'function') return undefined
   return () => (config.resolveContext as (r: FastifyRequest) => unknown | Promise<unknown>)(request)
 }
 
-function makeShapeHook(
-  config: ${modelName}RouteConfig,
+function makeShapeHook<TCtx, TPrisma extends PrismaClientLike>(
+  config: ${modelName}RouteConfig<TCtx, TPrisma>,
   opConfig: NormalizedOp,
   opKind: OpKind,
 ): (request: FastifyRequest) => Promise<void> {
