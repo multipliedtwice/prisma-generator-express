@@ -84,6 +84,9 @@ jobs:
 
   Publish:
     needs: [Test, Matrix]
+    concurrency:
+      group: npm-publish
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
@@ -93,6 +96,7 @@ jobs:
         with:
           node-version: 22.x
           registry-url: https://registry.npmjs.org
+      - run: corepack enable
       - uses: actions/cache@v4
         with:
           path: "**/node_modules"
