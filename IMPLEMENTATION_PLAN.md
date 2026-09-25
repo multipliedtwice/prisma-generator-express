@@ -8,7 +8,7 @@ Size legend: S < half day. M = day-ish. L = multi-day. XL = week+.
 
 Order:
 
-1. Phase 0 — master CI red. Blocks publish. First.
+1. Phase 0 — Publish job broken. Blocks release. First.
 2. Leftovers of phases 1, 3, 7 — cheap, any time, independent.
 3. Phase S — shared orchestration.
 4. Phase 5 leftovers — type safety.
@@ -20,27 +20,27 @@ MCP spec (phase 10) may be written now. MCP code waits for phase 9, so emitted i
 
 ---
 
-## Phase 0 — master CI red (blocker)
+## Phase 0 — Publish job broken (blocker)
 
-Size: S-M.
+Size: S.
 
-CI `Test` job red on master. HEAD `c1f387e` fails:
+`Publish` fails at `Install dependencies` on master `e6edb63` (runs `36167726472`, `36167727446`):
 
 ```text
-test/unit/generatedRouterTsc.test.ts > fastify emitted tree > compiles under tsc --strict
-Article/ArticleRouter.ts(1083,31): error TS2345: Argument of type 'ArticleRouteConfig<TCtx, TPrisma>' is not assignable to parameter of type 'ArticleRouteConfig<unknown, PrismaClientLike>'.
+error This project's package.json defines "packageManager": "yarn@3.4.1". However the current global version of Yarn is 1.22.22.
 ```
 
-Same error on `270351d`. `Publish` job skipped while red.
+`packageManager` added in `f6411dc` (2026-08-22). `Test` + `Matrix` run `corepack enable`; `Publish` does not. Last npm release `1.66.0` (2026-08-18). Unreleased `feat:` commits (`270351d`, `c1f387e`) + `fix:` `b45280c` ship on first green `Publish` -> minor bump.
 
-1. Reproduce locally: `npx vitest run test/unit/generatedRouterTsc.test.ts` in `packages/generator` (resource check first).
-2. Root cause. Suspect, not verified: Fastify emitter helpers `buildResolveContext` and `makeShapeHook` take non-generic `${modelName}RouteConfig` (`src/generators/generateRouterFastify.ts:249`, `:257`), default `<unknown, PrismaClientLike>`, but router passes `RouteConfig<TCtx, TPrisma>` (`:361`). Confirm before fix.
-3. Fix at root. No cast.
-4. Regression test: Fastify emitted router with non-default `TCtx` + extended `TPrisma` compiles under `strict`. Same check for Express + Hono if same helper pattern exists.
+1. Add `corepack enable` to `Publish` after `setup-node`.
+2. Duplicate runs confirmed: one push event, one workflow definition + ID, two independent run numbers / check suites, same SHA, actor, timestamp, `run_attempt: 1`. GitHub Actions duplicate scheduling; GitHub exposes no deeper cause. Risk: two concurrent `semantic-release`.
+3. Job-level concurrency on `Publish`: `group: npm-publish`, `cancel-in-progress: false`. Only one publish job at a time. Never cancel: interrupting `semantic-release` mid-publication unsafe. Serialized duplicate finds release tag, no new releasable commits.
 
 Accept:
-- regression test fails before fix, passes after
-- CI `Test` + both `Matrix` jobs green on master
+- `Publish` jobs never overlap
+- first job publishes successfully
+- any duplicate job completes without publishing another version
+- npm `latest` matches semantic-release output
 
 ---
 
