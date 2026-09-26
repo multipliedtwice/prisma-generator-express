@@ -8,39 +8,14 @@ Size legend: S < half day. M = day-ish. L = multi-day. XL = week+.
 
 Order:
 
-1. Phase 0 — Publish job broken. Blocks release. First.
-2. Leftovers of phases 1, 3, 7 — cheap, any time, independent.
-3. Phase S — shared orchestration.
-4. Phase 5 leftovers — type safety.
-5. Phase 9 — static import boundary + bundle budget.
-6. Phase 10 — MCP read-only.
-7. Phase 11 — MCP writes.
+1. Leftovers of phases 1, 7 — cheap, any time, independent.
+2. Phase S — shared orchestration.
+3. Phase 5 leftovers — type safety.
+4. Phase 9 — static import boundary + bundle budget.
+5. Phase 10 — MCP read-only.
+6. Phase 11 — MCP writes.
 
 MCP spec (phase 10) may be written now. MCP code waits for phase 9, so emitted imports not reworked twice.
-
----
-
-## Phase 0 — Publish job broken (blocker)
-
-Size: S.
-
-`Publish` fails at `Install dependencies` on master `e6edb63` (runs `36167726472`, `36167727446`):
-
-```text
-error This project's package.json defines "packageManager": "yarn@3.4.1". However the current global version of Yarn is 1.22.22.
-```
-
-`packageManager` added in `f6411dc` (2026-08-22). `Test` + `Matrix` run `corepack enable`; `Publish` does not. Last npm release `1.66.0` (2026-08-18). Unreleased `feat:` commits (`270351d`, `c1f387e`) + `fix:` `b45280c` ship on first green `Publish` -> minor bump.
-
-1. Add `corepack enable` to `Publish` after `setup-node`.
-2. Duplicate runs confirmed: one push event, one workflow definition + ID, two independent run numbers / check suites, same SHA, actor, timestamp, `run_attempt: 1`. GitHub Actions duplicate scheduling; GitHub exposes no deeper cause. Risk: two concurrent `semantic-release`.
-3. Job-level concurrency on `Publish`: `group: npm-publish`, `cancel-in-progress: false`. Only one publish job at a time. Never cancel: interrupting `semantic-release` mid-publication unsafe. Serialized duplicate finds release tag, no new releasable commits.
-
-Accept:
-- `Publish` jobs never overlap
-- first job publishes successfully
-- any duplicate job completes without publishing another version
-- npm `latest` matches semantic-release output
 
 ---
 
@@ -49,7 +24,8 @@ Accept:
 Size: S.
 
 1. `packages/generator/jest.config.js` still exists (ts-jest preset). Runner is Vitest (`"test": "vitest"`). Grep refs, delete.
-2. Matrix jobs prove compile only. Add SQLite runtime smoke per matrix job (fixture already `provider = "sqlite"`):
+2. Default output override dead in published installs. `index.ts:159-174` compares prisma-resolved output against `__dirname`-based manifest path; never equal when installed from npm. Unset `output` lands at `<schemaDir>/../generated/output` (flat, no target segment). Verified on npm 1.67.0 + prisma 6: quickstart schema at `prisma/schema.prisma` wrote `./generated/output/`. Decide: fix override to intended `<schemaDir>/generated/<target>` + add unset-output fixture to matrix, or document `generated/output` as the default. Docs now avoid the case: quickstart + guide generator blocks set `output` explicitly.
+3. Matrix jobs prove compile only. Add SQLite runtime smoke per matrix job (fixture already `provider = "sqlite"`):
    - migrate fixture DB
    - mount generated router
    - execute one read + one write, assert status + body
@@ -58,18 +34,8 @@ Size: S.
 Accept:
 - no jest.config.js anywhere in repo
 - matrix smoke green on prisma 6 + 7
-
----
-
-## Phase 3 leftovers — docs
-
-Size: S.
-
-1. README quickstart imports `./generated/User/UserRouter`. Default output is `<schemaDir>/generated/<target>` (`packages/generator/src/index.ts:170`), so real path has `express/` segment. Demo imports `../prisma/generated/express/User/UserRouter`. Fix README path.
-2. Run quickstart copy-paste in clean temp dir. Confirm router mounts and `/user/openapi.json` responds.
-
-Accept:
-- quickstart works copy-paste, verified by run, not by reading
+- default-output contract decided + documented, verified on prisma 6 and 7
+- if override fixed: unset-output matrix fixture produces intended `<schemaDir>/generated/<target>` on both prisma lines
 
 ---
 
