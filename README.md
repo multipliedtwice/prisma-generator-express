@@ -22,20 +22,35 @@
 ## Quickstart
 
 ```bash
-npm install -D prisma-generator-express
+npm install -D prisma-generator-express prisma
 npm install @prisma/client express
 ```
 
 ```prisma
-// schema.prisma
+// schema.prisma — project root
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
 generator client {
   provider = "prisma-client-js"
 }
 
 generator express {
   provider = "prisma-generator-express"
+  output   = "./generated/express"
+}
+
+model User {
+  id    Int    @id @default(autoincrement())
+  email String @unique
+  name  String
 }
 ```
+
+> On Prisma 7 the datasource `url` moves to `prisma.config.ts` — see the
+> [compatibility section](docs/guide.md#compatibility).
 
 ```bash
 npx prisma generate
@@ -46,7 +61,7 @@ Mount the generated router:
 ```ts
 import express from 'express'
 import { PrismaClient } from '@prisma/client'
-import { UserRouter } from './generated/User/UserRouter'
+import { UserRouter } from './generated/express/User/UserRouter'
 
 const prisma = new PrismaClient()
 const app = express()

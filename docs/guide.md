@@ -138,15 +138,17 @@ generator client {
 
 generator express {
   provider = "prisma-generator-express"
+  output   = "./generated/express"
 }
 ```
 
-To target Fastify or Hono, set the `target` config:
+To target Fastify or Hono, set the `target` config (output shown per target; the segment after `generated/` is whatever `output` you set):
 
 ```prisma
 generator express {
   provider = "prisma-generator-express"
   target   = "fastify"
+  output   = "./generated/fastify"
 }
 ```
 
@@ -154,6 +156,7 @@ generator express {
 generator express {
   provider = "prisma-generator-express"
   target   = "hono"
+  output   = "./generated/hono"
 }
 ```
 
@@ -270,7 +273,7 @@ To remove the model prefix entirely, set `addModelPrefix: false` in the route co
 ```ts
 import express from 'express'
 import { PrismaClient } from '@prisma/client'
-import { UserRouter } from './generated/User/UserRouter'
+import { UserRouter } from './generated/express/User/UserRouter'
 
 const prisma = new PrismaClient()
 const app = express()
@@ -302,7 +305,7 @@ When `target = "fastify"`, each model produces a Fastify plugin function instead
 ```ts
 import Fastify from 'fastify'
 import { PrismaClient } from '@prisma/client'
-import { UserRoutes } from './generated/User/UserRouter'
+import { UserRoutes } from './generated/fastify/User/UserRouter'
 
 const prisma = new PrismaClient()
 const fastify = Fastify()
@@ -335,7 +338,7 @@ When `target = "hono"`, each model produces a function that returns a Hono insta
 ```ts
 import { Hono } from 'hono'
 import { PrismaClient } from '@prisma/client'
-import { UserRouter } from './generated/User/UserRouter'
+import { UserRouter } from './generated/hono/User/UserRouter'
 
 type Env = {
   Variables: {
@@ -369,7 +372,7 @@ PrismaClient is injected via `c.set('prisma', prismaInstance)` in middleware tha
 Hono route hooks are generated pre/post handler hooks, not native Hono middleware chains. A hook continues by returning `void`. It short-circuits by returning a `Response`, and errors by throwing, including `HTTPException`.
 
 ```ts
-import type { HonoBeforeHook } from './generated/routeConfig.target'
+import type { HonoBeforeHook } from './generated/hono/routeConfig.target'
 
 const auth: HonoBeforeHook = async (c) => {
   const token = c.req.header('authorization')
@@ -391,7 +394,7 @@ Throwing Hono's `HTTPException` from a hook short-circuits to a JSON error respo
 
 ```ts
 import { HTTPException } from 'hono/http-exception'
-import type { HonoBeforeHook } from './generated/routeConfig.target'
+import type { HonoBeforeHook } from './generated/hono/routeConfig.target'
 
 const auth: HonoBeforeHook = async (c) => {
   const token = c.req.header('authorization')
@@ -562,6 +565,7 @@ generator guard {
 
 generator express {
   provider = "prisma-generator-express"
+  output   = "generated/express"
 }
 ```
 
@@ -573,7 +577,7 @@ Extend PrismaClient with the guard extension and attach it to requests:
 import express from 'express'
 import { PrismaClient } from '@prisma/client'
 import { guard } from './generated/guard/client'
-import { UserRouter } from './generated/User/UserRouter'
+import { UserRouter } from './generated/express/User/UserRouter'
 
 const prisma = new PrismaClient().$extends(
   guard.extension(() => ({
@@ -1324,8 +1328,8 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { PrismaClient } from '@prisma/client'
 import { guard } from './generated/guard/client'
 import { force } from 'prisma-guard'
-import { UserRouter } from './generated/User/UserRouter'
-import { ProjectRouter } from './generated/Project/ProjectRouter'
+import { UserRouter } from './generated/express/User/UserRouter'
+import { ProjectRouter } from './generated/express/Project/ProjectRouter'
 
 const store = new AsyncLocalStorage<{ tenantId: string; role: string }>()
 
@@ -1550,7 +1554,7 @@ This feature is **Express-only**.
 ```ts
 import express from 'express'
 import { PrismaClient } from '@prisma/client'
-import { materializedViewsRouter } from './generated/materializedRouter'
+import { materializedViewsRouter } from './generated/express/materializedRouter'
 
 const prisma = new PrismaClient()
 const app = express()
@@ -1903,7 +1907,7 @@ Manual mode is selected when a progressive variant has a `stages` array. `mode: 
 Progressive config lives on an Express read operation. It is keyed by the resolved variant.
 
 ```ts
-import type { ProgressiveStage } from './generated/routeConfig.target'
+import type { ProgressiveStage } from './generated/express/routeConfig.target'
 
 const dashboardIdentity: ProgressiveStage<{ userId: string }> = async ({
   ctx,
@@ -2893,7 +2897,7 @@ The generator produces helper functions that you mount yourself. Pass the same c
 import {
   generateCombinedDocs,
   registerModelDocs,
-} from './generated/combinedDocs'
+} from './generated/express/combinedDocs'
 
 const userConfig = {
   findMany: { before: [authMiddleware] },
@@ -2933,7 +2937,7 @@ app.get(
 import {
   generateCombinedDocs,
   registerModelDocs,
-} from './generated/combinedDocs'
+} from './generated/fastify/combinedDocs'
 
 const userConfig = {
   findMany: { before: [async (request, reply) => { /* auth */ }] },
@@ -2975,9 +2979,9 @@ import { PrismaClient } from '@prisma/client'
 import {
   generateCombinedDocs,
   registerModelDocs,
-} from './generated/combinedDocs'
-import { UserRouter } from './generated/User/UserRouter'
-import { PostRouter } from './generated/Post/PostRouter'
+} from './generated/hono/combinedDocs'
+import { UserRouter } from './generated/hono/User/UserRouter'
+import { PostRouter } from './generated/hono/Post/PostRouter'
 
 type Env = {
   Variables: {

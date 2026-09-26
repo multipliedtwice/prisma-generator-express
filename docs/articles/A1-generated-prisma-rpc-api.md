@@ -43,6 +43,7 @@ generator guard {
 generator express {
   provider = "prisma-generator-express"
   target   = "express"
+  output   = "../generated/express"
 }
 
 datasource db {
@@ -145,7 +146,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import express from 'express'
 import { PrismaClient } from '@prisma/client'
 import { guard } from './generated/guard/client'
-import { PlantRouter } from './generated/Plant/PlantRouter'
+import { PlantRouter } from './generated/express/Plant/PlantRouter'
 import { plantRoutes } from './plantRoutes'
 
 type RequestContext = {
