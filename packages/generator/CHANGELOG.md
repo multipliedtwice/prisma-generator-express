@@ -1,3 +1,19 @@
+# [1.67.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.66.0...v1.67.0) (2026-09-26)
+
+
+### Bug Fixes
+
+* **emit:** the emitted tree typechecks under tsc --strict for every target ([6f9f373](https://github.com/multipliedtwice/prisma-generator-express/commit/6f9f37354a6dfa006cd1e566029f75ebbd96fb3e))
+* **fastify:** preserve router config generics ([b45280c](https://github.com/multipliedtwice/prisma-generator-express/commit/b45280cd0d22820c2136728d966eab637120ea1e))
+* **guard:** gate the Express/Fastify env bypass; survive unconfigured operations ([27b3d85](https://github.com/multipliedtwice/prisma-generator-express/commit/27b3d858a830a39e9bae46d5ee41f1e7f6c23f4f))
+* **types:** PrismaClientLike accepts a real (extended) PrismaClient ([5cc0a63](https://github.com/multipliedtwice/prisma-generator-express/commit/5cc0a63777b171c6d11a480d2d409262049ef50d))
+
+
+### Features
+
+* add authorization support to operation configurations and hooks ([c1f387e](https://github.com/multipliedtwice/prisma-generator-express/commit/c1f387ee62775c2dd8ad2b23dccc506f3bbb448e))
+* enhance operation override functionality and type safety ([270351d](https://github.com/multipliedtwice/prisma-generator-express/commit/270351d1ac9e06d2849aa203ccc99fd1a2d769e9))
+
 # [1.66.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.65.2...v1.66.0) (2026-08-18)
 
 
