@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const article = document.querySelector(".article-body");
+  const article = document.querySelector(".article-body, .guide-prose");
 
   if (!article) {
     return;
@@ -93,28 +93,31 @@
   };
 
   const headings = Array.from(article.querySelectorAll("h2, h3"));
+  const headingSet = new Set(headings);
   const usedIds = new Set(
-    Array.from(document.querySelectorAll("[id]")).map(function (element) {
-      return element.id;
-    })
+    Array.from(document.querySelectorAll("[id]"))
+      .filter(function (element) {
+        return !headingSet.has(element);
+      })
+      .map(function (element) {
+        return element.id;
+      })
   );
 
   headings.forEach(function (heading, index) {
     const headingText = getHeadingText(heading);
+    const baseId =
+      heading.id || slugify(headingText) || "section-" + String(index + 1);
+    let candidate = baseId;
+    let suffix = 2;
 
-    if (!heading.id) {
-      const baseId = slugify(headingText) || "section-" + String(index + 1);
-      let candidate = baseId;
-      let suffix = 2;
-
-      while (usedIds.has(candidate)) {
-        candidate = baseId + "-" + String(suffix);
-        suffix += 1;
-      }
-
-      heading.id = candidate;
-      usedIds.add(candidate);
+    while (usedIds.has(candidate)) {
+      candidate = baseId + "-" + String(suffix);
+      suffix += 1;
     }
+
+    heading.id = candidate;
+    usedIds.add(candidate);
 
     const anchor = document.createElement("a");
     anchor.className = "heading-anchor";

@@ -7,6 +7,9 @@ permalink: /sitemap.xml
   <url>
     <loc>{{ '/' | absolute_url }}</loc>
   </url>
+  <url>
+    <loc>{{ '/guide/' | absolute_url }}</loc>
+  </url>
 {% for article in site.data.series %}
   <url>
     <loc>{{ article.url | absolute_url }}</loc>

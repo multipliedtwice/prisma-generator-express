@@ -1,5 +1,5 @@
 ---
-layout: default
+layout: guide
 title: Prisma Generator Express Reference
 description: Full reference for generated Express, Fastify, and Hono APIs, OpenAPI, guarded MCP tools, pagination, hooks, and configuration.
 permalink: /guide/
@@ -30,41 +30,6 @@ Running `npx prisma generate` produces:
 - Opt-in same-process MCP tools for guarded reads and writes, with explicit per-operation allowlisting
 
 Supports **Express**, **Fastify**, and **Hono** targets via the `target` configuration option.
-
-## Table of contents
-
-- [Compatibility](#compatibility)
-- [Installation](#installation)
-- [Setup](#setup)
-- [Write strategy](#write-strategy)
-- [findManyPaginated execution mode](#findmanypaginated-execution-mode)
-- [Path casing in generated endpoints](#path-casing-in-generated-endpoints)
-- [Usage (Express)](#usage-express)
-- [Usage (Fastify)](#usage-fastify)
-- [Usage (Hono)](#usage-hono)
-- [Selective routes with middleware](#selective-routes-with-middleware)
-- [Guard shapes (prisma-guard integration)](#guard-shapes-prisma-guard-integration)
-- [Request body format](#request-body-format)
-- [Query encoding (client side)](#query-encoding-client-side)
-- [POST read endpoints](#post-read-endpoints)
-- [Materialized views router (Express)](#materialized-views-router-express)
-- [Progressive Endpoint Composition (Express SSE)](#progressive-endpoint-composition-express-sse)
-- [NDJSON list streaming (Express GET findMany)](#ndjson-list-streaming-express-get-findmany)
-- [updateEach (Express, Fastify, Hono, internal batch)](#updateeach-express-fastify-hono-internal-batch)
-- [Response shaping: select, include, omit](#response-shaping-select-include-omit)
-- [BigInt and Decimal handling](#bigint-and-decimal-handling)
-- [Pagination](#pagination)
-- [Error handling](#error-handling)
-- [Security](#security)
-- [MCP (Model Context Protocol)](#mcp-model-context-protocol)
-- [Documentation endpoints](#documentation-endpoints)
-- [prisma-sql integration](#prisma-sql-integration)
-- [Query parameter parsing](#query-parameter-parsing)
-- [Router schema](#router-schema)
-- [Skipping models](#skipping-models)
-- [Configuration](#configuration)
-- [Environment variables](#environment-variables)
-- [License](#license)
 
 ## Compatibility
 
