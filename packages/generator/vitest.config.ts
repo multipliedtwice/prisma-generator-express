@@ -10,6 +10,9 @@ export default {
   },
   test: {
     environment: 'node',
+    // the Postgres-backed suites (parity, README quickstart) push different
+    // schemas to the same database; run test files sequentially
+    fileParallelism: false,
     // test/consumer/** packs the tarball and imports it as an installed
     // package would. It is slow and it is the only thing that can catch a public
     // export that never reaches dist — see test/consumer/packedMetadata.test.ts.

@@ -21,7 +21,21 @@ export function generateHonoHandler(options: {
       const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
       return `
 export async function ${exportName}(c: HandlerContext): Promise<void> {
-  const data = await core.${meta.coreName}(buildContext(c))
+  const data = await executeOperation(
+    { variantKey: c.get('guardVariantKey'), caller: c.get('guardCaller') },
+    { guardShape: c.get('guardShape') },
+    {
+      core: core.${meta.coreName},
+      args: queryChannel(c),
+      body: c.get('body'),
+      prisma: requirePrisma(c.get('prisma')),
+      postgres: c.get('postgres'),
+      sqlite: c.get('sqlite'),
+      pagination: c.get('routeConfig')?.pagination,
+      override: c.get('operationOverride'),
+      getContext: c.get('getContext'),
+    },
+  )
   c.set('resultData', data)
 }`
     })
@@ -32,7 +46,21 @@ export async function ${exportName}(c: HandlerContext): Promise<void> {
       const exportName = `${modelName}${meta.name.charAt(0).toUpperCase() + meta.name.slice(1)}`
       return `
 export async function ${exportName}(c: HandlerContext): Promise<void> {
-  const data = await core.${meta.coreName}(buildContext(c))
+  const data = await executeOperation(
+    { variantKey: c.get('guardVariantKey'), caller: c.get('guardCaller') },
+    { guardShape: c.get('guardShape') },
+    {
+      core: core.${meta.coreName},
+      args: queryChannel(c),
+      body: c.get('body'),
+      prisma: requirePrisma(c.get('prisma')),
+      postgres: c.get('postgres'),
+      sqlite: c.get('sqlite'),
+      pagination: c.get('routeConfig')?.pagination,
+      override: c.get('operationOverride'),
+      getContext: c.get('getContext'),
+    },
+  )
   c.set('resultData', data)
   c.set('resultStatus', ${meta.successStatus})
 }`
@@ -49,15 +77,27 @@ export async function ${updateEachExportName}(c: HandlerContext): Promise<void> 
 
   return `import type { Context } from 'hono'
 import * as core from './${modelName}Core${ext}'
-import type { RuntimeOperationOverride, OperationContext } from '../operationRuntime${ext}'
+import type { OperationContext } from '../operationRuntime${ext}'
+import {
+  executeOperation,
+  requirePrisma,
+  type ArgsChannel,
+} from '../operationPipeline${ext}'
 import type { HonoInternalVariables } from '../routeConfig.target${ext}'
 
 type HandlerContext = Context<{ Variables: HonoInternalVariables }>
 
+function queryChannel(c: HandlerContext): ArgsChannel {
+  return {
+    read: () => c.get('parsedQuery'),
+    write: (next) => c.set('parsedQuery', next),
+  }
+}
+
 function buildContext(c: HandlerContext): OperationContext {
   return {
     operationOverride: c.get('operationOverride'),
-    resolveOperationContext: c.get('resolveOperationContext'),
+    resolveOperationContext: c.get('getContext'),
     prisma: c.get('prisma'),
     postgres: c.get('postgres'),
     sqlite: c.get('sqlite'),

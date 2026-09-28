@@ -1,5 +1,6 @@
 import {
   copyFile,
+  readFile,
   mkdir,
   mkdtemp,
   readdir,
@@ -16,6 +17,13 @@ import { generateHonoHandler } from '../../src/generators/generateHonoHandler'
 import { generateFastifyHandler } from '../../src/generators/generateFastifyHandler'
 import { generateUnifiedHandler } from '../../src/generators/generateUnifiedHandler'
 import { generateHonoRouterFunction } from '../../src/generators/generateRouterHono'
+import { generateHonoRouterParts } from '../../src/generators/generateRouterPartsHono'
+import { generateHonoOpenApiRoutes } from '../../src/generators/generateHonoOpenApi'
+import { generateModelMcp } from '../../src/generators/generateModelMcp'
+import {
+  generateMcpApp,
+  generateMcpMount,
+} from '../../src/generators/generateMcpApp'
 import { generateFastifyRouterFunction } from '../../src/generators/generateRouterFastify'
 import { generateRouterFunction } from '../../src/generators/generateRouter'
 import {
@@ -49,6 +57,7 @@ export async function writeEmittedRouterProject(args: {
   target: EmittedTarget
   model: DMMF.Model
   dropGuard?: boolean
+  mcp?: boolean
 }): Promise<{ routerPath: string; cleanup: () => Promise<void> }> {
   const modelName = args.model.name
   /**
@@ -90,6 +99,19 @@ export async function writeEmittedRouterProject(args: {
       : args.target === 'fastify'
         ? generateFastifyRouterFunction(shared)
         : generateRouterFunction(shared)
+  const routerPartsText =
+    args.target === 'hono' ? generateHonoRouterParts(shared) : null
+  const openApiPartText =
+    args.target === 'hono'
+      ? generateHonoOpenApiRoutes({
+          model: args.model,
+          enums: [],
+          guardShapesImport: null,
+          importStyle: 'none' as never,
+          writeStrategy: 'regular' as never,
+          pathCase: 'raw' as never,
+        })
+      : null
   const handlerText = (
     args.target === 'hono'
       ? generateHonoHandler
@@ -109,10 +131,63 @@ export async function writeEmittedRouterProject(args: {
     importStyle: 'none' as never,
   })
 
+  if (args.mcp) {
+    await writeFile(
+      join(dir, 'mcpRuntime.ts'),
+      await readFile(join(COPY_DIR, 'mcpRuntime.ts'), 'utf8'),
+      'utf8',
+    )
+    await writeFile(
+      join(dir, 'mcp.ts'),
+      await emit(
+        generateMcpApp({
+          serverName: 'emitted-test-api',
+          serverVersion: '0.0.0',
+          importStyle: 'none' as never,
+        }),
+      ),
+      'utf8',
+    )
+    await writeFile(
+      join(dir, 'mcpMount.ts'),
+      await emit(
+        generateMcpMount({ target: args.target, importStyle: 'none' as never }),
+      ),
+      'utf8',
+    )
+  }
+
   const modelDir = join(dir, modelName)
   await mkdir(modelDir, { recursive: true })
   const routerPath = join(modelDir, `${modelName}Router.ts`)
   await writeFile(routerPath, await emit(routerText), 'utf8')
+  if (routerPartsText) {
+    await writeFile(
+      join(modelDir, `${modelName}RouterParts.ts`),
+      await emit(routerPartsText),
+      'utf8',
+    )
+  }
+  if (openApiPartText) {
+    await writeFile(
+      join(modelDir, `${modelName}OpenApi.ts`),
+      await emit(openApiPartText),
+      'utf8',
+    )
+  }
+  if (args.mcp) {
+    await writeFile(
+      join(modelDir, `${modelName}Mcp.ts`),
+      await emit(
+        generateModelMcp({
+          model: args.model,
+          allModels: [args.model],
+          importStyle: 'none' as never,
+        }),
+      ),
+      'utf8',
+    )
+  }
   await writeFile(
     join(modelDir, `${modelName}Handlers.ts`),
     await emit(handlerText),

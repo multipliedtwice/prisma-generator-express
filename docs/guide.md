@@ -48,6 +48,7 @@ Supports **Express**, **Fastify**, and **Hono** targets via the `target` configu
 - [Pagination](#pagination)
 - [Error handling](#error-handling)
 - [Security](#security)
+- [MCP (Model Context Protocol)](#mcp-model-context-protocol)
 - [Documentation endpoints](#documentation-endpoints)
 - [prisma-sql integration](#prisma-sql-integration)
 - [Query parameter parsing](#query-parameter-parsing)
@@ -2871,6 +2872,166 @@ Route configs are application code, invisible at generation time — so each gen
 ```
 
 During `prisma generate`, if no prisma-guard artifacts are detected the generator prints a single note that routes call Prisma directly unless route configs define shapes.
+
+## MCP (Model Context Protocol)
+
+Read-only MCP transport, generated opt-in. Same process as your REST backend, one Streamable HTTP endpoint at `/mcp`, using the current MCP TypeScript SDK v2 (`@modelcontextprotocol/server` plus your framework's adapter). MCP tools reuse the REST pipeline: variant resolution, guard enforcement, pagination, operation overrides, result transform, classified errors.
+
+### Enable
+
+```prisma
+generator api {
+  provider = "prisma-generator-express"
+  output   = "./generated/api"
+  target   = "hono"        // or express / fastify
+  mcp      = true
+}
+```
+
+`mcp = true` adds: per-model `UserMcp.ts` (one named tool factory per operation), app-level `mcp.ts` (`registerMcpTools`), target mount glue `mcpMount.ts`, shared runtime `mcpRuntime.ts`. With `mcp` off (default) none of these exist and no MCP package is needed.
+
+`mcp = true` + `dropGuard = true` fails generation. Read-only tools enforce guard shapes — no exception.
+
+### Install (generated consumer)
+
+```bash
+npm install @prisma/client prisma-guard@^1.33.0
+# SDK v2 — exact packages, not the legacy @modelcontextprotocol/sdk.
+# These two are the only MCP packages the generated output imports.
+npm install @modelcontextprotocol/server @modelcontextprotocol/node
+```
+
+Both are optional peer dependencies (major 2): only `mcp = true` output imports them. The per-framework adapter packages (`@modelcontextprotocol/express`, `-fastify`, `-hono`) are NOT required — the generated mount glue imports `server` and `node` only. `@modelcontextprotocol/express` is worth adding if you want its `requireBearerAuth` middleware for the auth step below.
+
+MCP tool schemas are implemented against prisma-guard **1.33.0** semantics (nested list arguments, `literal(true)` projections, take reject-not-clamp), and `mcp = true` enforces that minimum at generation. REST-only usage keeps the published `prisma-guard >= 1.0.0` optional peer; when MCP is enabled, the generator requires 1.33+.
+
+Advertised operator surfaces are field-specific, matching guard: scalar lists expose only `has`/`hasSome`/`hasEvery`/`isEmpty`/`equals` (an array; `hasSome`/`hasEvery` accept empty arrays), `Json` fields `equals`/`not` plus `string_contains`/`string_starts_with`/`string_ends_with`/`path` (a non-empty string array) and `array_contains`/`array_starts_with`/`array_ends_with` (arbitrary JSON values), `Bytes` fields no where filters at all, enums `equals`/`not`/`in`/`notIn` with member validation; String fields also expose `search`; String/Int/Float operator values (including the String search operators) are coerced exactly as guard coerces them (String accepts numbers, Int accepts `/^-?\d+$/` strings, Float accepts numeric strings) — in the validator and in the emitted schemas; `null` values are accepted only where guard wraps `nullableIfOptional`: `equals`/`not` (and list `has`/`equals`) on optional fields, and `in`/`notIn` items on optional fields — every other operator rejects `null` even on optional fields, except the Json `array_*` operators (`z.unknown()` accepts null even on required fields); scalar-list items are never coerced and never null (only the WHOLE `equals`/`has` value may be null on optional fields); list operators exist on EVERY list field — including `Bytes[]` (`has`/`hasSome`/`hasEvery`/`isEmpty`/`equals` over base64 strings), even though scalar `Bytes` has no where filters; `Decimal` accepts numbers and decimal-pattern strings, `BigInt` safe-range integers and `/^-?\d+$/` strings; `mode` never rides along on non-String fields; `mode` is advertised beside String equality/search operators — a literal `mode` in the shape is forced (guard injects it and rejects a client-sent `mode`, so it is not advertised). To-many relations order only by `_count`; `Json` and list fields are unsortable in `orderBy` (Bytes and enums are sortable). `_count` counts list relations only; a configured filtered count (`{ select: { relation: { where: ... } } }`) accepts `true`, `{}`, `{where:{}}` and the where mirror. Nested relation list arguments are `where`, `orderBy`, `take` (a number or `{ max, default? }`), `skip` (configured as `true`), `cursor`, `select` and `include`; `distinct` is guard-rejected in nested positions. To-one relation projections accept `true` or a non-empty nested `select`/`include`. Shape-config keys are per-operation (guard: "Arg X not allowed for method Y"): `findUnique` allows only `where` (required), `select`, `include`; `count` allows `where`, `orderBy`, `select` (`_all` plus scalars), `take`, `cursor`, `skip`; `omit` is not a shape key at all. Forced operator values are validated per operator exactly as guard validates them (null only for `Json` and optional fields; nested `not` accepts plain filter objects; `_count` objects carry exactly the `select` key; a nested relation never configures `select` and `include` together), and the entire finite config tree is validated — no depth cap.
+
+### Supported operations
+
+Read-only release: `findMany`, `findUnique`, `findFirst`, `count`, `findManyPaginated`. Tool names are stable snake case: `user_find_many`, `ticket_find_many_paginated`. No `execute_prisma`, no stdio, no writes.
+
+Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) come from explicit per-operation metadata, not from operation kind.
+
+### Explicit allowlist
+
+`enableAll` never enables MCP. You import and pass exactly the tools you serve:
+
+```ts
+import { McpServer, type AuthInfo } from '@modelcontextprotocol/server'
+import { userFindManyTool, userFindUniqueTool } from './generated/api/User/UserMcp'
+import { registerMcpToolsOnServer } from './generated/api/mcp'
+import { McpAuthorizationError } from './generated/api/mcpRuntime'
+
+const buildServer = (authInfo: AuthInfo): McpServer => {
+  const server = new McpServer({ name: 'my-api', version: '1.0.0' })
+  registerMcpToolsOnServer(server, {
+    tools: [
+      userFindManyTool({ config: userConfig }),
+      userFindUniqueTool({ config: userConfig }),
+    ],
+    resolveCaller: (info) => info.clientId,
+    authorize: ({ principal, model, operation, args, variant }) => {
+      if (!principal) throw new McpAuthorizationError('unauthenticated')
+      // your policy
+    },
+    defaultLimit: 20,
+    maxLimit: 100,
+    maxResultBytes: 262_144,
+    prisma,
+    authInfo, // the verified principal — registration refuses without it
+  })
+  return server
+}
+```
+
+`McpServer` and `AuthInfo` are value/type imports from `@modelcontextprotocol/server`; `McpAuthorizationError` comes from the generated `mcpRuntime.ts`. Registration is per request (the mount glue below calls `buildServer` from the SDK's per-request factory with that request's verified `authInfo`); a request without one fails closed.
+
+Unimported tools drop out of the bundle — the same static boundary the Hono per-op router parts use. Tool input schemas are model-aware: only keys the guard shape declares are advertised, `where`/`select`/`include`/`omit` enumerate real model fields (recursively for nested projection shapes), and undeclared keys are rejected before any handler runs.
+
+`findUnique` tools advertise a unique-selector `where` (never filter operators): a flat unique field is advertised only when the shape configures it with exactly `true`, and a compound `@@unique([a, b])` is advertised as its selector object `a_b` when the shape configures that key with `{ a: true, b: true }` — only `true`-configured fields are advertised and required. Forced (literal or `force()`) configs are never advertised; a guard-invalid configuration (`where: true`, field-wise compound declarations, operator configs) refuses registration outright — prisma-guard 1.33 rejects or crashes on every input for it. `cursor` follows the same rule: flat keys configured with `true`, compound selectors whose inner object maps every constraint field to `true`.
+
+### Authentication
+
+Identity is your verified `AuthInfo`, produced by YOUR authentication. The per-request server factory receives it:
+
+- Express: put a verified `AuthInfo` on `req.auth` (for example with `requireBearerAuth` from `@modelcontextprotocol/express`) before the `/mcp` handler.
+- Fastify: attach it to `request.raw.auth` in an `onRequest` hook; the generated handler calls `reply.hijack()` because the Node MCP handler owns the response.
+- Hono: `c.set('authInfo', verified)` in your middleware — without it the mount returns 401 before registration.
+
+`resolveCaller(authInfo)` maps the verified principal to the guard routing key. The caller is a routing key only — never identity, and never accepted in tool arguments. `principal` passed to `authorize` is the verified `AuthInfo` itself.
+
+Missing `resolveCaller` or `authorize` throws at registration. There is no `resolvePrincipal`.
+
+### Authorization order
+
+Per call, exactly:
+
+1. schema validation (tool input schema)
+2. `route` (variant resolution)
+3. settle variant (failure is a classified 400)
+4. `authorize({ principal, model, operation, args, variant })`
+5. `prepareGuard`
+6. settle guard (failure is a classified 500)
+7. `execute`
+8. transform result
+9. result-size enforcement
+10. MCP response encoding
+
+`authorize` runs before any application-context resolution or dynamic guard-shape evaluation. Deny by throwing `McpAuthorizationError` (exported from the generated `mcpRuntime.ts`): the call returns an `isError` result. Any other throw becomes a classified internal error. Exceptions are never treated as allow. A denied call performs zero context, shape and database work.
+
+### Guard requirements (fail closed)
+
+- Every exposed operation needs a guard shape or variants. Read-only tools are not exempt.
+- Every exposed `findMany`/`findManyPaginated` shape (each variant) must declare `take` (`take: N` or `take: { max, default? }`). Static violations throw at registration; dynamic (function) shapes are checked after resolution and fail as classified 500 without a database call.
+- `shape.take.max` below `defaultLimit` throws at registration — the injected default must not exceed the guard bound.
+- An exposed operation whose REST config defines `authorize`, `before`, `after` or variant hooks throws at registration. Transport-specific policy is never silently ignored; there is no `allowHookDivergence` override.
+- `PGE_DROP_GUARD=true` (or deprecated `E2E=true`) in the environment makes `registerMcpTools` throw before registering any tool. `allowE2EGuardBypass` on a REST config cannot change this. There is no `allowUnguardedMcp`.
+- Guard-config validity is checked at registration per exposed variant, for the COMPLETE shape — not just `where`: prisma-guard 1.33 rejects (or crashes on) bare-`true` scalar filters, bare literal filters, empty `where`/relation/relation-operator configs, combinator configs that are not non-empty objects, unknown or field-incompatible filter operators, forced values with the wrong type, forced values under the negating relation operators `none`/`isNot` (guard: "mixes client-controlled and forced"), `findUnique` `where` configs that are not complete unique-selector configs, `cursor` configs that are not `true`-configured unique fields or all-`true` compound selectors, `orderBy` configs that are not `true` (to-many relations: `_count: true` only), `distinct` configs that are not a non-empty array of scalar field names, `select`/`include` configs with unknown fields, non-`true` scalars or scalar keys inside `include`, `_count` configs other than `true` or `{ select: { listRelation: true | { where } } }`, and `skip` configs other than `true`. Exposing a shape with any of those refuses registration with the exact problem — the tool never serves a request guard would reject on every input.
+- `mcp = true` also gates at GENERATION time: the generator resolves `prisma-guard` from the schema project and refuses to emit MCP support below **1.33.0** (MCP tool schemas mirror 1.33 semantics). The published `prisma-guard` peer stays `>=1.0.0` and optional — REST-only consumers are unaffected.
+
+### Row and result limits
+
+Registration requires `defaultLimit`, `maxLimit` and `maxResultBytes`: positive safe integers, `defaultLimit <= maxLimit`.
+
+For list queries (with guard shape present, where REST pagination alone would not bound rows):
+
+- omitted `take` becomes `defaultLimit`
+- `take` must be a positive integer — the tool schema enforces `minimum: 1` (matching prisma-guard, which rejects zero and negatives), and non-integer or non-finite `take` is a 400
+- positive `take` above `maxLimit` clamps down to `maxLimit` (the guard shape's own `take.max` may be lower and wins)
+- the guard shape's `take.max` may be stricter and wins (values above it are rejected by prisma-guard, verified against upstream `buildTakeSchema`: reject, not clamp)
+- the injected default never exceeds the guard bound (checked at registration for static shapes, per call for dynamic ones)
+- tool descriptions state the effective limits
+
+`maxResultBytes` caps the UTF-8 byte size of the final serialized, transformed payload (measured with `TextEncoder`, not `string.length`). A result over the cap returns an MCP error telling the caller to narrow `take` or `select`. Structured JSON is never truncated.
+
+### Mounting /mcp
+
+The generated `mcpMount.ts` provides one handler per target; authentication is your middleware (see above):
+
+```ts
+// Express
+import { createMcpExpressHandler } from './generated/api/mcpMount'
+app.use(express.json())
+app.use(myAuthMiddleware)            // sets req.auth = AuthInfo
+app.all('/mcp', createMcpExpressHandler(buildServer))
+
+// Fastify
+import { createMcpFastifyHandler } from './generated/api/mcpMount'
+app.addHook('onRequest', async (req) => { /* set (req.raw as any).auth */ })
+app.all('/mcp', createMcpFastifyHandler(buildServer))
+
+// Hono
+import { createMcpHonoHandler } from './generated/api/mcpMount'
+app.use('/mcp', authMiddleware)      // sets c.set('authInfo', AuthInfo)
+app.all('/mcp', createMcpHonoHandler(buildServer))
+```
+
+One Streamable HTTP endpoint, same process as the REST backend. No stdio.
+
+### Error behavior
+
+Denials (`McpAuthorizationError`) and classified failures both come back as MCP `isError` results with a JSON `{ message, status? }` text block — status is the same classification REST uses (400 variant/input, 403 policy, 500 shape/shape-resolution, 503 connection, and the Prisma error map). Parity with REST is by construction: same stages, same core.
 
 ## Documentation endpoints
 

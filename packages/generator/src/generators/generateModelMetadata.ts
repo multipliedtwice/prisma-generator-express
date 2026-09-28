@@ -40,7 +40,7 @@ export function generateModelMetadata(
   const { model, enums } = options
   const modelName = model.name
 
-  const fieldsMeta = model.fields.map((f: any) => ({
+  const fieldsMeta = model.fields.map((f) => ({
     name: f.name,
     kind: f.kind,
     type: f.type,
@@ -55,7 +55,7 @@ export function generateModelMetadata(
   }))
 
   const referencedEnumTypes = new Set(
-    model.fields.filter((f: any) => f.kind === 'enum').map((f: any) => f.type),
+    model.fields.filter((f) => f.kind === 'enum').map((f) => f.type),
   )
 
   const enumsMeta = enums
@@ -66,7 +66,7 @@ export function generateModelMetadata(
     }))
 
   const exampleValues: Record<string, unknown> = {}
-  for (const f of model.fields as any[]) {
+  for (const f of model.fields) {
     if (f.isId || f.isUnique || f.kind === 'scalar' || f.kind === 'enum') {
       if (f.kind === 'enum') {
         const enumDef = enums.find((e) => e.name === f.type)
@@ -77,16 +77,22 @@ export function generateModelMetadata(
     }
   }
 
+  // the client-input selector key mirrors Prisma's WhereUniqueInput: the
+  // constraint's explicit name when given, else the fields joined with '_'
   const compoundId =
     model.primaryKey && model.primaryKey.fields.length > 1
-      ? { fields: model.primaryKey.fields }
+      ? {
+          selector: model.primaryKey.name || model.primaryKey.fields.join('_'),
+          fields: [...model.primaryKey.fields],
+        }
       : null
 
-  const compoundUniques = ((model as any).uniqueIndexes || [])
-    .filter((idx: any) => idx.fields && idx.fields.length > 1)
-    .map((idx: any) => ({
+  const compoundUniques = (model.uniqueIndexes ?? [])
+    .filter((idx) => idx.fields && idx.fields.length > 1)
+    .map((idx) => ({
       name: idx.name || idx.fields.join('_'),
-      fields: idx.fields,
+      selector: idx.name || idx.fields.join('_'),
+      fields: [...idx.fields],
     }))
 
   return `import type { FieldMeta, EnumMeta } from '../docsRenderer${ext}'
@@ -95,9 +101,9 @@ export const MODEL_FIELDS: FieldMeta[] = ${JSON.stringify(fieldsMeta, null, 2)}
 
 export const MODEL_ENUMS: EnumMeta[] = ${JSON.stringify(enumsMeta, null, 2)}
 
-export const COMPOUND_ID: { fields: string[] } | null = ${JSON.stringify(compoundId)}
+export const COMPOUND_ID: { selector: string; fields: string[] } | null = ${JSON.stringify(compoundId)}
 
-export const COMPOUND_UNIQUES: { name: string; fields: string[] }[] = ${JSON.stringify(compoundUniques)}
+export const COMPOUND_UNIQUES: { name: string; selector: string; fields: string[] }[] = ${JSON.stringify(compoundUniques)}
 
 export const EXAMPLE_VALUES: Record<string, unknown> = ${JSON.stringify(exampleValues, null, 2)}
 `

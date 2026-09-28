@@ -21,11 +21,22 @@ export interface OpMetadata {
   argsSchema: readonly string[]
   requiredArgs: readonly string[]
   notes: string
+  /**
+   * EXPLICIT behaviour annotations, never inferred from `kind`. Mapped to MCP
+   * tool hints (readOnlyHint / destructiveHint / idempotentHint) and available
+   * for any other transport that wants the same vocabulary.
+   */
+  readOnly: boolean
+  destructive: boolean
+  idempotent: boolean
 }
 
 export const OPERATION_METADATA: readonly OpMetadata[] = [
   {
     name: 'findMany',
+    readOnly: true,
+    destructive: false,
+    idempotent: true,
     method: 'get',
     pathSuffix: '',
     configKey: 'findMany',
@@ -56,6 +67,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'findUnique',
+    readOnly: true,
+    destructive: false,
+    idempotent: true,
     method: 'get',
     pathSuffix: '/unique',
     configKey: 'findUnique',
@@ -76,6 +90,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'findUniqueOrThrow',
+    readOnly: true,
+    destructive: false,
+    idempotent: true,
     method: 'get',
     pathSuffix: '/unique/strict',
     configKey: 'findUniqueOrThrow',
@@ -96,6 +113,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'findFirst',
+    readOnly: true,
+    destructive: false,
+    idempotent: true,
     method: 'get',
     pathSuffix: '/first',
     configKey: 'findFirst',
@@ -126,6 +146,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'findFirstOrThrow',
+    readOnly: true,
+    destructive: false,
+    idempotent: true,
     method: 'get',
     pathSuffix: '/first/strict',
     configKey: 'findFirstOrThrow',
@@ -156,6 +179,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'findManyPaginated',
+    readOnly: true,
+    destructive: false,
+    idempotent: true,
     method: 'get',
     pathSuffix: '/paginated',
     configKey: 'findManyPaginated',
@@ -187,6 +213,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'count',
+    readOnly: true,
+    destructive: false,
+    idempotent: true,
     method: 'get',
     pathSuffix: '/count',
     configKey: 'count',
@@ -208,6 +237,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'aggregate',
+    readOnly: true,
+    destructive: false,
+    idempotent: true,
     method: 'get',
     pathSuffix: '/aggregate',
     configKey: 'aggregate',
@@ -240,6 +272,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'groupBy',
+    readOnly: true,
+    destructive: false,
+    idempotent: true,
     method: 'get',
     pathSuffix: '/groupby',
     configKey: 'groupBy',
@@ -274,6 +309,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'create',
+    readOnly: false,
+    destructive: false,
+    idempotent: false,
     method: 'post',
     pathSuffix: '',
     configKey: 'create',
@@ -294,6 +332,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'createMany',
+    readOnly: false,
+    destructive: false,
+    idempotent: false,
     method: 'post',
     pathSuffix: '/many',
     configKey: 'createMany',
@@ -315,6 +356,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'createManyAndReturn',
+    readOnly: false,
+    destructive: false,
+    idempotent: false,
     method: 'post',
     pathSuffix: '/many/return',
     configKey: 'createManyAndReturn',
@@ -336,6 +380,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'update',
+    readOnly: false,
+    destructive: false,
+    idempotent: false,
     method: 'put',
     pathSuffix: '',
     configKey: 'update',
@@ -357,6 +404,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'updateMany',
+    readOnly: false,
+    destructive: false,
+    idempotent: false,
     method: 'put',
     pathSuffix: '/many',
     configKey: 'updateMany',
@@ -378,6 +428,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'updateManyAndReturn',
+    readOnly: false,
+    destructive: false,
+    idempotent: false,
     method: 'put',
     pathSuffix: '/many/return',
     configKey: 'updateManyAndReturn',
@@ -399,6 +452,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'upsert',
+    readOnly: false,
+    destructive: false,
+    idempotent: true,
     method: 'patch',
     pathSuffix: '',
     configKey: 'upsert',
@@ -419,6 +475,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'delete',
+    readOnly: false,
+    destructive: true,
+    idempotent: true,
     method: 'delete',
     pathSuffix: '',
     configKey: 'delete',
@@ -439,6 +498,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'deleteMany',
+    readOnly: false,
+    destructive: true,
+    idempotent: true,
     method: 'delete',
     pathSuffix: '/many',
     configKey: 'deleteMany',
@@ -459,6 +521,9 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   },
   {
     name: 'updateEach',
+    readOnly: false,
+    destructive: true,
+    idempotent: false,
     method: 'post',
     pathSuffix: '/each',
     configKey: 'updateEach',
@@ -517,10 +582,16 @@ export function getPostReadPathSuffix(opName: string): string {
 }
 
 export function isOperationEnabled(
-  config: Record<string, any>,
+  config: object,
   def: OperationDef | OpMetadata,
 ): boolean {
-  if (config[def.configKey] === false) return false
-  if (def.excludeFromEnableAll) return !!config[def.configKey]
-  return !!(config.enableAll || config[def.configKey])
+  // Route configs are interfaces without index signatures, so the value is
+  // reached through one runtime narrowing here at the single point that reads it.
+  if (!config || typeof config !== 'object') {
+    return false
+  }
+  const cfg = config as Record<string, unknown>
+  if (cfg[def.configKey] === false) return false
+  if (def.excludeFromEnableAll) return !!cfg[def.configKey]
+  return !!(cfg.enableAll || cfg[def.configKey])
 }

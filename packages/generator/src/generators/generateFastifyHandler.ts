@@ -24,8 +24,24 @@ export async function ${exportName}(
   request: FastifyRequest,
   _reply: FastifyReply,
 ): Promise<void> {
-  const data = await core.${meta.coreName}(buildContext(request))
-  ;(request as FastifyExtended).resultData = data
+  const fx = request as FastifyExtended
+  const data = await executeOperation(
+    { variantKey: fx.guardVariantKey, caller: fx.guardCaller },
+    { guardShape: fx.guardShape },
+    {
+      core: core.${meta.coreName},
+      args: queryChannel(request),
+      body: request.body,
+      prisma: requirePrisma(fx.prisma),
+      postgres: fx.postgres,
+      sqlite: fx.sqlite,
+      pagination: fx.routeConfig?.pagination,
+      override: fx.operationOverride,
+      getContext: fx.getContext,
+      findManyPaginatedMode: fx.findManyPaginatedMode,
+    },
+  )
+  fx.resultData = data
 }`
     })
     .join('\n')
@@ -38,10 +54,24 @@ export async function ${exportName}(
   request: FastifyRequest,
   _reply: FastifyReply,
 ): Promise<void> {
-  const data = await core.${meta.coreName}(buildContext(request))
-  const ext = request as FastifyExtended
-  ext.resultData = data
-  ext.resultStatus = ${meta.successStatus}
+  const fx = request as FastifyExtended
+  const data = await executeOperation(
+    { variantKey: fx.guardVariantKey, caller: fx.guardCaller },
+    { guardShape: fx.guardShape },
+    {
+      core: core.${meta.coreName},
+      args: queryChannel(request),
+      body: request.body,
+      prisma: requirePrisma(fx.prisma),
+      postgres: fx.postgres,
+      sqlite: fx.sqlite,
+      pagination: fx.routeConfig?.pagination,
+      override: fx.operationOverride,
+      getContext: fx.getContext,
+    },
+  )
+  fx.resultData = data
+  fx.resultStatus = ${meta.successStatus}
 }`
     })
     .join('\n')
@@ -60,28 +90,44 @@ export async function ${updateEachExportName}(
   return `import type { FastifyRequest, FastifyReply } from 'fastify'
 import * as core from './${modelName}Core${ext}'
 import type { RuntimeOperationOverride, OperationContext, FindManyPaginatedMode } from '../operationRuntime${ext}'
+import type { PaginationConfig } from '../routeConfig${ext}'
+import {
+  executeOperation,
+  requirePrisma,
+  type ArgsChannel,
+} from '../operationPipeline${ext}'
 
 type FastifyExtended = FastifyRequest & {
   prisma?: unknown
   postgres?: unknown
   sqlite?: unknown
   parsedQuery?: Record<string, unknown>
-  routeConfig?: { pagination?: OperationContext['paginationConfig'] }
+  routeConfig?: { pagination?: PaginationConfig }
   guardShape?: Record<string, unknown>
   guardCaller?: string
   guardVariantKey?: string
   operationOverride?: RuntimeOperationOverride
-  resolveOperationContext?: () => unknown | Promise<unknown>
+  getContext?: () => Promise<unknown>
   findManyPaginatedMode?: FindManyPaginatedMode
   resultData?: unknown
   resultStatus?: number
+}
+
+function queryChannel(request: FastifyRequest): ArgsChannel {
+  const fx = request as FastifyExtended
+  return {
+    read: () => fx.parsedQuery,
+    write: (next) => {
+      fx.parsedQuery = next
+    },
+  }
 }
 
 function buildContext(request: FastifyRequest): OperationContext {
   const req = request as FastifyExtended
   return {
     operationOverride: req.operationOverride,
-    resolveOperationContext: req.resolveOperationContext,
+    resolveOperationContext: req.getContext,
     prisma: req.prisma,
     postgres: req.postgres,
     sqlite: req.sqlite,

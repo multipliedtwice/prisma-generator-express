@@ -72,22 +72,32 @@ type SpeedExtensionFactory = (opts: {
 }) => unknown
 
 let _speedExtension: SpeedExtensionFactory | null = null
+let _prismasqlReady: Promise<void> | undefined
 
 const _prismasqlModule = 'prisma-' + 'sql'
-const _prismasqlReady = (async () => {
-  try {
-    const mod = (await import(_prismasqlModule)) as {
-      speedExtension?: SpeedExtensionFactory
-      default?: { speedExtension?: SpeedExtensionFactory }
+
+/**
+ * Loaded on FIRST USE, not at module load: the copied runtime stays free of
+ * top-level side effects, so a bundler can evaluate the import graph without
+ * triggering the optional `prisma-sql` lookup.
+ */
+function ensurePrismaSqlReady(): Promise<void> {
+  return (_prismasqlReady ??= (async () => {
+    try {
+      const mod = (await import(_prismasqlModule)) as {
+        speedExtension?: SpeedExtensionFactory
+        default?: { speedExtension?: SpeedExtensionFactory }
+      }
+      _speedExtension =
+        mod.speedExtension ?? mod.default?.speedExtension ?? null
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code
+      if (code !== 'MODULE_NOT_FOUND' && code !== 'ERR_MODULE_NOT_FOUND') {
+        console.warn(LOG_PREFIX, 'prisma-sql initialization failed:', err)
+      }
     }
-    _speedExtension = mod.speedExtension ?? mod.default?.speedExtension ?? null
-  } catch (err) {
-    const code = (err as { code?: string } | null)?.code
-    if (code !== 'MODULE_NOT_FOUND' && code !== 'ERR_MODULE_NOT_FOUND') {
-      console.warn(LOG_PREFIX, 'prisma-sql initialization failed:', err)
-    }
-  }
-})()
+  })())
+}
 
 const _extendedClients = new WeakMap<object, WeakMap<object, unknown>>()
 
@@ -101,7 +111,7 @@ export async function getExtendedClient(
       'PrismaClient not found on request. Set req.prisma in middleware.',
     )
   }
-  await _prismasqlReady
+  await ensurePrismaSqlReady()
   if (!_speedExtension) return base
   const connector = (ctx.postgres ?? ctx.sqlite) as object | undefined
   if (!connector) return base

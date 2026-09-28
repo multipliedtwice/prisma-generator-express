@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   validateOperationConfig,
   HARDENED_GUARD_PROFILE,
@@ -217,10 +219,16 @@ describe('the emitted router keeps the 1.64.1 runtime shape', () => {
     dropGuard: false,
     pathCase: 'raw' as never,
   })
+  // routerParts.ts is copied verbatim into the generated output, so its source
+  // IS the shipped runtime the emitted router delegates to.
+  const parts = readFileSync(
+    resolve(__dirname, '../../../src/copy/routerParts.ts'),
+    'utf8',
+  )
 
   it('registers updateEach, which 1.64.2 removed outright', () => {
     expect(out, 'the updateEach route is still missing').toContain("'/each'")
-    expect(out).toContain('PostUpdateEach(c as unknown as HandlerContext)')
+    expect(out).toContain('handler: PostUpdateEach')
   })
 
   it('still honours the env bypass for consumers who never opted in', () => {
@@ -229,17 +237,14 @@ describe('the emitted router keeps the 1.64.1 runtime shape', () => {
       .split('\n')
       .find((l) => l.includes('resolveDropGuardEnv(_env)'))
     expect(line, 'the bypass is not gated on its own control').toContain(
-      'policy.allowE2EGuardBypass',
+      'POLICY.allowE2EGuardBypass',
     )
   })
 
   it('runs operation hooks before settling the guard, as 1.64.1 did', () => {
-    const body = out.slice(
-      out.indexOf('const handleRead ='),
-      out.indexOf('const handleWrite ='),
-    )
-    const hooks = body.indexOf('runBeforeHooks<TEnv>(opConfig.operationBefore')
-    const legacy = body.indexOf('if (!SETTLE_BEFORE_HOOKS) settleGuard(c)')
+    const body = parts.slice(parts.indexOf('export function createReadRoute'))
+    const hooks = body.indexOf('input.opConfig.operationBefore')
+    const legacy = body.indexOf('if (!input.settleBeforeHooks) settleGuard(c)')
 
     expect(legacy, 'the legacy ordering is gone').toBeGreaterThan(-1)
     expect(
@@ -251,10 +256,18 @@ describe('the emitted router keeps the 1.64.1 runtime shape', () => {
   it('passes the raw shape through when the flag is off', () => {
     // 1.64.1 resolved a function shape at the point of use. Pre-resolving it for
     // everyone would change how many times a consumer's function is called.
-    expect(out).toContain(
-      'let effectiveShape: Record<string, unknown> | undefined = opConfig.guardShape',
+    // Phase S moved the branch into the shared pipeline stage; the router still
+    // forwards its own `validateResolvedShapes` control, and resolves nothing
+    // itself.
+    const middleware = parts.slice(
+      parts.indexOf('export function createShapeMiddleware'),
+      parts.indexOf('export function createSettleGuard'),
     )
-    expect(out).toContain('if (policy.validateResolvedShapes) {')
+    expect(middleware).toContain('resolveGuardPolicy(')
+    expect(middleware).toContain('validateResolvedShapes:')
+    expect(middleware).not.toContain('resolveGuardShapeOnce')
+    // and the emitter resolves nothing itself
+    expect(out).not.toContain('resolveGuardShapeOnce')
   })
 
   it('resolves every control through one defaulting function', () => {

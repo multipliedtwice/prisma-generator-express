@@ -8,3 +8,12 @@ generated/api
 packages/generator/coverage
 packages/generator/matrix/generated
 packages/generator/matrix/*.db
+packages/generator/.emitted-router-*
+packages/generator/.mcp-gen-*
+packages/generator/.mcp-fastify-*
+packages/generator/.parity-pg
+packages/generator/.bundle-budget-*
+packages/generator/.bb-*
+packages/generator/.mcp-smoke
+article-labs/guard/parity
+article-labs/guard/.engine-stub

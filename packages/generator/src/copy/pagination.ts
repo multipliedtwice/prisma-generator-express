@@ -4,8 +4,10 @@ import {
   buildCountShape,
   type PrismaDelegateLike,
 } from './guardHelpers'
-import { countFromMaterializedView } from './materializedCount'
 import { isPlainObject } from './misc'
+// legacy self-contained behavior restored: the materialized-view module is
+// small and statically owned by pagination (phase 9 budget re-measured)
+import { countFromMaterializedView } from './materializedCount'
 import type { PaginationConfig, PaginationCountSource } from './routeConfig'
 
 export const DISTINCT_COUNT_LIMIT = 100000
@@ -119,7 +121,13 @@ export async function countForPagination(
     whereIsEmpty &&
     distinctIsEmpty
   ) {
-    return countFromMaterializedView(rawClient ?? delegate, countSource)
+    return countFromMaterializedView(
+      rawClient ?? delegate,
+      countSource as Extract<
+        PaginationCountSource,
+        { type: 'materializedView' }
+      >,
+    )
   }
 
   const hasDistinct = normalizedDistinct.length > 0

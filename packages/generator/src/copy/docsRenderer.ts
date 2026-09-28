@@ -127,7 +127,7 @@ function exampleValue(ctx: DocsModelContext, fieldName: string): unknown {
 
 function compoundWhereExample(
   ctx: DocsModelContext,
-): Record<string, any> | null {
+): Record<string, unknown> | null {
   if (ctx.compoundId) {
     const keyName = ctx.compoundId.fields.join('_')
     const val: Record<string, unknown> = {}
@@ -426,7 +426,7 @@ export function renderDocs(
   const singleRelations = relationFields.filter((f) => !f.isList)
 
   const getOps = OPERATION_METADATA.filter((meta) =>
-    isOperationEnabled(config as Record<string, any>, meta),
+    isOperationEnabled(config, meta),
   )
     .filter((meta) => !isOpHiddenByStrategy(meta.name, writeStrategy))
     .map((meta) => {
@@ -453,9 +453,7 @@ export function renderDocs(
 
   const postReadOps = postReadsEnabled
     ? OPERATION_METADATA.filter((meta) => READ_OPERATION_NAMES.has(meta.name))
-        .filter((meta) =>
-          isOperationEnabled(config as Record<string, any>, meta),
-        )
+        .filter((meta) => isOperationEnabled(config, meta))
         .map((meta) => {
           const detail = detailForOp(meta.name)
           const postPath =
@@ -499,8 +497,8 @@ export function renderDocs(
   const firstStringField = scalarFields.find((f) => f.type === 'String')
   const firstBooleanField = scalarFields.find((f) => f.type === 'Boolean')
 
-  const whereExample: Record<string, any> = {}
-  const andClauses: Record<string, any>[] = []
+  const whereExample: Record<string, unknown> = {}
+  const andClauses: Record<string, unknown>[] = []
   if (firstFilterFieldName) {
     andClauses.push({
       [firstFilterFieldName]: {
@@ -517,19 +515,19 @@ export function renderDocs(
   if (firstBooleanField)
     whereExample.OR = [{ [firstBooleanField.name]: { equals: true } }]
 
-  const selectExample: any = {}
+  const selectExample: Record<string, unknown> = {}
   for (const f of scalarFields.slice(0, 10)) selectExample[f.name] = true
 
-  const includeExample: any = {}
+  const includeExample: Record<string, unknown> = {}
   for (const f of relationFields.slice(0, 6)) includeExample[f.name] = true
 
-  const omitExample: any = {}
+  const omitExample: Record<string, unknown> = {}
   const omitCandidates = scalarFields.filter((f) => !f.isId && !f.isUnique)
   for (const f of omitCandidates.slice(0, 3)) omitExample[f.name] = true
 
   const orderByField = firstUnique ? firstUnique.name : firstFilterFieldName
 
-  const findManyQueryArgs: any = {
+  const findManyQueryArgs: Record<string, unknown> = {
     where: whereExample,
     select: selectExample,
     orderBy: orderByField ? { [orderByField]: 'asc' } : undefined,
@@ -575,7 +573,7 @@ export function renderDocs(
       'const data = await res.json()'
     : null
 
-  const createBodyExample: any = { data: {} }
+  const createBodyExample: { data: Record<string, unknown> } = { data: {} }
   for (const f of requiredCreateFields.slice(0, 5)) {
     createBodyExample.data[f.name] = exampleValue(ctx, f.name)
   }
@@ -592,9 +590,10 @@ export function renderDocs(
     '})\n' +
     'const created = await res.json()'
 
-  const updateBodyExample: any = uniqueWhereExample
-    ? { where: uniqueWhereExample, data: {} }
-    : null
+  const updateBodyExample: {
+    where: Record<string, unknown>
+    data: Record<string, unknown>
+  } | null = uniqueWhereExample ? { where: uniqueWhereExample, data: {} } : null
   if (updateBodyExample) {
     const firstEditableString = scalarFields.find(
       (sf) => sf.type === 'String' && !sf.isId,

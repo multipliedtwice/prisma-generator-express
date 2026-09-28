@@ -58,15 +58,15 @@ function emitReadOp(
     ? meta.name === 'findMany'
       ? `    if (resolvePostReadsEnabled(config.disablePostReads, opConfig.disablePostReads)) {
       const postPath = basePath ? \`\${basePath}/read\` : '/read'
-      app.post(postPath, handleRead(opConfig, ${handlerName}, parseBodyAsQueryMiddleware, '${opKind}'))
+      app.post(postPath, createReadRoute<TCtx, TPrisma, TEnv>({ config, opConfig, opKind: '${opKind}', handler: ${handlerName}, parse: 'body', dropGuard, settleBeforeHooks: SETTLE_BEFORE_HOOKS }))
     }`
-      : `    if (resolvePostReadsEnabled(config.disablePostReads, opConfig.disablePostReads)) app.post(path, handleRead(opConfig, ${handlerName}, parseBodyAsQueryMiddleware, '${opKind}'))`
+      : `    if (resolvePostReadsEnabled(config.disablePostReads, opConfig.disablePostReads)) app.post(path, createReadRoute<TCtx, TPrisma, TEnv>({ config, opConfig, opKind: '${opKind}', handler: ${handlerName}, parse: 'body', dropGuard, settleBeforeHooks: SETTLE_BEFORE_HOOKS }))`
     : ''
 
   return `  if (isEnabled(config.${meta.configKey})) {
     const opConfig = opFor('${meta.configKey}')
     const path = ${pathValue}
-    app.get(path, handleRead(opConfig, ${handlerName}, parseQueryMiddleware, '${opKind}'))
+    app.get(path, createReadRoute<TCtx, TPrisma, TEnv>({ config, opConfig, opKind: '${opKind}', handler: ${handlerName}, parse: 'query', dropGuard, settleBeforeHooks: SETTLE_BEFORE_HOOKS }))
 ${postReadLine}
   }`
 }
@@ -83,61 +83,19 @@ function emitWriteOp(
   return `  if (isEnabled(config.${meta.configKey})) {
     const opConfig = opFor('${meta.configKey}')
     const path = ${pathValue}
-    app.${meta.method}(path, handleWrite(opConfig, ${handlerName}, '${opKind}'))
+    app.${meta.method}(path, createWriteRoute<TCtx, TPrisma, TEnv>({ config, opConfig, opKind: '${opKind}', handler: ${handlerName}, dropGuard, settleBeforeHooks: SETTLE_BEFORE_HOOKS }))
   }`
 }
 
 /**
  * Guard behaviour is SEVEN INDEPENDENT OPT-IN CONTROLS on the route config.
+ * See routeConfig.ts; the long rationale lives with the controls.
  *
- * 1.64.2 shipped all of it as the default, which was a breaking change to a
- * published package. The first correction put all of it behind one `requireGuard`
- * switch, which was also wrong: these are unrelated decisions, and one switch
- * forces a consumer who wants a missing-guard refusal to also accept a
- * hook-ordering change and lose a route they may be using.
- *
- * Each is now its own option, each defaulting to the pre-1.64.2 behaviour:
- *
- *   - `requireGuardShape`           refuse an operation with no guard
- *   - `validateGuardShapes`         refuse an empty or key-mixing shape
- *   - `requireDefaultVariantOptIn`  confirm a `default` variant
- *   - `enableUpdateEach`            register the batch route (default true)
- *   - `guardResolutionOrder`        settle the guard before or after hooks
- *   - `allowE2EGuardBypass`         honour PGE_DROP_GUARD=true (default true)
- *   - `validateResolvedShapes`      check what a shape function returned
- *
- * `HARDENED_GUARD_PROFILE` selects all seven, as values to spread rather than a
- * mode to store. See routeConfig.ts.
- *
- * Guard dropping is then a GENERATION-TIME decision, never a runtime one.
- *
- * The emitted router used to compute `DROP_GUARD = <flag> || _env.E2E === 'true'`,
- * so setting `E2E=true` in a deployed environment downgraded enforcement even
- * when the generator had been told to keep the guard. The bypass now lives once
- * in the shared runtime as `resolveDropGuardEnv`: it honours `PGE_DROP_GUARD=true`
- * and keeps `E2E=true` working as a deprecated alias with a one-time warning.
- * The two modes are not
- * equivalent: with the guard, the shape goes to prisma-guard; with it dropped,
- * `applyDroppedGuard` applies projection defaults and forced `where` clauses and
- * nothing else is validated against the shape.
- *
- * On an edge runtime that variable is an ordinary config var — set on a staging
- * deployment, copied forward, flagged as security-relevant nowhere. A
- * deployment's guard behaviour has to be a property of the artifact, not of the
- * environment it happens to land in.
- *
- * The rationale lives here rather than in the emitted file on purpose: generated
- * output is an artifact, and a paragraph about a bypass that no longer exists
- * would be copied into every router this generator writes.
- *
- * `updateEach` is refused for the same reason, one step further on — and, again,
- * only under the flag. It bypasses guard shapes by design — the endpoint is a
- * batch of `{ where, data }` items applied directly — and the only thing between
- * it and an unguarded mass mutation is a `console.warn` suppressed in
- * production. A warning is not a security boundary; it is advice to whoever
- * happens to be reading a development log. Refused at construction rather than
- * silently dropped, so a deployment expecting the route learns at boot instead
- * of at the first 404.
+ * Since phase S the orchestration itself is shared: every route is created by
+ * `../routerParts` through the same pipeline stages the other targets and MCP
+ * use, and this factory only decides WHICH routes exist. That module is also
+ * the phase 9 static boundary — per-op route factories live there, so a
+ * bundle importing only selected parts omits the rest.
  */
 export function generateHonoRouterFunction({
   model,
@@ -178,44 +136,38 @@ export function generateHonoRouterFunction({
     .join('\n\n')
 
   return `import { Hono } from 'hono'
-import type { Context } from 'hono'
-import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { HTTPException } from 'hono/http-exception'
 import {
 ${handlerImports}
 } from './${modelName}Handlers${ext}'
 import type {
   RouteConfig,
-  HonoBeforeHook,
-  HonoAfterHook,
   HonoEnvBase,
-  HonoInternalVariables,
   GeneratedHonoEnv,
-  PaginationConfig,
   PrismaClientLike,
 } from '../routeConfig.target${ext}'
-import { parseQueryParams } from '../parseQueryParams${ext}'
-import { normalizePrefix, getEnv, sanitizeKeys, isPlainObject, resolveDropGuardEnv } from '../misc${ext}'
+import { normalizePrefix, getEnv, resolveDropGuardEnv } from '../misc${ext}'
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import {
-  normalizeOperation,
-  resolveOperationVariantKey,
   resolveGuardPolicy,
-  resolveGuardShapeOnce,
-  validateCountSourceWhere,
-  validateOperationConfig,
-  validateUpdateEachConfig,
   resolvePostReadsEnabled,
+  validateCountSourceWhere,
+  validateUpdateEachConfig,
   warnIfUnguardedRoutes,
 } from '../routeConfig${ext}'
-import type { RuntimeOperationOverride } from '../operationRuntime${ext}'
-import type { NormalizedOperationConfig } from '../routeConfig${ext}'
-import { transformResult } from '../operationRuntime${ext}'
-import { mapError } from '../errorMapper${ext}'
-import { formatGuardVariantResolutionError } from '../guardVariantError${ext}'
-import { mergePaginationConfig } from '../pagination${ext}'
-import { applyDroppedGuard } from '../projectionDefaults${ext}'
-import type { OpKind } from '../projectionDefaults${ext}'
+import {
+  createReadRoute,
+  createWriteRoute,
+  createUpdateEachRoute,
+  opConfigFor,
+  normalizeHonoOperation,
+  registerOpenApiRoutes,
+  sendError,
+  type HandlerContext,
+  type HonoOpConfig,
+} from '../routerParts${ext}'
+// The legacy router factory preserves pre-parts behavior: materialized-view
+// counting is registered on import. The per-op parts boundary keeps this
+// module out of opt-in small bundles.
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
 ${generateRouteConfigType(modelName, 'HonoBeforeHook', guardShapesImport, importStyle, 'hono', clientImport)}
@@ -225,247 +177,6 @@ const _env = getEnv()
 // environment can additionally drop the guard at runtime; it defaults to true,
 // which is upstream behaviour. See generateRouterHono.ts.
 const DROP_GUARD = ${dropGuard}
-
-/**
- * DELIBERATELY NOT RECURSIVE.
- *
- * A self-referential JSON type sent through \`c.json()\` makes Hono's response
- * inference instantiate without a fixed point, and TypeScript answers
- * "type instantiation is excessively deep" — in the emitted file, for every
- * consumer. One level is all this needs: the value is serialised, not walked.
- */
-type JsonLike = string | number | boolean | null | unknown[] | Record<string, unknown>
-
-type OperationConfigLike<TEnv extends HonoEnvBase> = {
-  authorize?: HonoBeforeHook<TEnv>
-  override?: RuntimeOperationOverride
-  before?: HonoBeforeHook<TEnv>[]
-  after?: HonoAfterHook<TEnv>[]
-  shape?: unknown
-  variants?: Record<
-    string,
-    {
-      shape?: unknown
-      before?: HonoBeforeHook<TEnv>[]
-      after?: HonoAfterHook<TEnv>[]
-    }
-  >
-  pagination?: Partial<PaginationConfig>
-}
-
-type NormalizedOp<TEnv extends HonoEnvBase> = NormalizedOperationConfig<
-  HonoBeforeHook<TEnv>,
-  HonoAfterHook<TEnv>
->
-
-function normalizeHonoOperation<TEnv extends HonoEnvBase>(
-  config: OperationConfigLike<TEnv> | undefined,
-): NormalizedOp<TEnv> {
-  return normalizeOperation<HonoBeforeHook<TEnv>, HonoAfterHook<TEnv>>(config)
-}
-
-type HandlerContext = Context<{ Variables: HonoInternalVariables }>
-
-async function parseQueryMiddleware(c: HandlerContext): Promise<void> {
-  const raw = c.req.query() as Record<string, unknown>
-  if (raw && Object.keys(raw).length > 0) {
-    c.set('parsedQuery', parseQueryParams(raw) as Record<string, unknown>)
-  }
-}
-
-async function parseBodyAsQueryMiddleware(c: HandlerContext): Promise<void> {
-  let body: unknown
-  try {
-    body = await c.req.json()
-  } catch {
-    throw new HTTPException(400, { message: 'Request body must be a JSON object' })
-  }
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    throw new HTTPException(400, { message: 'Request body must be a JSON object' })
-  }
-  c.set('parsedQuery', sanitizeKeys(body as Record<string, unknown>))
-}
-
-async function parseUpdateEachBodyMiddleware(c: HandlerContext): Promise<void> {
-  let body: unknown
-  try {
-    body = await c.req.json()
-  } catch {
-    throw new HTTPException(400, { message: 'updateEach body must be an array of { where, data } items' })
-  }
-  if (!Array.isArray(body)) {
-    throw new HTTPException(400, { message: 'updateEach body must be an array of { where, data } items' })
-  }
-  c.set('body', body)
-}
-
-async function parseWriteBodyMiddleware(c: HandlerContext): Promise<void> {
-  let body: unknown
-  try {
-    body = await c.req.json()
-  } catch {
-    throw new HTTPException(400, { message: 'Request body must be a JSON object' })
-  }
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    throw new HTTPException(400, { message: 'Request body must be a JSON object' })
-  }
-  c.set('body', body)
-}
-
-function makeShapeMiddleware<TCtx, TPrisma extends PrismaClientLike, TEnv extends HonoEnvBase>(
-  config: ${modelName}RouteConfig<TCtx, TPrisma, TEnv>,
-  opConfig: NormalizedOp<TEnv>,
-  opKind: OpKind,
-) {
-  const policy = resolveGuardPolicy(config)
-
-  /**
-   * The environment bypass, honoured unless the consumer turned it off.
-   *
-   * \`PGE_DROP_GUARD=true\` downgrading enforcement in a deployed environment is
-   * a real hazard, and it is also upstream behaviour (under its deprecated
-   * \`E2E=true\` spelling) — so it is a control, not a decision made here.
-   */
-  const dropGuard = DROP_GUARD || (policy.allowE2EGuardBypass && resolveDropGuardEnv(_env))
-
-  return async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<void> => {
-    /**
-     * INTERNAL REQUEST STATE IS SET THROUGH A CONCRETE CONTEXT.
-     *
-     * \`GeneratedHonoEnv<TEnv>['Variables']\` is \`HonoInternalVariables & TEnv['Variables']\`,
-     * and inside this generic function TypeScript cannot know that the consumer's
-     * half does not also declare \`routeConfig\` — so setting that key straight
-     * onto \`c\` is unassignable to the intersection and the emitted router does not
-     * typecheck under \`strict\` for ANY consumer. These keys belong to this
-     * router, so they are written through the internal shape they were declared
-     * in.
-     */
-    const vars = c as unknown as HandlerContext
-    vars.set('operationOverride', opConfig.override)
-    let context: Promise<unknown> | undefined
-    vars.set('resolveOperationContext', () => context ??= Promise.resolve(config.resolveContext?.(c)))
-
-    const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
-    if (merged) vars.set('routeConfig', { pagination: merged })
-
-    const headerName = config.guard?.variantHeader || 'x-api-variant'
-    const headerValue = c.req.header(headerName)
-    const caller = config.guard?.resolveVariant?.(c) ?? headerValue ?? undefined
-    if (typeof caller === 'string') vars.set('guardCaller', caller)
-
-    const resolution = resolveOperationVariantKey(opConfig.guardRouting, caller)
-    if (!resolution.ok) {
-      vars.set('guardVariantFailure', resolution)
-      return
-    }
-
-    const resolvedKey =
-      opConfig.guardRouting.kind === 'named'
-        ? resolution.key
-        : undefined
-    if (resolvedKey !== undefined) vars.set('guardVariantKey', resolvedKey)
-
-    if (opConfig.guardShape) {
-      const resolveCtx = typeof config.resolveContext === 'function'
-        ? vars.get('resolveOperationContext')
-        : undefined
-
-      /**
-       * With \`validateResolvedShapes\`, resolved ONCE here and the validated value
-       * is what travels onward — see resolveGuardShapeOnce. Passing the function
-       * on would let it return a different shape when it is enforced than when it
-       * was checked.
-       *
-       * Without it the raw shape is passed through untouched, which is upstream
-       * behaviour: it is resolved at the point of use, and a function returning
-       * something unusable is not this router's business to refuse.
-       */
-      let effectiveShape: Record<string, unknown> | undefined = opConfig.guardShape
-      if (policy.validateResolvedShapes) {
-        const resolution = await resolveGuardShapeOnce(opConfig.guardShape, resolvedKey, resolveCtx)
-        if (!resolution.ok) {
-          vars.set('guardShapeFailure', resolution.problem)
-          return
-        }
-        // \`ok\` means the resolved value is a shape object; the fallback keeps the
-        // declared shape rather than storing something the context cannot hold.
-        effectiveShape = isPlainObject(resolution.shape) ? resolution.shape : opConfig.guardShape
-      }
-
-      if (!dropGuard) {
-        vars.set('guardShape', effectiveShape)
-      } else {
-        await applyDroppedGuard(
-          effectiveShape,
-          resolvedKey,
-          resolveCtx,
-          opKind,
-          {
-            readQuery: vars.get('parsedQuery'),
-            writeBody: isPlainObject(vars.get('body'))
-              ? (vars.get('body') as Record<string, unknown>)
-              : undefined,
-          },
-          () => {
-            let target = vars.get('parsedQuery')
-            if (!target) {
-              target = {}
-              vars.set('parsedQuery', target)
-            }
-            return target
-          },
-          () => {
-            let target = vars.get('body')
-            if (!isPlainObject(target)) {
-              target = {}
-              vars.set('body', target)
-            }
-            return target as Record<string, unknown>
-          },
-        )
-      }
-    }
-  }
-}
-
-async function runBeforeHooks<TEnv extends HonoEnvBase>(
-  hooks: readonly HonoBeforeHook<TEnv>[],
-  c: Context<GeneratedHonoEnv<TEnv>>,
-): Promise<Response | undefined> {
-  for (const hook of hooks) {
-    const result = await hook(c)
-    if (result instanceof Response) return result
-  }
-  return undefined
-}
-
-async function runAfterHooks<TEnv extends HonoEnvBase>(
-  hooks: readonly HonoAfterHook<TEnv>[],
-  c: Context<GeneratedHonoEnv<TEnv>>,
-): Promise<Response | undefined> {
-  for (const hook of hooks) {
-    const result = await hook(c)
-    if (result instanceof Response) return result
-  }
-  return undefined
-}
-
-function sendResult(c: HandlerContext): Response {
-  const data = c.get('resultData')
-  const status = (c.get('resultStatus') as number | undefined) ?? 200
-  if (data === undefined) {
-    throw new HTTPException(500, { message: 'No data set by handler' })
-  }
-  return c.json(transformResult(data) as JsonLike, status as ContentfulStatusCode)
-}
-
-function sendError(c: HandlerContext, error: unknown): Response {
-  if (error instanceof HTTPException) {
-    return c.json({ message: error.message }, error.status as ContentfulStatusCode)
-  }
-  const httpError = mapError(error)
-  return c.json({ message: httpError.message }, httpError.status as ContentfulStatusCode)
-}
 
 export function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClientLike = PrismaClientLike, TEnv extends HonoEnvBase = HonoEnvBase>(config: ${modelName}RouteConfig<TCtx, TPrisma, TEnv> = {}): Hono<GeneratedHonoEnv<TEnv>> {
   validateCountSourceWhere(config.pagination?.countSource, '${modelName} pagination')
@@ -480,15 +191,32 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClie
   warnIfUnguardedRoutes('${modelName}', ['findMany', 'findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findManyPaginated', 'count', 'aggregate', 'groupBy', 'create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'updateManyAndReturn', 'upsert', 'delete', 'deleteMany'], config, isEnabled)
 
   const customPrefix = normalizePrefix(config.customUrlPrefix || '')
-    const modelPrefix = config.addModelPrefix !== false ? '/${modelSegment}' : ''
+  const modelPrefix = config.addModelPrefix !== false ? '/${modelSegment}' : ''
   const basePath = customPrefix + modelPrefix
+
+  const POLICY = resolveGuardPolicy(config)
+  const SETTLE_BEFORE_HOOKS = POLICY.guardResolutionOrder === 'before-hooks'
+
+  /**
+   * The environment bypass, honoured unless the consumer turned it off.
+   * \`PGE_DROP_GUARD=true\` downgrading enforcement in a deployed environment is
+   * a real hazard, and it is also upstream behaviour (under its deprecated
+   * \`E2E=true\` spelling) — so it is a control, not a decision made here.
+   */
+  const dropGuard = DROP_GUARD || (POLICY.allowE2EGuardBypass && resolveDropGuardEnv(_env))
+
+  const opFor = <K extends keyof ${modelName}RouteConfig<TCtx, TPrisma, TEnv>>(
+    key: K,
+  ): HonoOpConfig<TEnv> => {
+    const raw = config[key] as unknown as Parameters<typeof normalizeHonoOperation<TEnv>>[0]
+    return opConfigFor<TEnv>(raw, '${modelName}.' + String(key), POLICY)
+  }
 
   const openApiDisabled = config.disableOpenApi === true
     || (config.disableOpenApi !== false && (
       _env.NODE_ENV === 'production'
       || _env.DISABLE_OPENAPI === 'true'
     ))
-
 
   let _openApiJsonCache: unknown = undefined
   const getOpenApiJson = (): unknown => {
@@ -529,129 +257,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClie
   })
 
   if (!openApiDisabled) {
-    const openapiJsonPath = basePath ? \`\${basePath}/openapi.json\` : '/openapi.json'
-    const openapiYamlPath = basePath ? \`\${basePath}/openapi.yaml\` : '/openapi.yaml'
-    app.get(openapiJsonPath, (c) => c.json(getOpenApiJson() as JsonLike))
-    app.get(openapiYamlPath, (c) => {
-      c.header('Content-Type', 'application/yaml')
-      return c.body(getOpenApiYaml())
-    })
-  }
-
-  const POLICY = resolveGuardPolicy(config)
-  const SETTLE_BEFORE_HOOKS = POLICY.guardResolutionOrder === 'before-hooks'
-
-  /**
-   * The guard-resolution failures, raised in one place so both handlers and both
-   * orderings share exactly one definition of what a failure is.
-   *
-   * WHERE it is called is the behavioural difference, and it is the
-   * \`guardResolutionOrder\` control. \`'before-hooks'\` runs it before any operation
-   * hook, because a hook that returns a Response — an auth gate, a cache, a
-   * short-circuit for a known caller — would otherwise answer a request whose
-   * guard was never established. \`'after-hooks'\` is upstream behaviour.
-   *
-   * \`guardShapeFailure\` is only ever set when \`validateResolvedShapes\` is on, so
-   * that branch is inert rather than merely unreached when it is off.
-   */
-  const settleGuard = (c: Context<GeneratedHonoEnv<TEnv>>): void => {
-    const vars = c as unknown as HandlerContext
-    const failure = vars.get('guardVariantFailure')
-    if (failure) {
-      throw new HTTPException(400, {
-        message: formatGuardVariantResolutionError(failure),
-      })
-    }
-
-    const shapeFailure = vars.get('guardShapeFailure')
-    if (shapeFailure) {
-      throw new HTTPException(500, {
-        message: 'guard shape could not be resolved: ' + shapeFailure,
-      })
-    }
-  }
-
-  const handleRead = (
-    opConfig: NormalizedOp<TEnv>,
-    handlerFn: (c: HandlerContext) => Promise<void>,
-    parseFn: (c: HandlerContext) => Promise<void>,
-    opKind: OpKind,
-  ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
-    try {
-      const authorized = await runBeforeHooks<TEnv>(opConfig.authorize ? [opConfig.authorize] : [], c)
-      if (authorized) return authorized
-      await parseFn(c as unknown as HandlerContext)
-      await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
-
-      // Settled BEFORE any hook can answer the request, when asked for.
-      if (SETTLE_BEFORE_HOOKS) settleGuard(c)
-
-      const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
-      if (operationBefore) return operationBefore
-
-      // Upstream order: hooks first, guard failure after.
-      if (!SETTLE_BEFORE_HOOKS) settleGuard(c)
-
-      const key = (c as unknown as HandlerContext).get('guardVariantKey')
-      const variantHooks =
-        key !== undefined ? opConfig.variantHooks[key] : undefined
-
-      const variantBefore = await runBeforeHooks<TEnv>(variantHooks?.before ?? [], c)
-      if (variantBefore) return variantBefore
-      await handlerFn(c as unknown as HandlerContext)
-      const variantAfter = await runAfterHooks<TEnv>(variantHooks?.after ?? [], c)
-      if (variantAfter) return variantAfter
-      const operationAfter = await runAfterHooks<TEnv>(opConfig.operationAfter, c)
-      if (operationAfter) return operationAfter
-      return sendResult(c as unknown as HandlerContext)
-    } catch (error: unknown) {
-      return sendError(c as unknown as HandlerContext, error)
-    }
-  }
-
-  const handleWrite = (
-    opConfig: NormalizedOp<TEnv>,
-    handlerFn: (c: HandlerContext) => Promise<void>,
-    opKind: OpKind,
-  ) => async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
-    try {
-      const authorized = await runBeforeHooks<TEnv>(opConfig.authorize ? [opConfig.authorize] : [], c)
-      if (authorized) return authorized
-      await parseWriteBodyMiddleware(c as unknown as HandlerContext)
-      await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, opKind)(c)
-
-      // Settled BEFORE any hook can answer the request, when asked for.
-      if (SETTLE_BEFORE_HOOKS) settleGuard(c)
-
-      const operationBefore = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
-      if (operationBefore) return operationBefore
-
-      // Upstream order: hooks first, guard failure after.
-      if (!SETTLE_BEFORE_HOOKS) settleGuard(c)
-
-      const key = (c as unknown as HandlerContext).get('guardVariantKey')
-      const variantHooks =
-        key !== undefined ? opConfig.variantHooks[key] : undefined
-
-      const variantBefore = await runBeforeHooks<TEnv>(variantHooks?.before ?? [], c)
-      if (variantBefore) return variantBefore
-      await handlerFn(c as unknown as HandlerContext)
-      const variantAfter = await runAfterHooks<TEnv>(variantHooks?.after ?? [], c)
-      if (variantAfter) return variantAfter
-      const operationAfter = await runAfterHooks<TEnv>(opConfig.operationAfter, c)
-      if (operationAfter) return operationAfter
-      return sendResult(c as unknown as HandlerContext)
-    } catch (error: unknown) {
-      return sendError(c as unknown as HandlerContext, error)
-    }
-  }
-
-  const opFor = <K extends keyof ${modelName}RouteConfig<TCtx, TPrisma, TEnv>>(
-    key: K,
-  ): NormalizedOp<TEnv> => {
-    const raw = config[key] as unknown as OperationConfigLike<TEnv> | undefined
-    validateOperationConfig(raw, '${modelName}.' + String(key), POLICY)
-    return normalizeHonoOperation(raw)
+    registerOpenApiRoutes(app, basePath, getOpenApiJson, getOpenApiYaml)
   }
 
 ${readOpBlocks}
@@ -664,9 +270,6 @@ ${writeOpBlocks}
      * endpoint is a batch of { where, data } applied directly — and the only thing
      * between it and an unguarded mass mutation is a console.warn suppressed in
      * production. A warning is not a security boundary.
-     *
-     * Removing the route outright was a breaking change to a published package,
-     * so by default it registers exactly as it did, warning and all.
      */
     if (!POLICY.enableUpdateEach) {
       throw new Error(
@@ -678,9 +281,9 @@ ${writeOpBlocks}
       )
     }
 
-    const rawUpdateEach = config.updateEach as unknown as OperationConfigLike<TEnv>
+    const rawUpdateEach = config.updateEach as unknown as Parameters<typeof normalizeHonoOperation<TEnv>>[0]
     validateUpdateEachConfig(rawUpdateEach, '${modelName}.updateEach')
-    const opConfig = normalizeHonoOperation(rawUpdateEach)
+    const opConfig = normalizeHonoOperation<TEnv>(rawUpdateEach)
     if (opConfig.operationBefore.length === 0 && _env.NODE_ENV !== 'production') {
       console.warn(
         '[${modelName}Router] updateEach is enabled without a before hook. ' +
@@ -688,20 +291,7 @@ ${writeOpBlocks}
       )
     }
     const path = basePath ? \`\${basePath}/each\` : '/each'
-    app.post(path, async (c: Context<GeneratedHonoEnv<TEnv>>): Promise<Response> => {
-      try {
-        await parseUpdateEachBodyMiddleware(c as unknown as HandlerContext)
-        await makeShapeMiddleware<TCtx, TPrisma, TEnv>(config, opConfig, 'noop')(c)
-        const beforeResponse = await runBeforeHooks<TEnv>(opConfig.operationBefore, c)
-        if (beforeResponse) return beforeResponse
-        await ${modelName}UpdateEach(c as unknown as HandlerContext)
-        const afterResponse = await runAfterHooks<TEnv>(opConfig.operationAfter, c)
-        if (afterResponse) return afterResponse
-        return sendResult(c as unknown as HandlerContext)
-      } catch (error: unknown) {
-        return sendError(c as unknown as HandlerContext, error)
-      }
-    })
+    app.post(path, createUpdateEachRoute<TCtx, TPrisma, TEnv>({ config, opConfig, handler: ${modelName}UpdateEach, dropGuard }))
   }
 
   return app

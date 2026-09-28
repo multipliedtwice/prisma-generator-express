@@ -39,6 +39,12 @@ export async function writeFileSafely({
     case 'relationModelsIndex':
       filePath = path.join(outputPath, 'relationModels.ts')
       break
+    case 'mcpApp':
+      filePath = path.join(outputPath, 'mcp.ts')
+      break
+    case 'mcpMount':
+      filePath = path.join(outputPath, 'mcpMount.ts')
+      break
     default:
       if (!model) throw new Error('Model required for operation: ' + operation)
       filePath = path.join(

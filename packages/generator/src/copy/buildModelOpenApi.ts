@@ -1,5 +1,9 @@
 import { stringify as yamlStringify } from 'yaml'
-import type { RouteConfig, WriteStrategy } from './routeConfig'
+import type {
+  RouteConfig,
+  WriteStrategy,
+  OpenApiSecuritySchemeConfig,
+} from './routeConfig'
 import { OPERATION_BY_NAME, isOperationEnabled } from './operationDefinitions'
 import { normalizePrefix, removeTrailingSlash } from './misc'
 import { NUMERIC_SCALAR_TYPES, STRING_NUMERIC_TYPES } from './scalarTypes'
@@ -20,14 +24,51 @@ type SchemaObject = {
 
 type RefObject = { $ref: string; description?: string }
 
+type ContentObject = {
+  'application/json'?: { schema: SchemaObject | RefObject }
+  'application/yaml'?: { schema: SchemaObject | RefObject }
+}
+
+type ResponseObject = {
+  description: string
+  content?: ContentObject
+}
+
+type RequestBodyObject = {
+  required?: boolean
+  content: ContentObject
+}
+
+type ParameterSchema = Record<string, string | string[]>
+
+type ParameterObject = {
+  name: string
+  in: 'query' | 'header'
+  schema?: ParameterSchema
+  description?: string
+  required?: boolean
+}
+
+type OperationObject = {
+  tags?: string[]
+  summary?: string
+  operationId?: string
+  description?: string
+  parameters?: ParameterObject[]
+  requestBody?: RequestBodyObject
+  responses: Record<string, ResponseObject>
+}
+
+type PathItem = Record<string, OperationObject>
+
 type OpenApiSpec = {
   openapi: string
   info: { title: string; description: string; version: string }
   servers?: Array<{ url: string; description?: string }>
-  paths: Record<string, any>
+  paths: Record<string, PathItem>
   components: {
     schemas: Record<string, SchemaObject>
-    securitySchemes?: Record<string, any>
+    securitySchemes?: Record<string, OpenApiSecuritySchemeConfig>
   }
   security?: Array<Record<string, string[]>>
 }
@@ -125,7 +166,7 @@ const AGGREGATE_PROPS: Record<string, SchemaObject> = {
 
 function opEnabled(config: RouteConfig, name: string): boolean {
   const meta = OPERATION_BY_NAME[name]
-  return meta ? isOperationEnabled(config as Record<string, any>, meta) : false
+  return meta ? isOperationEnabled(config, meta) : false
 }
 
 function opPath(basePath: string, name: string): string {
@@ -160,7 +201,10 @@ const COMMON_ERRORS: Record<number, string> = {
   503: 'Service unavailable — database connection pool timeout',
 }
 
-function addErrorResponses(operation: any, codes: readonly number[]): void {
+function addErrorResponses(
+  operation: OperationObject,
+  codes: readonly number[],
+): void {
   for (const code of codes) {
     operation.responses[String(code)] = errorResponse(
       COMMON_ERRORS[code] || 'Error',
@@ -174,7 +218,7 @@ function queryParam(
   schema: Record<string, string> = { type: 'string' },
   required?: boolean,
 ) {
-  const param: any = { name, in: 'query' as const, schema, description }
+  const param: ParameterObject = { name, in: 'query', schema, description }
   if (required) param.required = true
   return param
 }
@@ -219,101 +263,7 @@ function listScalarUpdateOperations(
   }
 }
 
-function findManyBodySchema(): SchemaObject {
-  return {
-    type: 'object',
-    properties: {
-      where: WHERE_PROP,
-      orderBy: ORDERBY_PROP,
-      take: TAKE_PROP,
-      skip: SKIP_PROP,
-      ...PROJECTION_PROPS,
-      cursor: CURSOR_PROP,
-      distinct: DISTINCT_PROP,
-    },
-  }
-}
-
-function findUniqueBodySchema(): SchemaObject {
-  return {
-    type: 'object',
-    properties: {
-      where: { type: 'object', description: 'Unique selector' },
-      ...PROJECTION_PROPS,
-    },
-    required: ['where'],
-  }
-}
-
-function countBodySchema(): SchemaObject {
-  return {
-    type: 'object',
-    properties: {
-      where: WHERE_PROP,
-      orderBy: { description: 'Sort order' },
-      take: TAKE_PROP,
-      skip: SKIP_PROP,
-      cursor: CURSOR_PROP,
-      select: {
-        description:
-          'Count specific fields. When provided, returns per-field counts as an object instead of a single integer.',
-      },
-    },
-  }
-}
-
-function aggregateBodySchema(): SchemaObject {
-  return {
-    type: 'object',
-    properties: {
-      where: WHERE_PROP,
-      orderBy: { description: 'Sort order' },
-      cursor: CURSOR_PROP,
-      take: TAKE_PROP,
-      skip: SKIP_PROP,
-      ...AGGREGATE_PROPS,
-    },
-  }
-}
-
-function groupByBodySchema(): SchemaObject {
-  return {
-    type: 'object',
-    properties: {
-      by: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Fields to group by',
-      },
-      where: WHERE_PROP,
-      orderBy: { description: 'Sort order. Required when using skip or take.' },
-      having: {
-        type: 'object',
-        description: 'Having conditions (filter object)',
-      },
-      take: TAKE_PROP,
-      skip: SKIP_PROP,
-      ...AGGREGATE_PROPS,
-    },
-    required: ['by'],
-  }
-}
-
-const POST_READ_BODY_SCHEMAS: Record<string, () => SchemaObject> = {
-  findMany: findManyBodySchema,
-  findFirst: findManyBodySchema,
-  findFirstOrThrow: findManyBodySchema,
-  findManyPaginated: findManyBodySchema,
-  findUnique: findUniqueBodySchema,
-  findUniqueOrThrow: findUniqueBodySchema,
-  count: countBodySchema,
-  aggregate: aggregateBodySchema,
-  groupBy: groupByBodySchema,
-}
-
-function getPostReadBodySchema(opName: string): SchemaObject {
-  return (POST_READ_BODY_SCHEMAS[opName] ?? findManyBodySchema)()
-}
+import { getPostReadBodySchema } from './operationSchemas'
 
 function applyWriteStrategy(
   spec: OpenApiSpec,
@@ -341,14 +291,14 @@ function applyWriteStrategy(
   }
 
   const injectProjectionAndArrayResponse = (
-    op: any,
+    op: OperationObject,
     successCode: '200' | '201',
     summary: string,
     description: string,
   ): void => {
     op.summary = summary
     op.description = description
-    const r = op.responses?.[successCode]
+    const r = op.responses[successCode]
     if (r?.content?.['application/json']) {
       r.content['application/json'].schema = {
         type: 'array',
@@ -356,7 +306,7 @@ function applyWriteStrategy(
       }
     }
     const reqSchema = op.requestBody?.content?.['application/json']?.schema
-    if (reqSchema && reqSchema.properties) {
+    if (reqSchema && !('$ref' in reqSchema) && reqSchema.properties) {
       Object.assign(reqSchema.properties, PROJECTION_PROPS)
     }
   }
@@ -808,11 +758,11 @@ function addPostReadOperation(
   modelName: string,
   opName: string,
   summary: string,
-  responseSchema: any,
+  responseSchema: SchemaObject | RefObject,
   errorCodes: readonly number[],
   description?: string,
 ) {
-  const op: any = {
+  const op: OperationObject = {
     tags: [modelName],
     summary: summary + ' (POST)',
     operationId: `${modelName}${opName.charAt(0).toUpperCase() + opName.slice(1)}Post`,
@@ -889,7 +839,7 @@ function generatePaths(
 
   if (opEnabled(config, 'findMany')) {
     const meta = OPERATION_BY_NAME['findMany']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `List ${modelName}`,
       operationId: `${modelName}FindMany`,
@@ -923,7 +873,7 @@ function generatePaths(
 
   if (opEnabled(config, 'findUnique')) {
     const meta = OPERATION_BY_NAME['findUnique']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Get ${modelName} by unique constraint`,
       operationId: `${modelName}FindUnique`,
@@ -956,7 +906,7 @@ function generatePaths(
 
   if (opEnabled(config, 'findUniqueOrThrow')) {
     const meta = OPERATION_BY_NAME['findUniqueOrThrow']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Get ${modelName} by unique constraint (throws if not found)`,
       operationId: `${modelName}FindUniqueOrThrow`,
@@ -986,7 +936,7 @@ function generatePaths(
 
   if (opEnabled(config, 'findFirst')) {
     const meta = OPERATION_BY_NAME['findFirst']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Get first ${modelName}`,
       operationId: `${modelName}FindFirst`,
@@ -1018,7 +968,7 @@ function generatePaths(
 
   if (opEnabled(config, 'findFirstOrThrow')) {
     const meta = OPERATION_BY_NAME['findFirstOrThrow']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Get first ${modelName} (throws if not found)`,
       operationId: `${modelName}FindFirstOrThrow`,
@@ -1048,7 +998,7 @@ function generatePaths(
 
   if (opEnabled(config, 'findManyPaginated')) {
     const meta = OPERATION_BY_NAME['findManyPaginated']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `List ${modelName} with pagination`,
       operationId: `${modelName}FindManyPaginated`,
@@ -1081,7 +1031,7 @@ function generatePaths(
 
   if (opEnabled(config, 'create')) {
     const meta = OPERATION_BY_NAME['create']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Create ${modelName}`,
       operationId: `${modelName}Create`,
@@ -1113,7 +1063,7 @@ function generatePaths(
 
   if (opEnabled(config, 'createMany')) {
     const meta = OPERATION_BY_NAME['createMany']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Create many ${modelName}`,
       operationId: `${modelName}CreateMany`,
@@ -1149,7 +1099,7 @@ function generatePaths(
 
   if (opEnabled(config, 'createManyAndReturn')) {
     const meta = OPERATION_BY_NAME['createManyAndReturn']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Create many ${modelName} and return records`,
       operationId: `${modelName}CreateManyAndReturn`,
@@ -1190,7 +1140,7 @@ function generatePaths(
 
   if (opEnabled(config, 'update')) {
     const meta = OPERATION_BY_NAME['update']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Update ${modelName}`,
       operationId: `${modelName}Update`,
@@ -1223,7 +1173,7 @@ function generatePaths(
 
   if (opEnabled(config, 'updateMany')) {
     const meta = OPERATION_BY_NAME['updateMany']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Update many ${modelName}`,
       operationId: `${modelName}UpdateMany`,
@@ -1255,7 +1205,7 @@ function generatePaths(
 
   if (opEnabled(config, 'updateManyAndReturn')) {
     const meta = OPERATION_BY_NAME['updateManyAndReturn']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Update many ${modelName} and return records`,
       operationId: `${modelName}UpdateManyAndReturn`,
@@ -1292,7 +1242,7 @@ function generatePaths(
 
   if (opEnabled(config, 'upsert')) {
     const meta = OPERATION_BY_NAME['upsert']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Upsert ${modelName}`,
       operationId: `${modelName}Upsert`,
@@ -1326,7 +1276,7 @@ function generatePaths(
 
   if (opEnabled(config, 'delete')) {
     const meta = OPERATION_BY_NAME['delete']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Delete ${modelName}`,
       operationId: `${modelName}Delete`,
@@ -1358,7 +1308,7 @@ function generatePaths(
 
   if (opEnabled(config, 'deleteMany')) {
     const meta = OPERATION_BY_NAME['deleteMany']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Delete many ${modelName}`,
       operationId: `${modelName}DeleteMany`,
@@ -1387,7 +1337,7 @@ function generatePaths(
 
   if (opEnabled(config, 'count')) {
     const meta = OPERATION_BY_NAME['count']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Count ${modelName}`,
       operationId: `${modelName}Count`,
@@ -1444,7 +1394,7 @@ function generatePaths(
 
   if (opEnabled(config, 'aggregate')) {
     const meta = OPERATION_BY_NAME['aggregate']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Aggregate ${modelName}`,
       operationId: `${modelName}Aggregate`,
@@ -1474,7 +1424,7 @@ function generatePaths(
 
   if (opEnabled(config, 'groupBy')) {
     const meta = OPERATION_BY_NAME['groupBy']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Group ${modelName}`,
       operationId: `${modelName}GroupBy`,
@@ -1511,7 +1461,7 @@ function generatePaths(
 
   if (opEnabled(config, 'updateEach')) {
     const meta = OPERATION_BY_NAME['updateEach']
-    const op: any = {
+    const op: OperationObject = {
       tags: [modelName],
       summary: `Update each ${modelName} (batch)`,
       operationId: `${modelName}UpdateEach`,
@@ -1558,7 +1508,7 @@ function addPath(
   spec: OpenApiSpec,
   path: string,
   method: string,
-  operation: any,
+  operation: OperationObject,
 ) {
   if (!spec.paths[path]) {
     spec.paths[path] = {}

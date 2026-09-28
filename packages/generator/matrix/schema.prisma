@@ -15,6 +15,7 @@ datasource db {
 generator express {
   provider = "./dist/bin.js"
   output   = "./generated"
+  mcp      = true
 }
 
 model User {

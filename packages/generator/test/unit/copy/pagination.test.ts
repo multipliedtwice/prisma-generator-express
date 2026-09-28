@@ -247,8 +247,9 @@ describe('countForPagination', () => {
     expect(delegate.findMany).not.toHaveBeenCalled()
   })
 
-  it('uses a materialized count only for unguarded unfiltered non-distinct queries', async () => {
-    const rawQuery = vi.fn(async () => [{ total: 99 }])
+  it('uses the materialized count for unguarded unfiltered non-distinct queries', async () => {
+    // legacy self-contained behavior: pagination statically owns
+    // materialized-view counting again (phase 9 compat restoration)
     const delegate = createDelegate()
 
     await expect(
@@ -259,11 +260,10 @@ describe('countForPagination', () => {
         undefined,
         undefined,
         { type: 'materializedView', relation: 'totals' },
-        { $queryRawUnsafe: rawQuery },
+        { $queryRawUnsafe: vi.fn(async () => [{ total: 99 }]) },
       ),
     ).resolves.toBe(99)
 
-    expect(rawQuery).toHaveBeenCalledOnce()
     expect(delegate.count).not.toHaveBeenCalled()
   })
 

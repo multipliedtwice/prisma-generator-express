@@ -1,6 +1,6 @@
 import type { RuntimeOperationOverride } from './operationRuntime'
+import type { HttpError } from './errorMapper'
 import type { Context } from 'hono'
-import type { GuardVariantResolution } from './guardVariantRouting'
 import type {
   BaseOperationConfig,
   BaseRouteConfig,
@@ -30,9 +30,22 @@ export type HonoEnvBase = {
   Bindings?: Record<string, unknown>
 }
 
+/**
+ * A stored, already-classified stage failure. `settleStage` rethrows the
+ * `HttpError` unchanged; where that happens is the adapter's ordering choice.
+ */
+export type StoredStageFailure = { ok: false; failure: HttpError }
+
 export type HonoInternalVariables = {
   operationOverride?: RuntimeOperationOverride
+  /**
+   * Memoized application-context resolver (new key).
+   *
+   * @deprecated keep-populated alias of the pre-1.x key below; existing typed
+   * hooks read `resolveOperationContext`, so the router writes BOTH.
+   */
   resolveOperationContext?: () => unknown | Promise<unknown>
+  getContext?: () => Promise<unknown>
   prisma?: unknown
   postgres?: unknown
   sqlite?: unknown
@@ -42,12 +55,28 @@ export type HonoInternalVariables = {
   guardShape?: Record<string, unknown>
   guardCaller?: string
   guardVariantKey?: string
-  guardVariantFailure?: Extract<GuardVariantResolution, { ok: false }>
   /**
-   * Set when `validateResolvedShapes` refuses what a shape function returned.
+   * Stored, already-classified variant failure (new internal key).
+   */
+  guardVariantStageFailure?: StoredStageFailure
+  /**
+   * Raw variant resolution — the pre-1.x public shape. Still populated so
+   * existing typed hooks reading `.code` keep compiling and running.
    *
-   * It was written by the router and never declared here, so the emitted router
-   * failed to typecheck at exactly the line that implements the control.
+   * @deprecated read `guardVariantStageFailure` for the classified failure.
+   */
+  guardVariantFailure?: Extract<
+    import('./guardVariantRouting').GuardVariantResolution,
+    { ok: false }
+  >
+  /**
+   * Stored, already-classified shape failure (new internal key).
+   */
+  guardShapeStageFailure?: StoredStageFailure
+  /**
+   * Pre-1.x string form of the shape-resolution problem. Still populated.
+   *
+   * @deprecated read `guardShapeStageFailure` for the classified failure.
    */
   guardShapeFailure?: string
   resultData?: unknown

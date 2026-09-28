@@ -372,10 +372,10 @@ describe('the emitted router reads each control separately', () => {
   })
 
   it('gates each runtime behaviour on its own control', () => {
-    expect(out, 'E2E bypass').toContain('policy.allowE2EGuardBypass')
-    expect(out, 'resolved-shape validation').toContain(
-      'policy.validateResolvedShapes',
-    )
+    expect(out, 'E2E bypass').toContain('POLICY.allowE2EGuardBypass')
+    // resolved-shape validation and hook-ordering execution live in the shared
+    // routerParts runtime now; the router forwards POLICY there, whole.
+    expect(out, 'policy forwarding').toContain("opConfigFor<TEnv>(raw, '")
     expect(out, 'hook ordering').toContain(
       "POLICY.guardResolutionOrder === 'before-hooks'",
     )
@@ -386,7 +386,7 @@ describe('the emitted router reads each control separately', () => {
     // Rather than three booleans threaded separately, which is how one of them
     // ends up forgotten at a call site.
     expect(out).toMatch(
-      /validateOperationConfig\(raw, '.*' \+ String\(key\), POLICY\)/,
+      /opConfigFor<TEnv>\(raw, '.*' \+ String\(key\), POLICY\)/,
     )
   })
 })

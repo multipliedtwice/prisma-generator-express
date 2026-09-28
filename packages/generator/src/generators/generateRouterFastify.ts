@@ -145,7 +145,6 @@ import { sanitizeKeys, normalizePrefix, getEnv, isPlainObject, resolveDropGuardE
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import {
   normalizeOperation,
-  resolveOperationVariantKey,
   validateCountSourceWhere,
   validateOperationConfig,
   validateUpdateEachConfig,
@@ -157,10 +156,15 @@ import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import type { OperationContext } from '../operationRuntime${ext}'
 import { transformResult } from '../operationRuntime${ext}'
 import { HttpError, mapError } from '../errorMapper${ext}'
-import { formatGuardVariantResolutionError } from '../guardVariantError${ext}'
-import type { GuardVariantResolution } from '../guardVariantRouting${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
-import { applyDroppedGuard } from '../projectionDefaults${ext}'
+import {
+  routeOperation,
+  prepareGuardOperation,
+  settleStage,
+  classifyError,
+  memoizeContext,
+  type ArgsChannel,
+} from '../operationPipeline${ext}'
 import type { OpKind } from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
@@ -204,11 +208,34 @@ type FastifyExtended = FastifyRequest & {
   guardShape?: Record<string, unknown>
   guardCaller?: string
   operationOverride?: RuntimeOperationOverride
-  resolveOperationContext?: () => unknown | Promise<unknown>
+  getContext?: () => Promise<unknown>
   guardVariantKey?: string
-  guardVariantFailure?: Extract<GuardVariantResolution, { ok: false }>
+  routeFailure?: { ok: false; failure: HttpError }
+  guardFailure?: { ok: false; failure: HttpError }
   resultData?: unknown
   resultStatus?: number
+}
+
+function queryChannel(request: FastifyRequest): ArgsChannel {
+  const fx = request as FastifyExtended
+  return {
+    read: () => fx.parsedQuery,
+    write: (next) => {
+      fx.parsedQuery = next
+    },
+  }
+}
+
+function bodyChannel(request: FastifyRequest): ArgsChannel {
+  return {
+    read: () =>
+      isPlainObject(request.body)
+        ? (request.body as Record<string, unknown>)
+        : undefined,
+    write: (next) => {
+      ;(request as unknown as { body: unknown }).body = next
+    },
+  }
 }
 
 function normalizeFastifyOperation(
@@ -245,14 +272,6 @@ function parseBodyAsQueryHook(request: FastifyRequest): void {
   (request as FastifyExtended).parsedQuery = sanitizeKeys(body as Record<string, unknown>)
 }
 
-function buildResolveContext<TCtx, TPrisma extends PrismaClientLike>(
-  config: ${modelName}RouteConfig<TCtx, TPrisma>,
-  request: FastifyRequest,
-): (() => unknown | Promise<unknown>) | undefined {
-  if (typeof config.resolveContext !== 'function') return undefined
-  return () => (config.resolveContext as (r: FastifyRequest) => unknown | Promise<unknown>)(request)
-}
-
 function makeShapeHook<TCtx, TPrisma extends PrismaClientLike>(
   config: ${modelName}RouteConfig<TCtx, TPrisma>,
   opConfig: NormalizedOp,
@@ -272,8 +291,7 @@ function makeShapeHook<TCtx, TPrisma extends PrismaClientLike>(
   return async (request: FastifyRequest) => {
     const fx = request as FastifyExtended
     fx.operationOverride = opConfig.override
-    let context: Promise<unknown> | undefined
-    fx.resolveOperationContext = () => context ??= Promise.resolve(config.resolveContext?.(request))
+    fx.getContext = memoizeContext(() => config.resolveContext?.(request))
     const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
     if (merged) fx.routeConfig = { pagination: merged }
 
@@ -284,46 +302,28 @@ function makeShapeHook<TCtx, TPrisma extends PrismaClientLike>(
       ?? undefined
     if (typeof caller === 'string') fx.guardCaller = caller
 
-    const resolution = resolveOperationVariantKey(opConfig.guardRouting, caller)
-    if (!resolution.ok) {
-      fx.guardVariantFailure = resolution
+    const routed = routeOperation({ guardRouting: opConfig.guardRouting, caller })
+    if (!routed.ok) {
+      fx.routeFailure = routed
       return
     }
 
-    const resolvedKey =
-      opConfig.guardRouting.kind === 'named'
-        ? resolution.key
-        : undefined
-    if (resolvedKey !== undefined) fx.guardVariantKey = resolvedKey
+    if (routed.variantKey !== undefined) fx.guardVariantKey = routed.variantKey
 
-    if (opConfig.guardShape) {
-      if (!dropGuard) {
-        fx.guardShape = opConfig.guardShape
-      } else {
-        await applyDroppedGuard(
-          opConfig.guardShape,
-          resolvedKey,
-          buildResolveContext(config, request),
-          opKind,
-          {
-            readQuery: fx.parsedQuery,
-            writeBody: isPlainObject(request.body)
-              ? (request.body as Record<string, unknown>)
-              : undefined,
-          },
-          () => {
-            if (!fx.parsedQuery) fx.parsedQuery = {}
-            return fx.parsedQuery
-          },
-          () => {
-            if (!isPlainObject(request.body)) {
-              ;(request as unknown as { body: unknown }).body = {}
-            }
-            return request.body as Record<string, unknown>
-          },
-        )
-      }
+    const guard = await prepareGuardOperation(routed, {
+      guardShape: opConfig.guardShape,
+      opKind,
+      policy: { dropGuard, validateResolvedShapes: false },
+      getContext: typeof config.resolveContext === 'function' ? fx.getContext : undefined,
+      args: queryChannel(request),
+      writeArgs: bodyChannel(request),
+    })
+    if (!guard.ok) {
+      fx.guardFailure = guard
+      return
     }
+
+    fx.guardShape = guard.guardShape
   }
 }
 
@@ -464,12 +464,8 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma extends Pris
         if (await runHooks(opConfig.operationBefore, request, reply)) return
 
         const fx = request as FastifyExtended
-        if (fx.guardVariantFailure) {
-          throw new HttpError(
-            400,
-            formatGuardVariantResolutionError(fx.guardVariantFailure),
-          )
-        }
+        if (fx.routeFailure) settleStage(fx.routeFailure)
+        if (fx.guardFailure) settleStage(fx.guardFailure)
 
         const key = fx.guardVariantKey
         const variantHooks =
@@ -496,12 +492,8 @@ export async function ${routerFunctionName}<TCtx = unknown, TPrisma extends Pris
         if (await runHooks(opConfig.operationBefore, request, reply)) return
 
         const fx = request as FastifyExtended
-        if (fx.guardVariantFailure) {
-          throw new HttpError(
-            400,
-            formatGuardVariantResolutionError(fx.guardVariantFailure),
-          )
-        }
+        if (fx.routeFailure) settleStage(fx.routeFailure)
+        if (fx.guardFailure) settleStage(fx.guardFailure)
 
         const key = fx.guardVariantKey
         const variantHooks =

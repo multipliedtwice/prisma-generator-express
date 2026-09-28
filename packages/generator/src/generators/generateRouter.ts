@@ -189,7 +189,6 @@ import { sanitizeKeys, normalizePrefix, getEnv, isPlainObject, resolveDropGuardE
 import { buildModelOpenApi } from '../buildModelOpenApi${ext}'
 import {
   normalizeOperation,
-  resolveOperationVariantKey,
   validateCountSourceWhere,
   validateOperationConfig,
   validateUpdateEachConfig,
@@ -201,8 +200,14 @@ import type { NormalizedOperationConfig } from '../routeConfig${ext}'
 import type { OperationContext } from '../operationRuntime${ext}'
 import { transformResult } from '../operationRuntime${ext}'
 import { HttpError, mapError } from '../errorMapper${ext}'
-import { formatGuardVariantResolutionError } from '../guardVariantError${ext}'
-import type { GuardVariantResolution } from '../guardVariantRouting${ext}'
+import {
+  routeOperation,
+  prepareGuardOperation,
+  settleStage,
+  classifyError,
+  memoizeContext,
+  type ArgsChannel,
+} from '../operationPipeline${ext}'
 import { mergePaginationConfig } from '../pagination${ext}'
 import { acceptsNdjson, runNdjsonFindMany } from '../ndjson${ext}'
 import {
@@ -214,7 +219,6 @@ import {
 } from '../sse${ext}'
 import { relationModels } from '../relationModels${ext}'
 import { runAutoIncludeProgressive } from '../autoIncludeRuntime${ext}'
-import { applyDroppedGuard } from '../projectionDefaults${ext}'
 import type { OpKind } from '../projectionDefaults${ext}'
 import { MODEL_FIELDS, MODEL_ENUMS } from './${modelName}Metadata${ext}'
 
@@ -263,10 +267,32 @@ type LocalsBag = {
   guardShape?: Record<string, unknown>
   guardCaller?: string
   operationOverride?: RuntimeOperationOverride
-  resolveOperationContext?: () => unknown | Promise<unknown>
+  getContext?: () => Promise<unknown>
   guardVariantKey?: string
-  guardVariantFailure?: Extract<GuardVariantResolution, { ok: false }>
+  routeFailure?: { ok: false; failure: HttpError }
+  guardFailure?: { ok: false; failure: HttpError }
   data?: unknown
+}
+
+function queryChannel(res: Response): ArgsChannel {
+  return {
+    read: () => readLocals(res).parsedQuery,
+    write: (next) => {
+      readLocals(res).parsedQuery = next
+    },
+  }
+}
+
+function bodyChannel(req: Request): ArgsChannel {
+  return {
+    read: () =>
+      isPlainObject(req.body)
+        ? (req.body as Record<string, unknown>)
+        : undefined,
+    write: (next) => {
+      req.body = next
+    },
+  }
 }
 
 function normalizeExpressOperation(
@@ -372,12 +398,15 @@ function variantAfterDispatcher(opConfig: NormalizedOp): RequestHandler {
 
 function requireVariantKey(): RequestHandler {
   return (_req, res, next) => {
-    const failure = readLocals(res).guardVariantFailure
-    if (!failure) {
-      next()
+    const locals = readLocals(res)
+    try {
+      if (locals.routeFailure) settleStage(locals.routeFailure)
+      if (locals.guardFailure) settleStage(locals.guardFailure)
+    } catch (err) {
+      next(err)
       return
     }
-    next(new HttpError(400, formatGuardVariantResolutionError(failure)))
+    next()
   }
 }
 
@@ -451,7 +480,7 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClie
     const locals = readLocals(res)
     return {
       operationOverride: locals.operationOverride,
-      resolveOperationContext: locals.resolveOperationContext,
+      resolveOperationContext: locals.getContext,
       prisma: extReq.prisma,
       postgres: extReq.postgres,
       sqlite: extReq.sqlite,
@@ -463,11 +492,6 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClie
       paginationConfig: locals.routeConfig?.pagination,
       findManyPaginatedMode: FIND_MANY_PAGINATED_MODE,
     }
-  }
-
-  const buildResolveContext = (req: Request): (() => unknown | Promise<unknown>) | undefined => {
-    if (typeof config.resolveContext !== 'function') return undefined
-    return () => (config.resolveContext as (r: Request) => unknown | Promise<unknown>)(req)
   }
 
   const parseQuery: RequestHandler = (req, res, next) => {
@@ -501,11 +525,10 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClie
 
   const setShape = (opConfig: NormalizedOp, opKind: OpKind): RequestHandler => {
     return async (req, res, next) => {
+      const locals = readLocals(res)
       try {
-        const locals = readLocals(res)
         locals.operationOverride = opConfig.override
-        let context: Promise<unknown> | undefined
-        locals.resolveOperationContext = () => context ??= Promise.resolve(config.resolveContext?.(req))
+        locals.getContext = memoizeContext(() => config.resolveContext?.(req))
         const merged = mergePaginationConfig(config.pagination, opConfig.pagination)
         if (merged) {
           locals.routeConfig = { pagination: merged }
@@ -516,51 +539,34 @@ export function ${routerFunctionName}<TCtx = unknown, TPrisma extends PrismaClie
         const caller = config.guard?.resolveVariant?.(req) ?? headerValue ?? undefined
         if (typeof caller === 'string') locals.guardCaller = caller
 
-        const resolution = resolveOperationVariantKey(opConfig.guardRouting, caller)
-        if (!resolution.ok) {
-          locals.guardVariantFailure = resolution
+        const routed = routeOperation({ guardRouting: opConfig.guardRouting, caller })
+        if (!routed.ok) {
+          locals.routeFailure = routed
           next()
           return
         }
 
-        const resolvedKey =
-          opConfig.guardRouting.kind === 'named'
-            ? resolution.key
-            : undefined
-        if (resolvedKey !== undefined) locals.guardVariantKey = resolvedKey
+        if (routed.variantKey !== undefined) locals.guardVariantKey = routed.variantKey
 
-        if (opConfig.guardShape) {
-          if (!dropGuard) {
-            locals.guardShape = opConfig.guardShape
-          } else {
-            await applyDroppedGuard(
-              opConfig.guardShape,
-              resolvedKey,
-              buildResolveContext(req),
-              opKind,
-              {
-                readQuery: locals.parsedQuery,
-                writeBody: isPlainObject(req.body)
-                  ? (req.body as Record<string, unknown>)
-                  : undefined,
-              },
-              () => {
-                if (!locals.parsedQuery) locals.parsedQuery = {}
-                return locals.parsedQuery
-              },
-              () => {
-                if (!isPlainObject(req.body)) {
-                  req.body = {}
-                }
-                return req.body as Record<string, unknown>
-              },
-            )
-          }
+        const guard = await prepareGuardOperation(routed, {
+          guardShape: opConfig.guardShape,
+          opKind,
+          policy: { dropGuard, validateResolvedShapes: false },
+          getContext: typeof config.resolveContext === 'function' ? locals.getContext : undefined,
+          args: queryChannel(res),
+          writeArgs: bodyChannel(req),
+        })
+        if (!guard.ok) {
+          locals.guardFailure = guard
+          next()
+          return
         }
+
+        locals.guardShape = guard.guardShape
 
         next()
       } catch (err) {
-        next(mapError(err))
+        next(classifyError(err))
       }
     }
   }

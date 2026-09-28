@@ -11,7 +11,6 @@ export interface UnifiedHandlerOptions {
 export function generateUnifiedHandler(options: UnifiedHandlerOptions): string {
   const ext = importExt(options.importStyle)
   const modelName = options.model.name
-
   const dispatchOps = OPERATION_METADATA.filter((m) => m.name !== 'updateEach')
 
   const handlers = dispatchOps
@@ -25,10 +24,25 @@ export async function ${exportName}(
   next: NextFunction,
 ) {
   try {
-    ;(res.locals as LocalsBag).data = await core.${meta.coreName}(buildContext(req, res))
+    const locals = readLocals(res)
+    ;locals.data = await executeOperation(
+      { variantKey: locals.guardVariantKey, caller: locals.guardCaller },
+      { guardShape: locals.guardShape },
+      {
+        core: core.${meta.coreName},
+        args: queryChannel(res),
+        body: req.body,
+        prisma: requirePrisma((req as ExtendedRequest).prisma),
+        postgres: (req as ExtendedRequest).postgres,
+        sqlite: (req as ExtendedRequest).sqlite,
+        pagination: locals.routeConfig?.pagination,
+        override: locals.operationOverride,
+        getContext: locals.getContext,
+      },
+    )
     next()
   } catch (error: unknown) {
-    next(mapError(error))
+    next(classifyError(error))
   }
 }`
     })
@@ -36,8 +50,14 @@ export async function ${exportName}(
 
   return `import type { Request, Response, NextFunction } from 'express'
 import * as core from './${modelName}Core${ext}'
-import type { OperationContext, RuntimeOperationOverride } from '../operationRuntime${ext}'
-import { mapError } from '../errorMapper${ext}'
+import type { RuntimeOperationOverride } from '../operationRuntime${ext}'
+import type { PaginationConfig } from '../routeConfig${ext}'
+import {
+  executeOperation,
+  classifyError,
+  requirePrisma,
+  type ArgsChannel,
+} from '../operationPipeline${ext}'
 
 type ExtendedRequest = Request & {
   prisma?: unknown
@@ -47,30 +67,25 @@ type ExtendedRequest = Request & {
 
 type LocalsBag = {
   parsedQuery?: Record<string, unknown>
-  routeConfig?: { pagination?: unknown }
+  routeConfig?: { pagination?: PaginationConfig }
   guardShape?: Record<string, unknown>
   guardCaller?: string
   guardVariantKey?: string
   operationOverride?: RuntimeOperationOverride
-  resolveOperationContext?: () => unknown | Promise<unknown>
+  getContext?: () => Promise<unknown>
   data?: unknown
 }
 
-function buildContext(req: Request, res: Response): OperationContext {
-  const extReq = req as ExtendedRequest
-  const locals = res.locals as LocalsBag
+function readLocals(res: Response): LocalsBag {
+  return res.locals as LocalsBag
+}
+
+function queryChannel(res: Response): ArgsChannel {
   return {
-    operationOverride: locals.operationOverride,
-    resolveOperationContext: locals.resolveOperationContext,
-    prisma: extReq.prisma,
-    postgres: extReq.postgres,
-    sqlite: extReq.sqlite,
-    parsedQuery: locals.parsedQuery,
-    body: req.body,
-    guardShape: locals.guardShape,
-    guardCaller: locals.guardCaller,
-    guardVariantKey: locals.guardVariantKey,
-    paginationConfig: (locals.routeConfig?.pagination) as OperationContext['paginationConfig'],
+    read: () => readLocals(res).parsedQuery,
+    write: (next) => {
+      readLocals(res).parsedQuery = next
+    },
   }
 }
 ${handlers}

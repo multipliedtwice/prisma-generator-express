@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import type { DMMF } from '@prisma/generator-helper'
 import { generateHonoRouterFunction } from '../../src/generators/generateRouterHono'
 
@@ -61,13 +63,16 @@ const emitted = generateHonoRouterFunction({
 })
 
 /**
- * The four parse middlewares already take a concretely-typed context, so their
- * `c.set` calls were never the defect. The router body — everything from the
- * shape middleware onward — is where the generic context is in scope.
+ * Since phase 9 the router delegates orchestration to `routerParts.ts`, copied
+ * verbatim into the generated output. The generic-context scope lives there
+ * now; both files are the shipped artifact, so both are checked.
  */
-const ROUTER_BODY = emitted.slice(
-  emitted.indexOf('function makeShapeMiddleware'),
+const ROUTER_PARTS = readFileSync(
+  resolve(__dirname, '../../src/copy/routerParts.ts'),
+  'utf8',
 )
+
+const ROUTER_BODY = emitted
 
 const INTERNAL_KEYS = [
   'routeConfig',
@@ -100,9 +105,11 @@ describe('the emitted Hono router typechecks under strict', () => {
   })
 
   it('writes internal variables through the internal context shape', () => {
-    expect(emitted).toContain('const vars = c as unknown as HandlerContext')
-    expect(emitted).toContain("vars.set('routeConfig'")
-    expect(emitted).toContain("vars.set('guardShapeFailure'")
+    expect(ROUTER_PARTS).toContain(
+      'const vars = c as unknown as HandlerContext',
+    )
+    expect(ROUTER_PARTS).toContain("vars.set('routeConfig'")
+    expect(ROUTER_PARTS).toContain("vars.set('guardShapeFailure'")
   })
 
   /**
@@ -111,12 +118,12 @@ describe('the emitted Hono router typechecks under strict', () => {
    */
   it('converts the request context through unknown wherever it converts it at all', () => {
     expect(emitted).not.toMatch(/\bc as HandlerContext\b/)
-    expect(emitted).toContain('c as unknown as HandlerContext')
+    expect(ROUTER_PARTS).toContain('c as unknown as HandlerContext')
   })
 
   it('does not emit a self-referential JSON type', () => {
-    const declaration = /type JsonLike =([\s\S]*?)\n\n/.exec(emitted)
-    expect(declaration, 'the router declares JsonLike').not.toBeNull()
+    const declaration = /type JsonLike =([\s\S]*?)\n\n/.exec(ROUTER_PARTS)
+    expect(declaration, 'the shipped runtime declares JsonLike').not.toBeNull()
     expect(declaration?.[1]).not.toContain('JsonLike')
   })
 

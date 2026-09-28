@@ -35,6 +35,8 @@
     "yaml": "^2.9.0"
   },
   "peerDependencies": {
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@prisma/client": ">=6.0.0",
     "express": ">=4.0.0",
     "fastify": "^5.0.0",
@@ -44,6 +46,12 @@
     "prisma-sql": ">=1.0.0"
   },
   "peerDependenciesMeta": {
+    "@modelcontextprotocol/node": {
+      "optional": true
+    },
+    "@modelcontextprotocol/server": {
+      "optional": true
+    },
     "express": {
       "optional": true
     },
@@ -64,12 +72,17 @@
     }
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.1.0",
+    "@modelcontextprotocol/express": "^2.0.1",
+    "@modelcontextprotocol/node": "^2.1.0",
+    "@modelcontextprotocol/server": "^2.1.0",
     "@prisma/client": "7.5.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "24.7.2",
     "@types/prettier": "3.0.0",
     "@vitest/coverage-v8": "^4.1.0",
     "better-sqlite3": "^12.5.0",
+    "esbuild": "^0.28.2",
     "express": "^5.2.1",
     "fast-xml-parser": "^5.3.3",
     "fastify": "^5.6.2",
@@ -78,9 +91,11 @@
     "pino": "^10.1.0",
     "pino-pretty": "^13.0.0",
     "prisma": "7.5.0",
+    "prisma-guard": "1.33.0",
     "semantic-release": "^24.2.9",
     "typescript": "5.9.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.0",
+    "zod": "^4.0.0"
   },
   "homepage": "https://github.com/multipliedtwice/prisma-generator-express",
   "repository": {

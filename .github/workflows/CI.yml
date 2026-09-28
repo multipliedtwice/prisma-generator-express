@@ -12,6 +12,19 @@ jobs:
   Test:
     name: Typecheck, unit tests, format
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: parity
+          POSTGRES_DB: parity
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - name: Use Node.js
@@ -27,8 +40,15 @@ jobs:
         run: yarn install
       - name: Typecheck src + tests
         run: yarn workspace prisma-generator-express test:typecheck
+      - name: Install parity harness deps (prisma 6 + prisma-guard 1.33 env)
+        run: npm ci --no-audit --no-fund
+        working-directory: article-labs/guard
+      - name: Build generator (MCP/parity tests execute the emitted artifact)
+        run: yarn workspace prisma-generator-express build
       - name: Unit tests with coverage
         working-directory: packages/generator
+        env:
+          PARITY_DATABASE_URL: postgresql://postgres:parity@127.0.0.1:55433/parity
         run: npx vitest run --coverage
       - name: Prettier check
         working-directory: packages/generator
@@ -76,6 +96,10 @@ jobs:
         run: |
           test -f matrix/generated/User/UserRouter.ts
           test -f matrix/generated/Post/PostRouter.ts
+          test -f matrix/generated/User/UserMcp.ts
+          test -f matrix/generated/mcpRuntime.ts
+          test -f matrix/generated/mcp.ts
+          test -f matrix/generated/mcpMount.ts
           test -f matrix/generated/misc.ts
           test -f matrix/generated/routeConfig.target.ts
       - name: Strict typecheck of emitted output

@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import type { DMMF } from '@prisma/generator-helper'
 import { generateHonoRouterFunction } from '../../src/generators/generateRouterHono'
 
@@ -35,6 +37,12 @@ const model = {
   uniqueIndexes: [],
   isGenerated: false,
 } as unknown as DMMF.Model
+
+/** Copied verbatim into the generated output: the shipped orchestration. */
+const parts = readFileSync(
+  resolve(__dirname, '../../src/copy/routerParts.ts'),
+  'utf8',
+)
 
 const emit = (dropGuard: boolean) =>
   generateHonoRouterFunction({
@@ -90,7 +98,7 @@ describe('guard dropping is decided at generation time — under allowE2EGuardBy
 
     expect(line, 'the env bypass call is gone entirely').toBeDefined()
     expect(line, 'the bypass is not gated on its own control').toContain(
-      'policy.allowE2EGuardBypass',
+      'POLICY.allowE2EGuardBypass',
     )
   })
 
@@ -115,79 +123,77 @@ describe('guard dropping is decided at generation time — under allowE2EGuardBy
       .split('\n')
       .filter((l) => l.includes('resolveDropGuardEnv(_env)'))
     expect(calls, 'the helper call appears more than once').toHaveLength(1)
-    expect(calls[0]).toContain('policy.allowE2EGuardBypass')
+    expect(calls[0]).toContain('POLICY.allowE2EGuardBypass')
   })
 })
 
 describe('a dynamic shape is resolved once, and the validated value travels on', () => {
   const out = emit(false)
 
-  it('routes the shape through resolveGuardShapeOnce', () => {
+  it('routes the shape through the shared prepareGuardOperation stage', () => {
     /**
-     * The resolution and its validation live in one function so that "resolved
-     * exactly once" is a property something can test, rather than a claim in a
-     * comment. An earlier version made exactly that claim inline while passing
-     * the FUNCTION downstream for prisma-guard to resolve a second time.
+     * Phase S moved resolution and validation into the shared pipeline so the
+     * property "resolved exactly once, validated value travels on" holds for
+     * every transport, not just this emitter. The router delegates to the
+     * shipped routerParts runtime, which hands the stage the policy containing
+     * `validateResolvedShapes` and stores only the stage's result.
      */
-    expect(out).toContain(
-      'await resolveGuardShapeOnce(opConfig.guardShape, resolvedKey, resolveCtx)',
-    )
-    expect(out).toContain(
-      'effectiveShape = isPlainObject(resolution.shape) ? resolution.shape : opConfig.guardShape',
-    )
-
-    // Resolution is the OPT-IN path, on its own control. Without it the raw shape
-    // is passed through as upstream does, so nothing resolves twice there either.
-    expect(out).toContain('if (policy.validateResolvedShapes) {')
-    expect(out).toContain(
-      'let effectiveShape: Record<string, unknown> | undefined = opConfig.guardShape',
-    )
+    expect(parts).toContain('await prepareGuardOperation(routed, {')
+    expect(parts).toContain('resolveGuardPolicy(')
+    expect(parts).not.toContain('resolveGuardShapeOnce')
+    expect(out).not.toContain('resolveGuardShapeOnce')
   })
 
   it('hands prisma-guard the RESOLVED value, never the original shape', () => {
     // `vars.set('guardShape', …)` is what reaches `delegate.guard(ctx.guardShape, …)`.
-    expect(out).toContain("vars.set('guardShape', effectiveShape)")
+    expect(parts).toContain("vars.set('guardShape', guard.guardShape)")
     expect(
-      out,
+      parts,
       'the unresolved shape is still passed downstream',
     ).not.toContain("vars.set('guardShape', opConfig.guardShape)")
   })
 
   it('gives the dropped-guard path the same resolved value', () => {
     // Otherwise applyDroppedGuard resolves it again, which is the same gap by
-    // another route.
-    expect(out).toContain('applyDroppedGuard(\n          effectiveShape,')
+    // another route. The shared stage owns both branches; the router runtime
+    // passes the execution policy, never a bare dropGuard boolean.
+    const middleware = parts.slice(
+      parts.indexOf('export function createShapeMiddleware'),
+      parts.indexOf('export function createSettleGuard'),
+    )
+    expect(middleware).not.toContain('applyDroppedGuard')
   })
 
   it('builds the context resolver once and shares it with both branches', () => {
-    const middleware = out.slice(
-      out.indexOf('function makeShapeMiddleware'),
-      out.indexOf('const handleRead ='),
+    const middleware = parts.slice(
+      parts.indexOf('export function createShapeMiddleware'),
+      parts.indexOf('export function createSettleGuard'),
     )
-    const resolvers = [...middleware.matchAll(/const resolveCtx\b/g)]
+    const resolvers = [...middleware.matchAll(/memoizeContext\(/g)]
     expect(
       resolvers,
       'more than one context resolver is built per request',
     ).toHaveLength(1)
   })
 
-  for (const { name, from, to } of [
-    { name: 'read', from: 'const handleRead =', to: 'const handleWrite =' },
-    { name: 'write', from: 'const handleWrite =', to: 'const opFor =' },
+  for (const { name, factory } of [
+    { name: 'read', factory: 'export function createReadRoute' },
+    { name: 'write', factory: 'export function createWriteRoute' },
   ]) {
     it(`the ${name} handler refuses an unusable shape with a 500, before its hooks`, () => {
       /**
        * A shape function that returned something unusable is a DEPLOYMENT fault,
        * not a caller fault — 500 — and it must be refused before any hook can
-       * answer the request and before Prisma is reached.
+       * answer the request and before Prisma is reached. The ordering lives in
+       * the shipped routerParts runtime; the emitted router forwards its
+       * guardResolutionOrder control there.
        */
-      const start = out.indexOf(from)
-      const body = out.slice(start, out.indexOf(to, start))
+      const body = parts.slice(parts.indexOf(factory))
 
-      const settled = body.indexOf('if (SETTLE_BEFORE_HOOKS) settleGuard(c)')
-      const hooks = body.indexOf(
-        'runBeforeHooks<TEnv>(opConfig.operationBefore',
+      const settled = body.indexOf(
+        'if (input.settleBeforeHooks) settleGuard(c)',
       )
+      const hooks = body.indexOf('input.opConfig.operationBefore')
 
       expect(
         settled,
@@ -199,11 +205,13 @@ describe('a dynamic shape is resolved once, and the validated value travels on',
       ).toBeLessThan(hooks)
 
       // ...and the legacy ordering is still emitted, after the hooks.
-      const legacy = body.indexOf('if (!SETTLE_BEFORE_HOOKS) settleGuard(c)')
+      const legacy = body.indexOf(
+        'if (!input.settleBeforeHooks) settleGuard(c)',
+      )
       expect(legacy, `${name}: no after-hooks ordering`).toBeGreaterThan(hooks)
 
-      // The 500 itself lives in settleGuard, raised once for both handlers.
-      expect(out).toContain('new HTTPException(500')
+      // and the emitter forwards the control instead of deciding it
+      expect(out).toContain('settleBeforeHooks: SETTLE_BEFORE_HOOKS')
     })
   }
 })
@@ -235,7 +243,9 @@ describe('updateEach is refused — but only when enableUpdateEach is false', ()
      * and all, and unreachable only for those who opted in.
      */
     expect(out, 'the updateEach route was not restored').toContain("'/each'")
-    expect(out).toContain('UpdateEach(c as unknown as HandlerContext)')
+    expect(out).toContain(
+      'createUpdateEachRoute<TCtx, TPrisma, TEnv>({ config, opConfig, handler: ArticleUpdateEach, dropGuard })',
+    )
     expect(out).toContain('should be protected by authentication middleware')
   })
 
@@ -281,24 +291,23 @@ describe('variant resolution is settled before any operation hook runs', () => {
   const out = emit(false)
 
   const handlers = [
-    { name: 'read', from: 'const handleRead =', to: 'const handleWrite =' },
-    { name: 'write', from: 'const handleWrite =', to: 'const opFor =' },
+    { name: 'read', factory: 'export function createReadRoute' },
+    { name: 'write', factory: 'export function createWriteRoute' },
   ]
 
-  for (const { name, from, to } of handlers) {
+  for (const { name, factory } of handlers) {
     it(`the ${name} handler raises a variant failure before its before-hooks`, () => {
-      const start = out.indexOf(from)
+      const body = parts.slice(parts.indexOf(factory))
       expect(
-        start,
-        `${from} not found — this test is checking nothing`,
+        parts.indexOf(factory),
+        `${factory} not found — this test is checking nothing`,
       ).toBeGreaterThan(-1)
-      const body = out.slice(start, out.indexOf(to, start))
 
-      const strict = body.indexOf('if (SETTLE_BEFORE_HOOKS) settleGuard(c)')
-      const legacy = body.indexOf('if (!SETTLE_BEFORE_HOOKS) settleGuard(c)')
-      const hooks = body.indexOf(
-        'runBeforeHooks<TEnv>(opConfig.operationBefore',
+      const strict = body.indexOf('if (input.settleBeforeHooks) settleGuard(c)')
+      const legacy = body.indexOf(
+        'if (!input.settleBeforeHooks) settleGuard(c)',
       )
+      const hooks = body.indexOf('input.opConfig.operationBefore')
 
       expect(
         hooks,
@@ -328,13 +337,14 @@ describe('variant resolution is settled before any operation hook runs', () => {
 
   it('still runs variant hooks after resolution, which is the point of them', () => {
     // Resolution moving earlier must not have moved the per-variant hooks with
-    // it: those depend on the resolved key.
-    const start = out.indexOf('const handleRead =')
-    const body = out.slice(start, out.indexOf('const handleWrite =', start))
+    // it: those depend on the resolved key. Ordering lives in routerParts.
+    const body = parts.slice(parts.indexOf('export function createReadRoute'))
 
     expect(
       body.indexOf("(c as unknown as HandlerContext).get('guardVariantKey')"),
-    ).toBeGreaterThan(body.indexOf('if (SETTLE_BEFORE_HOOKS) settleGuard(c)'))
+    ).toBeGreaterThan(
+      body.indexOf('if (input.settleBeforeHooks) settleGuard(c)'),
+    )
     expect(body).toContain('variantHooks')
   })
 })

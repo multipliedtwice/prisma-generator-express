@@ -33,6 +33,10 @@ import { generateHonoHandler } from './generators/generateHonoHandler'
 import { generateRouterFunction } from './generators/generateRouter'
 import { generateFastifyRouterFunction } from './generators/generateRouterFastify'
 import { generateHonoRouterFunction } from './generators/generateRouterHono'
+import { generateHonoRouterParts } from './generators/generateRouterPartsHono'
+import { generateHonoOpenApiRoutes } from './generators/generateHonoOpenApi'
+import { generateModelMcp } from './generators/generateModelMcp'
+import { generateMcpApp, generateMcpMount } from './generators/generateMcpApp'
 import { generateScalarUIHandler } from './generators/generateUnifiedScalarUI'
 import { generateUnifiedDocs } from './generators/generateUnifiedDocs'
 import { generateQueryBuilderHelper } from './generators/generateQueryBuilderHelper'
@@ -48,6 +52,10 @@ import {
   getGuardShapesImport,
 } from './generators/generateImportPrismaStatement'
 import { writeFileSafely } from './utils/writeFileSafely'
+import {
+  assertMcpGuardCompatibility,
+  assertMcpGuardVersion,
+} from './utils/mcpGate'
 import { copyFiles } from './utils/copyFiles'
 import { resolveImportStyle, ImportStyle } from './utils/resolveImportStyle'
 import { parsePathCase, modelPathSegment, PathCase } from './utils/pathCasing'
@@ -111,6 +119,26 @@ function getPathCase(options: GeneratorOptions): PathCase {
   )
 }
 
+function getMcp(options: GeneratorOptions): boolean {
+  const raw = (options.generator.config as Record<string, unknown>).mcp
+  if (raw === undefined || raw === null) return false
+  if (typeof raw === 'boolean') return raw
+  if (typeof raw === 'string') {
+    const lower = raw.trim().toLowerCase()
+    if (lower === 'true' || lower === '1' || lower === 'yes') return true
+    if (
+      lower === 'false' ||
+      lower === '0' ||
+      lower === 'no' ||
+      raw.trim() === ''
+    )
+      return false
+  }
+  throw new Error(
+    'Invalid mcp option "' + String(raw) + '". Expected true or false.',
+  )
+}
+
 function getDropGuard(options: GeneratorOptions): boolean {
   const raw = (options.generator.config as Record<string, unknown>).dropGuard
   if (raw === undefined || raw === null) return false
@@ -149,11 +177,25 @@ generatorHandler({
   },
 
   async onGenerate(options: GeneratorOptions) {
+    await runGenerate(options)
+  },
+})
+
+/**
+ * The full generation path, exported so tests exercise what `prisma generate`
+ * runs — including the mcp/dropGuard gate — instead of re-implementing pieces.
+ */
+export async function runGenerate(options: GeneratorOptions): Promise<void> {
+  {
     const target = getTarget(options)
     const writeStrategy = getWriteStrategy(options)
     const findManyPaginatedMode = getFindManyPaginatedMode(options)
     const dropGuard = getDropGuard(options)
+    const mcp = getMcp(options)
     const pathCase = getPathCase(options)
+
+    assertMcpGuardCompatibility(mcp, dropGuard)
+    assertMcpGuardVersion(mcp, options.schemaPath)
 
     const manifestDefaultAbs = path.resolve(
       __dirname,
@@ -174,6 +216,7 @@ generatorHandler({
     const importStyle = resolveImportStyle(options)
 
     console.log(`\n═══ Prisma Generator (${target.toUpperCase()}) ═══`)
+    if (mcp) console.log(`  MCP: enabled (read-only)`)
     console.log(`  Target: ${target}`)
     console.log(`  Output: ${options.generator.output?.value}`)
     console.log(`  Import style: ${importStyle}`)
@@ -193,7 +236,7 @@ generatorHandler({
       validateClientGeneratorPresent(options)
     }
 
-    await copyFiles(options, target, importStyle)
+    await copyFiles(options, target, importStyle, mcp)
 
     const modelNames: string[] = []
     let guardArtifactsSeen = false
@@ -292,6 +335,38 @@ generatorHandler({
         operation: 'Router',
       })
 
+      if (target === 'hono') {
+        await writeFileSafely({
+          content: generateHonoRouterParts({
+            model: model as DMMF.Model,
+            enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
+            guardShapesImport,
+            clientImport: getRelativeClientTypeImport(options, model.name),
+            importStyle,
+            writeStrategy,
+            dropGuard,
+            pathCase,
+          }),
+          options,
+          model: model as DMMF.Model,
+          operation: 'RouterParts',
+        })
+        await writeFileSafely({
+          content: generateHonoOpenApiRoutes({
+            model: model as DMMF.Model,
+            enums: options.dmmf.datamodel.enums as DMMF.DatamodelEnum[],
+            guardShapesImport,
+            clientImport: getRelativeClientTypeImport(options, model.name),
+            importStyle,
+            writeStrategy,
+            pathCase,
+          }),
+          options,
+          model: model as DMMF.Model,
+          operation: 'OpenApiRoutes',
+        })
+      }
+
       await writeFileSafely({
         content: generateScalarUIHandler({
           model: model as DMMF.Model,
@@ -327,6 +402,26 @@ generatorHandler({
       })
     }
 
+    if (mcp) {
+      // after the loop: each tool factory narrows schemas with THIS model's
+      // metadata plus the metadata of every model it relates to
+      for (const model of allModels) {
+        if (!modelNames.includes(model.name)) continue
+        await writeFileSafely({
+          content: generateModelMcp({
+            model,
+            allModels: allModels.filter((m) =>
+              modelNames.includes(m.name),
+            ) as DMMF.Model[],
+            importStyle,
+          }),
+          options,
+          model: model as DMMF.Model,
+          operation: 'Mcp',
+        })
+      }
+    }
+
     const pathSegments = Object.fromEntries(
       modelNames.map((n) => [n, modelPathSegment(n, pathCase)]),
     )
@@ -348,6 +443,23 @@ generatorHandler({
       operation: 'queryBuilder',
     })
 
+    if (mcp) {
+      await writeFileSafely({
+        content: generateMcpApp({
+          serverName: 'prisma-api',
+          serverVersion: require('../package.json').version,
+          importStyle,
+        }),
+        options,
+        operation: 'mcpApp',
+      })
+      await writeFileSafely({
+        content: generateMcpMount({ target, importStyle }),
+        options,
+        operation: 'mcpMount',
+      })
+    }
+
     if (modelNames.length > 0 && !guardArtifactsSeen) {
       console.log('')
       console.log(
@@ -361,5 +473,5 @@ generatorHandler({
     console.log('\n═══ Generation Complete ═══')
     console.log(`✓ ${modelNames.length} models (${target})`)
     console.log('')
-  },
-})
+  }
+}

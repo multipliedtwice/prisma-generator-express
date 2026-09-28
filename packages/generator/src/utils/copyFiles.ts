@@ -9,10 +9,12 @@ const SHARED_FILES = [
   'parseQueryParams.ts',
   'buildModelOpenApi.ts',
   'operationDefinitions.ts',
+  'operationSchemas.ts',
   'misc.ts',
   'routeConfig.ts',
   'docsRenderer.ts',
   'operationRuntime.ts',
+  'operationPipeline.ts',
   'errorMapper.ts',
   'sse.ts',
   'pagination.ts',
@@ -126,6 +128,7 @@ export async function copyFiles(
   options: GeneratorOptions,
   target: Target,
   importStyle: ImportStyle,
+  mcp = false,
 ): Promise<void> {
   const outputPath = options.generator.output?.value
   if (!outputPath) return
@@ -151,6 +154,39 @@ export async function copyFiles(
       })
       if (err) errors.push(err)
     }
+  }
+
+  if (target === 'hono') {
+    // The phase 9 assembly boundary. Imports the Hono route-config types by
+    // their source name; emitted as routeConfig.target.ts like every target.
+    const err = copyFileSync(
+      copyBase,
+      outputPath,
+      'routerParts.ts',
+      importStyle,
+      {
+        required: true,
+        importRewrites: [
+          { from: './routeConfig.hono', to: './routeConfig.target' },
+        ],
+      },
+    )
+    if (err) errors.push(err)
+  }
+
+  if (mcp) {
+    // MCP runtime is copied ONLY for mcp=true generations: an mcp=false
+    // output contains no MCP files, imports or dependencies at all.
+    const err = copyFileSync(
+      copyBase,
+      outputPath,
+      'mcpRuntime.ts',
+      importStyle,
+      {
+        required: true,
+      },
+    )
+    if (err) errors.push(err)
   }
 
   const targetConfigFile = 'routeConfig.' + target + '.ts'

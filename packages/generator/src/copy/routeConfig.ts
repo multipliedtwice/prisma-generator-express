@@ -249,7 +249,7 @@ export interface NormalizedOperationConfig<TBefore, TAfter> {
   disablePostReads?: boolean
 }
 
-type OperationConfigInput<TBefore, TAfter> = {
+export type OperationConfigInput<TBefore, TAfter> = {
   authorize?: TBefore
   override?: RuntimeOperationOverride
   before?: TBefore[]

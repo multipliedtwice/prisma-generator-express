@@ -22,20 +22,35 @@
 ## Quickstart
 
 ```bash
-npm install -D prisma-generator-express
+npm install -D prisma-generator-express prisma
 npm install @prisma/client express
 ```
 
 ```prisma
-// schema.prisma
+// schema.prisma — project root
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
 generator client {
   provider = "prisma-client-js"
 }
 
 generator express {
   provider = "prisma-generator-express"
+  output   = "./generated/express"
+}
+
+model User {
+  id    Int    @id @default(autoincrement())
+  email String @unique
+  name  String
 }
 ```
+
+> On Prisma 7 the datasource `url` moves to `prisma.config.ts` — see the
+> [compatibility section](docs/guide.md#compatibility).
 
 ```bash
 npx prisma generate
@@ -46,7 +61,7 @@ Mount the generated router:
 ```ts
 import express from 'express'
 import { PrismaClient } from '@prisma/client'
-import { UserRouter } from './generated/User/UserRouter'
+import { UserRouter } from './generated/express/User/UserRouter'
 
 const prisma = new PrismaClient()
 const app = express()
@@ -77,6 +92,7 @@ That is a full CRUD API with OpenAPI docs at `/user/openapi.json`.
 - Per-route and per-endpoint pagination config, including materialized-view count sources — [pagination](docs/guide.md#pagination)
 - POST read endpoints for complex queries exceeding URL length limits — [POST reads](docs/guide.md#post-read-endpoints)
 - Guard/variant shape enforcement with tenant isolation via [prisma-guard](https://github.com/multipliedtwice/prisma-guard) — [guard shapes](docs/guide.md#guard-shapes-prisma-guard-integration)
+- Opt-in read-only MCP transport (`mcp = true`): one Streamable HTTP `/mcp` endpoint in the same process, explicit per-model allowlist, verified-principal authorization, SDK v2 — [MCP guide](docs/guide.md#mcp-model-context-protocol)
 - Express-only progressive read streaming over SSE (manual stages or auto-include splitting) — [progressive composition](docs/guide.md#progressive-endpoint-composition-express-sse)
 - Express-only read-only materialized view router — [materialized views](docs/guide.md#materialized-views-router-express)
 - Client-side query parameter encoder — [query encoding](docs/guide.md#query-encoding-client-side)
@@ -103,6 +119,149 @@ The full reference lives in [`docs/guide.md`](docs/guide.md):
 - [Environment variables](docs/guide.md#environment-variables)
 - [Pagination](docs/guide.md#pagination), [error handling](docs/guide.md#error-handling), [security notes](docs/guide.md#security)
 - [updateEach batch route](docs/guide.md#updateeach-express-fastify-hono-internal-batch)
+- [MCP read-only tools](docs/guide.md#mcp-model-context-protocol) — enable, allowlist, auth, limits, fail-closed rules
+
+### MCP quickstart
+
+This example is executed as a test against generated output
+(`packages/generator/test/unit/mcp/readmeQuickstart.test.ts`) — real Postgres, real prisma-guard, real auth. It is the actual shape, not pseudocode.
+
+```prisma
+// schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator guard {
+  provider = "prisma-guard"
+  output   = "./generated/guard"
+}
+
+generator api {
+  provider = "prisma-generator-express"
+  output   = "./generated/api"
+  target   = "express"
+  mcp      = true
+}
+
+model User {
+  id     String @id @default(cuid())
+  email  String @unique
+  siteId String
+  posts  Post[]
+}
+
+model Post {
+  id       String @id @default(cuid())
+  title    String
+  author   User   @relation(fields: [authorId], references: [id])
+  authorId String
+}
+```
+
+```bash
+# install dependencies FIRST — prisma generate needs prisma-guard resolvable.
+# The quickstart is verified against Prisma 6 (Prisma 7 moves the datasource
+# URL into prisma.config.ts — see compatibility below).
+npm install @prisma/client@6 prisma-guard@^1.33.0 zod
+npm install -D prisma@6 tsx
+# SDK v2 — the only MCP packages the generated output imports,
+# plus the express adapter for requireBearerAuth below:
+npm install @modelcontextprotocol/server @modelcontextprotocol/node @modelcontextprotocol/express
+
+# one-off Postgres (or point DATABASE_URL at your existing instance):
+docker run -d --name my-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16-alpine
+
+export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+
+npx prisma generate
+npx prisma db push
+```
+
+```ts
+// server.ts
+import express from 'express'
+import {
+  McpServer,
+  createMcpHandler,
+  type AuthInfo,
+} from '@modelcontextprotocol/server'
+import { requireBearerAuth } from '@modelcontextprotocol/express'
+import { toNodeHandler } from '@modelcontextprotocol/node'
+import { force } from 'prisma-guard'
+import { PrismaClient } from '@prisma/client'
+import { guard } from './generated/guard/client'
+import { userFindManyTool } from './generated/api/User/UserMcp'
+import { registerMcpToolsOnServer } from './generated/api/mcp'
+
+// guarded client: guard(shape, caller) is what the tools execute through
+const prisma = new PrismaClient().$extends(guard.extension())
+
+// a real route config: a guard shape with a FORCED tenant value + bounded take
+// (MCP schemas assume prisma-guard >= 1.33 semantics)
+const userConfig = {
+  findMany: {
+    shape: {
+      where: { siteId: { equals: force('tenant-a') } },
+      take: { max: 50 },
+    },
+  },
+}
+
+const MCP_TOKEN = process.env.MCP_TOKEN // your issuer's token
+
+const buildServer = (authInfo: AuthInfo): McpServer => {
+  const server = new McpServer({ name: 'my-api', version: '1.0.0' })
+  registerMcpToolsOnServer(server, {
+    tools: [userFindManyTool({ config: userConfig })],
+    resolveCaller: (info) => info.clientId, // routing key only
+    authorize: ({ principal }) => {
+      if (!principal) throw new Error('unauthenticated')
+    },
+    defaultLimit: 20,
+    maxLimit: 100,
+    maxResultBytes: 262_144,
+    prisma,
+    authInfo, // verified principal — required, fail closed without it
+  })
+  return server
+}
+
+const app = express()
+app.use(express.json())
+
+// verified authentication is yours; without a verified token nothing is served
+const auth = requireBearerAuth({
+  verifier: {
+    async verifyAccessToken(token) {
+      if (token !== MCP_TOKEN) throw new Error('invalid token')
+      return {
+        token,
+        clientId: 'tenant-a',
+        scopes: ['mcp'],
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      }
+    },
+  },
+})
+
+const mcpHandler = createMcpHandler((ctx) => buildServer(ctx.authInfo as AuthInfo))
+app.all('/mcp', auth, (req, res) => {
+  const node = toNodeHandler(mcpHandler)
+  node(req, res, req.body)
+})
+
+app.listen(3000)
+```
+
+```bash
+MCP_TOKEN=dev-token DATABASE_URL="$DATABASE_URL" npx tsx server.ts
+```
 
 Maintainer-facing design notes: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
