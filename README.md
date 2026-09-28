@@ -126,6 +126,8 @@ The full reference lives in the [GitHub Pages guide](https://multipliedtwice.git
 This example is executed as a test against generated output
 (`packages/generator/test/unit/mcp/readmeQuickstart.test.ts`) — real Postgres, real prisma-guard, real auth. It is the actual shape, not pseudocode.
 
+<!-- readme-example:mcp-quickstart-schema:start -->
+
 ```prisma
 // schema.prisma
 datasource db {
@@ -150,10 +152,14 @@ generator api {
 }
 
 model User {
-  id     String @id @default(cuid())
-  email  String @unique
+  id     String  @id @default(cuid())
+  email  String  @unique
+  name   String?
   siteId String
   posts  Post[]
+
+  // the tenant-safe unique selector the write actions use
+  @@unique([siteId, email])
 }
 
 model Post {
@@ -163,6 +169,8 @@ model Post {
   authorId String
 }
 ```
+
+<!-- readme-example:mcp-quickstart-schema:end -->
 
 ```bash
 # install dependencies FIRST — prisma generate needs prisma-guard resolvable.
@@ -183,6 +191,8 @@ npx prisma generate
 npx prisma db push
 ```
 
+<!-- readme-example:mcp-quickstart-server:start -->
+
 ```ts
 // server.ts
 import express from 'express'
@@ -201,6 +211,7 @@ import {
   userCreateTool,
   userUpdateTool,
 } from './generated/api/User/UserMcp'
+import type { UserRouteConfig } from './generated/api/User/UserRouter'
 import { registerMcpToolsOnServer } from './generated/api/mcp'
 
 // guarded client: guard(shape, caller) is what the tools execute through
@@ -209,8 +220,9 @@ const prisma = new PrismaClient().$extends(guard.extension())
 // a real route config: guard shapes with a FORCED tenant value + bounded take
 // (MCP schemas assume prisma-guard >= 1.33 semantics). Write actions are
 // per-operation opt-in: nothing writes until you import its factory and
-// place it in `tools`. `enableAll` never exposes writes.
-const userConfig = {
+// place it in `tools`. `enableAll` never exposes writes. The annotation lets
+// prisma-guard's shape types check every shape.
+const userConfig: UserRouteConfig = {
   findMany: {
     shape: {
       where: { siteId: { equals: force('tenant-a') } },
@@ -222,10 +234,11 @@ const userConfig = {
     shape: { data: { email: true, siteId: force('tenant-a') } },
   },
   update: {
-    // select by id AND the forced tenant: another tenant's row is a 404
+    // the compound selector carries the forced tenant: another tenant's
+    // user is a 404, never a write
     shape: {
-      where: { id: true, siteId: force('tenant-a') },
-      data: { email: true },
+      where: { siteId_email: { siteId: force('tenant-a'), email: true } },
+      data: { name: true },
     },
   },
 }
@@ -279,6 +292,8 @@ app.all('/mcp', auth, (req, res) => {
 
 app.listen(3000)
 ```
+
+<!-- readme-example:mcp-quickstart-server:end -->
 
 ```bash
 MCP_TOKEN=dev-token DATABASE_URL="$DATABASE_URL" npx tsx server.ts

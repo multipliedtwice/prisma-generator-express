@@ -10,28 +10,26 @@ import {
   generateWithArticleGuard,
   importFrom,
 } from './articleGuardStack'
+import { GUIDE_PATH, readMarkedBlock, snippetTsconfig } from './docsSnippet'
 import { fakeServer, fakeAuthInfo } from './mcpTestHarness'
 
 /**
  * DOCS DRIFT GATE for the guide's tenant-safe Page example. The snippet is
- * EXTRACTED from docs/guide.md between stable markers — never copied — then:
- *  1. compiled under `tsc --strict` against the `PageRouteConfig` the
+ * EXTRACTED from docs/guide.md between stable markers — never copied — and
+ * placed in a work dir laid out like a consumer project (`./generated/api`,
+ * `./generated/guard`), so its own imports resolve unchanged. Then:
+ *  1. it compiles under `tsc --strict` against the `PageRouteConfig` the
  *     generator emits WITH real prisma-guard 1.33 shape types, and
- *  2. executed: every action it configures is created through the emitted
- *     factory and registered for both tenants (registration runs the full
- *     fail-closed shape validation).
- * Editing the guide example so it no longer typechecks or registers fails
- * this test.
+ *  2. it executes: every action it configures is created through the
+ *     emitted factory and registered for both tenants (registration runs
+ *     the full fail-closed shape validation).
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const GUIDE = resolve(HERE, '../../../../../docs/guide.md')
 const WORK_DIR = resolve(HERE, '../../../.guide-example')
-const START = '<!-- guide-example:mcp-tenant-page:start -->'
-const END = '<!-- guide-example:mcp-tenant-page:end -->'
 const TSC = createRequire(import.meta.url).resolve('typescript/lib/tsc.js')
 
-/** The model the example is written for: compound @@unique([siteId, slug]). */
+/** The model the example is written for (named in the example's comment). */
 const SCHEMA = `datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -63,53 +61,14 @@ model Page {
 }
 `
 
-/** The single fenced `ts` block between the markers. */
-function extractGuideExample(markdown: string): string {
-  const start = markdown.indexOf(START)
-  const end = markdown.indexOf(END)
-  if (start < 0 || end < 0 || end < start) {
-    throw new Error('guide example markers missing or out of order')
-  }
-  if (markdown.indexOf(START, start + 1) >= 0) {
-    throw new Error('guide example start marker appears more than once')
-  }
-  const region = markdown.slice(start + START.length, end)
-  const blocks = [...region.matchAll(/```ts\n([\s\S]*?)```/g)]
-  if (blocks.length !== 1) {
-    throw new Error(
-      'expected exactly one ts block between the markers, found ' +
-        blocks.length,
-    )
-  }
-  return blocks[0]?.[1] ?? ''
-}
-
-const TSCONFIG = (prismaClientDir: string) =>
-  JSON.stringify(
-    {
-      compilerOptions: {
-        target: 'ES2022',
-        module: 'ESNext',
-        moduleResolution: 'Bundler',
-        strict: true,
-        noEmit: true,
-        skipLibCheck: true,
-        types: ['node'],
-        baseUrl: '.',
-        // the generated guard client and route types read the Prisma
-        // namespace of the client generated for THIS schema
-        paths: { '@prisma/client': [prismaClientDir] },
-      },
-      files: ['guideExample.ts'],
-    },
-    null,
-    2,
-  )
-
 let snippet = ''
 
 beforeAll(async () => {
-  snippet = extractGuideExample(await readFile(GUIDE, 'utf8'))
+  snippet = await readMarkedBlock(
+    GUIDE_PATH,
+    'guide-example:mcp-tenant-page',
+    'ts',
+  )
   await generateWithArticleGuard({
     workDir: WORK_DIR,
     schemaDirName: 'guide-example',
@@ -117,18 +76,23 @@ beforeAll(async () => {
     // generate never connects; the datasource only needs a well-formed URL
     databaseUrl: 'postgresql://unused:unused@127.0.0.1:1/unused',
     label: 'guide example',
+    outDir: 'generated',
   })
+  // the snippet verbatim, plus an independent assignment so removing the
+  // snippet's own annotation cannot make the type check vacuous
   await writeFile(
     resolve(WORK_DIR, 'guideExample.ts'),
-    "import type { PageRouteConfig } from './api/Page/PageRouter'\n" +
-      snippet +
-      '\n// the example must be a valid, guard-typed generated route config\n' +
-      'export const typedPageConfig: PageRouteConfig = pageConfig\n',
+    snippet +
+      "\nimport type { PageRouteConfig as GeneratedPageRouteConfig } from './generated/api/Page/PageRouter'\n" +
+      'export const typedPageConfig: GeneratedPageRouteConfig = pageConfig\n',
     'utf8',
   )
   await writeFile(
     resolve(WORK_DIR, 'tsconfig.json'),
-    TSCONFIG(resolve(ARTICLE_GUARD_DIR, 'node_modules/@prisma/client')),
+    snippetTsconfig(
+      'guideExample.ts',
+      resolve(ARTICLE_GUARD_DIR, 'node_modules/@prisma/client'),
+    ),
     'utf8',
   )
 }, 300_000)
@@ -151,7 +115,7 @@ describe('guide tenant-safe Page example (extracted from docs/guide.md)', () => 
 
   it('the route types really come from prisma-guard shapes (the check is not vacuous)', async () => {
     const router = await readFile(
-      resolve(WORK_DIR, 'api/Page/PageRouter.ts'),
+      resolve(WORK_DIR, 'generated/api/Page/PageRouter.ts'),
       'utf8',
     )
     expect(router).toMatch(/PageCreateShape/)
@@ -182,13 +146,13 @@ describe('guide tenant-safe Page example (extracted from docs/guide.md)', () => 
     }>(WORK_DIR, 'guideExample.ts')
     const factories = await importFrom<
       Record<string, (o: { config: unknown }) => unknown>
-    >(WORK_DIR, 'api/Page/PageMcp.ts')
+    >(WORK_DIR, 'generated/api/Page/PageMcp.ts')
     const runtime = await importFrom<{
       registerMcpTools: (
         server: McpServer,
         options: Record<string, unknown>,
       ) => void
-    }>(WORK_DIR, 'api/mcpRuntime.ts')
+    }>(WORK_DIR, 'generated/api/mcpRuntime.ts')
 
     const operations = Object.keys(example.typedPageConfig)
     expect(operations.length).toBeGreaterThan(0)

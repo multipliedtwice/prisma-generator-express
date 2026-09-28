@@ -2987,35 +2987,80 @@ Force the tenant in every write shape, per tenant, with STATIC variants. The Pos
 
 ```ts
 import { force } from 'prisma-guard'
+import type { PageRouteConfig } from './generated/api/Page/PageRouter'
 
-const tenantPage = (t: string) => ({
-  create: { shape: { data: { slug: true, title: true, siteId: force(t) } } },
-  // select by id AND the forced tenant (Prisma extended unique where):
-  // another tenant's id is a 404, never a write
-  update: { shape: { where: { id: true, siteId: force(t) }, data: { title: true } } },
-  // compound @@unique([siteId, slug]) with the tenant half forced
-  upsert: {
-    shape: {
-      where: { siteId_slug: { siteId: force(t), slug: true } },
-      create: { slug: true, title: true, siteId: force(t) },
-      update: { title: true },
+// model Page { id, siteId, slug, title, @@unique([siteId, slug]) }
+// Annotate the config: the generated route type (typed by prisma-guard's
+// shape types) checks every variant against its action's shape.
+const pageConfig: PageRouteConfig = {
+  create: {
+    variants: {
+      'tenant-a': { shape: { data: { slug: true, title: true, siteId: force('tenant-a') } } },
+      'tenant-b': { shape: { data: { slug: true, title: true, siteId: force('tenant-b') } } },
     },
   },
-  delete: { shape: { where: { id: true, siteId: force(t) } } },
-  // bulk ops filter on the forced tenant
-  deleteMany: { shape: { where: { siteId: { equals: force(t) }, slug: { startsWith: true } } } },
-})
-
-const tenants = ['tenant-a', 'tenant-b']
-const op = (name: keyof ReturnType<typeof tenantPage>) => ({
-  variants: Object.fromEntries(tenants.map((t) => [t, tenantPage(t)[name]])),
-})
-const pageConfig = { create: op('create'), update: op('update'), upsert: op('upsert'), delete: op('delete'), deleteMany: op('deleteMany') }
+  // the compound selector carries the forced tenant: another tenant's slug
+  // is a 404, never a write
+  update: {
+    variants: {
+      'tenant-a': {
+        shape: {
+          where: { siteId_slug: { siteId: force('tenant-a'), slug: true } },
+          data: { title: true },
+        },
+      },
+      'tenant-b': {
+        shape: {
+          where: { siteId_slug: { siteId: force('tenant-b'), slug: true } },
+          data: { title: true },
+        },
+      },
+    },
+  },
+  upsert: {
+    variants: {
+      'tenant-a': {
+        shape: {
+          where: { siteId_slug: { siteId: force('tenant-a'), slug: true } },
+          create: { slug: true, title: true, siteId: force('tenant-a') },
+          update: { title: true },
+        },
+      },
+      'tenant-b': {
+        shape: {
+          where: { siteId_slug: { siteId: force('tenant-b'), slug: true } },
+          create: { slug: true, title: true, siteId: force('tenant-b') },
+          update: { title: true },
+        },
+      },
+    },
+  },
+  delete: {
+    variants: {
+      'tenant-a': { shape: { where: { siteId_slug: { siteId: force('tenant-a'), slug: true } } } },
+      'tenant-b': { shape: { where: { siteId_slug: { siteId: force('tenant-b'), slug: true } } } },
+    },
+  },
+  // bulk ops filter on the forced tenant; the client filter (slug) must be
+  // sent — MCP refuses `where: {}` here
+  deleteMany: {
+    variants: {
+      'tenant-a': {
+        shape: { where: { siteId: { equals: force('tenant-a') }, slug: { startsWith: true } } },
+      },
+      'tenant-b': {
+        shape: { where: { siteId: { equals: force('tenant-b') }, slug: { startsWith: true } } },
+      },
+    },
+  },
+}
 ```
 
 <!-- guide-example:mcp-tenant-page:end -->
 
 `resolveCaller(authInfo)` picks the variant from the verified principal; a caller routed to `tenant-b` cannot select, change or delete a `tenant-a` row through any write action.
+
+Why a compound selector and not `{ id: true, siteId: force(t) }`? That extended unique `where` is valid at runtime — prisma-guard accepts it, MCP advertises it, and the Postgres parity suite runs it — but prisma-guard 1.33's shape TYPES (`TypedUniqueWhere`) admit only unique fields and compound selectors. In a typed project it does not compile. A compound `@@unique([siteId, …])` expresses the same tenant boundary and typechecks.
 
 Dynamic (function) write shapes — single or per variant — are refused when the action's tool is created. A write action's input schema is narrowed from a static shape; there is no opaque `data`/`where` fallback. Use per-tenant static variants for tenant-forced values.
 
@@ -3034,7 +3079,7 @@ Advertised `data` surfaces mirror prisma-guard's data compilation:
 
 Advertised `where` surfaces:
 
-- `update`/`upsert`/`delete` take a unique selector: a flat unique field or compound selector object, exactly like the `findUnique` tools. Other scalar fields may ride along (Prisma extended unique where) — `true` makes one an optional client filter, a literal or `force()` makes it server-owned. A `where` without any unique field or compound selector refuses registration
+- `update`/`upsert`/`delete` take a unique selector: a flat unique field or compound selector object, exactly like the `findUnique` tools. Other scalar fields may ride along (Prisma extended unique where) — `true` makes one an optional client filter, a literal or `force()` makes it server-owned; this form is runtime-only, prisma-guard 1.33's shape types reject it (see the tenant-safe section). A `where` without any unique field or compound selector refuses registration
 - `updateMany`/`updateManyAndReturn`/`deleteMany` take the filter `where` the `findMany` tools use. When the filter has ANY client-controlled key, the client must send at least one condition — even beside a forced tenant. This is stricter than REST, where guard merges the forced tenant into `where: {}` and the action touches every row of the tenant; an agent cannot bulk-write a whole tenant by omission
 - only when every selector value or filter leaf is forced is `where` optional in the tool schema; the runtime then sends `where: {}` to the operation core (its required-field check matches REST) and guard merges the forced values into it
 
@@ -3074,7 +3119,7 @@ const buildServer = (authInfo: AuthInfo): McpServer => {
 
 Unimported tools drop out of the bundle — the same static boundary the Hono per-op router parts use. Tool input schemas are model-aware: only keys the guard shape declares are advertised, `where`/`select`/`include`/`omit` enumerate real model fields (recursively for nested projection shapes), and undeclared keys are rejected before any handler runs.
 
-`findUnique` tools advertise a unique-selector `where` (never filter operators): a flat unique field is advertised only when the shape configures it with exactly `true`, and a compound `@@unique([a, b])` is advertised as its selector object `a_b` when the shape configures that key with `{ a: true, b: true }` — only `true`-configured fields are advertised and required. Other scalar fields may ride beside a covering selector (Prisma extended unique where; e.g. `{ id: true, siteId: force(t) }`): `true` advertises an optional client filter, a literal or `force()` stays server-owned. Forced (literal or `force()`) configs are never advertised; a guard-invalid configuration (`where: true`, field-wise compound declarations, operator configs) refuses registration outright — prisma-guard 1.33 rejects or crashes on every input for it. `cursor` follows the same rule: flat keys configured with `true`, compound selectors whose inner object maps every constraint field to `true`.
+`findUnique` tools advertise a unique-selector `where` (never filter operators): a flat unique field is advertised only when the shape configures it with exactly `true`, and a compound `@@unique([a, b])` is advertised as its selector object `a_b` when the shape configures that key with `{ a: true, b: true }` — only `true`-configured fields are advertised and required. Other scalar fields may ride beside a covering selector (Prisma extended unique where; e.g. `{ id: true, siteId: force(t) }`, runtime-valid but not expressible in prisma-guard 1.33's shape types): `true` advertises an optional client filter, a literal or `force()` stays server-owned. Forced (literal or `force()`) configs are never advertised; a guard-invalid configuration (`where: true`, field-wise compound declarations, operator configs) refuses registration outright — prisma-guard 1.33 rejects or crashes on every input for it. `cursor` follows the same rule: flat keys configured with `true`, compound selectors whose inner object maps every constraint field to `true`.
 
 ### Authentication
 

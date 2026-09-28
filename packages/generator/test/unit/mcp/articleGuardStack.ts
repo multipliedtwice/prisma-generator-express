@@ -53,7 +53,15 @@ export async function generateWithArticleGuard(input: {
   schema: string
   databaseUrl: string
   label: string
+  /**
+   * Subdirectory of workDir the guard/api outputs land in: '' gives
+   * `workDir/guard` + `workDir/api`; 'generated' mirrors a consumer project
+   * (`./generated/guard`, `./generated/api`) so extracted docs snippets
+   * resolve their own import paths unchanged.
+   */
+  outDir?: string
 }): Promise<{ schemaPath: string; env: NodeJS.ProcessEnv }> {
+  const out = resolve(input.workDir, input.outDir ?? '')
   await waitForBuiltGenerator()
   const schemaDir = resolve(ARTICLE_GUARD_DIR, input.schemaDirName)
   const schemaPath = resolve(schemaDir, 'schema.prisma')
@@ -62,9 +70,9 @@ export async function generateWithArticleGuard(input: {
   await writeFile(
     schemaPath,
     input.schema
-      .replace('${GUARD_OUT}', resolve(input.workDir, 'guard'))
+      .replace('${GUARD_OUT}', resolve(out, 'guard'))
       .replace('${API_BIN}', GENERATOR_BIN)
-      .replace('${API_OUT}', resolve(input.workDir, 'api')),
+      .replace('${API_OUT}', resolve(out, 'api')),
     'utf8',
   )
   // the guard RUNTIME must match the generator that produced the type map:

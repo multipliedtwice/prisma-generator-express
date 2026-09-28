@@ -100,4 +100,4 @@ Execution: sanitized tool arguments become `ctx.body`, `parsedQuery` stays empty
 
 Annotations follow MCP semantics: `destructiveHint: false` means only additive updates, so the update, upsert and delete families are destructive; every tool sets `openWorldHint: false`.
 
-Tenant safety is a shape property: per-tenant static variants forcing the tenant column in data, in unique wheres (`{ id: true, siteId: force(t) }` or a compound selector with the tenant half forced) and in bulk filters. The Postgres parity suite runs cross-tenant update/delete/upsert/bulk attacks (asserting the other tenant's rows are unchanged) and authorization denials (asserting zero writes).
+Tenant safety is a shape property: per-tenant static variants forcing the tenant column in data, in unique wheres (a compound selector with the tenant half forced — typed; or the extended `{ id: true, siteId: force(t) }`, which guard accepts at runtime but prisma-guard 1.33's shape types reject) and in bulk filters. The Postgres parity suite runs cross-tenant update/delete/upsert/bulk attacks (asserting the other tenant's rows are unchanged) and authorization denials (asserting zero writes).

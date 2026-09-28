@@ -10,6 +10,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { readmeQuickstartSchema } from './docsSnippet'
 
 /**
  * The README MCP quickstart, executed against the REAL stack: prisma 6 +
@@ -34,41 +35,7 @@ const PRISMA_BIN = resolve(
   'node_modules/prisma/build/index.js',
 )
 
-const SCHEMA = `datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-generator client {
-  provider = "prisma-client-js"
-}
-
-generator guard {
-  provider = "prisma-guard"
-  output   = "\${GUARD_OUT}"
-}
-
-generator api {
-  provider = "\${API_BIN}"
-  output   = "\${API_OUT}"
-  target   = "express"
-  mcp      = true
-}
-
-model User {
-  id     String @id @default(cuid())
-  email  String @unique
-  siteId String
-  posts  Post[]
-}
-
-model Post {
-  id       String @id @default(cuid())
-  title    String
-  author   User   @relation(fields: [authorId], references: [id])
-  authorId String
-}
-`
+// the schema is the README's own block, extracted (see docsSnippet.ts)
 
 // exactly the README's route config: guard shapes with a FORCED tenant,
 // including the opt-in tenant-forced create + update write tools
@@ -84,8 +51,8 @@ const userConfig = (force: (v: string) => unknown) => ({
   },
   update: {
     shape: {
-      where: { id: true, siteId: force('tenant-a') },
-      data: { email: true },
+      where: { siteId_email: { siteId: force('tenant-a'), email: true } },
+      data: { name: true },
     },
   },
 })
@@ -93,8 +60,12 @@ const userConfig = (force: (v: string) => unknown) => ({
 const servers: Server[] = []
 const disconnects: Array<() => Promise<void>> = []
 let port = 0
-let otherTenantUserId = ''
-type UserRow = { id: string; email: string; siteId: string }
+type UserRow = {
+  id: string
+  email: string
+  siteId: string
+  name: string | null
+}
 let findUsers: (() => Promise<UserRow[]>) | undefined
 
 /**
@@ -158,7 +129,8 @@ beforeAll(async () => {
   const schemaPath = resolve(qsDir, 'schema.prisma')
   await writeFile(
     schemaPath,
-    SCHEMA.replace('${GUARD_OUT}', resolve(WORK, 'guard'))
+    (await readmeQuickstartSchema())
+      .replace('${GUARD_OUT}', resolve(WORK, 'guard'))
       .replace('${API_BIN}', resolve(process.cwd(), 'dist/bin.js'))
       .replace('${API_OUT}', resolve(WORK, 'api')),
     'utf8',
@@ -220,10 +192,7 @@ beforeAll(async () => {
   await createUser({ data: { email: 'readme@test', siteId: 'tenant-a' } })
   // tenant B exists and MUST be excluded by the forced-tenant guard shape,
   // and MUST NOT be writable through the tenant-a write tools
-  const other = await createUser({
-    data: { email: 'other@test', siteId: 'tenant-b' },
-  })
-  otherTenantUserId = other.id
+  await createUser({ data: { email: 'other@test', siteId: 'tenant-b' } })
 
   // emitted tool factory + registry
   const mcpMod = (await import(
@@ -366,22 +335,23 @@ describe('README MCP quickstart, executed on the real stack', () => {
       const updated = await client.callTool({
         name: 'user_update',
         arguments: {
-          where: { id: createdUser.id },
-          data: { email: 'agent2@test' },
+          where: { siteId_email: { email: 'agent@test' } },
+          data: { name: 'Agent' },
         },
       })
       expect(updated.isError).toBeFalsy()
       expect(JSON.parse(text(updated))).toMatchObject({
         id: createdUser.id,
-        email: 'agent2@test',
+        name: 'Agent',
       })
 
-      // the other tenant's row is unreachable: selector id + forced siteId
+      // the other tenant's row is unreachable: the compound selector carries
+      // the forced tenant, so tenant-b's email resolves to no tenant-a row
       const attack = await client.callTool({
         name: 'user_update',
         arguments: {
-          where: { id: otherTenantUserId },
-          data: { email: 'pwned@test' },
+          where: { siteId_email: { email: 'other@test' } },
+          data: { name: 'pwned' },
         },
       })
       expect(attack.isError).toBe(true)
@@ -394,10 +364,12 @@ describe('README MCP quickstart, executed on the real stack', () => {
       })
       expect(spoof.isError).toBe(true)
 
-      expect((await findUsers?.())?.map((u) => [u.email, u.siteId])).toEqual([
-        ['agent2@test', 'tenant-a'],
-        ['other@test', 'tenant-b'],
-        ['readme@test', 'tenant-a'],
+      expect(
+        (await findUsers?.())?.map((u) => [u.email, u.siteId, u.name]),
+      ).toEqual([
+        ['agent@test', 'tenant-a', 'Agent'],
+        ['other@test', 'tenant-b', null],
+        ['readme@test', 'tenant-a', null],
       ])
     } finally {
       await client.close()

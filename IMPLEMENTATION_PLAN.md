@@ -12,14 +12,12 @@ Order: leftovers of phases 1, 7 — cheap, any time, independent.
 
 ## Phase 11 follow-up — MCP write recheck fixes
 
-Size: S. Uncommitted in working tree, mixed with GPT's uncommitted docs/Pages edits.
+Size: S. Remaining work: docs drift fixes uncommitted on top of pushed `c8ec389` (whose CI failed on the guide example).
 
-1. Guide drift test: strict TypeScript test extracts the tenant-safe Page example from `docs/guide.md` between stable markers and compiles it against generated `PageRouteConfig` output (no second handwritten copy).
-2. Run full gate when machine safe: build, `vitest run --coverage` (zero skipped), prettier check, both typechecks, Prisma 6 + 7 matrix (generate, artifact asserts, strict tsc), `git diff --check`.
-3. GPT review, then commit on authorization.
+1. GPT review of the uncommitted diff, then commit on authorization. Any further change reruns the full gate first.
 
 Accept:
-- drift test green, gate green, GPT approval
+- GPT approval
 
 ---
 
