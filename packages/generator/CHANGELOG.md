@@ -1,3 +1,10 @@
+# [1.69.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.68.0...v1.69.0) (2026-09-28)
+
+
+### Features
+
+* implement searchable guide layout with navigation and progress tracking ([fd0886c](https://github.com/multipliedtwice/prisma-generator-express/commit/fd0886c7e4e9ccb17c259e7ed5138e175d11eaf1))
+
 # [1.68.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.67.0...v1.68.0) (2026-09-28)
 
 
