@@ -137,6 +137,7 @@ describe('MCP registration — explicit allowlist only', () => {
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
+      openWorldHint: false,
     })
   })
 

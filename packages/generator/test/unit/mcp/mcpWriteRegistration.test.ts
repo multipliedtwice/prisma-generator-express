@@ -163,9 +163,31 @@ describe('MCP write registration — explicit allowlist only', () => {
   })
 
   it('enableAll never implies write exposure; writes need their own contribution', () => {
+    // a config with enableAll AND a guarded create shape: contributing only
+    // the read tool registers only the read tool — the create shape alone
+    // exposes nothing
+    const config = {
+      enableAll: true,
+      findMany: { shape: { take: 10 } },
+      create: { shape: { data: { title: true, siteId: force('tenant-a') } } },
+    }
     const { server, tools } = fakeServer()
-    registerMcpTools(server, { ...shared, tools: [] })
-    expect(tools).toHaveLength(0)
+    registerMcpTools(server, {
+      ...shared,
+      tools: [
+        createMcpReadTool({
+          model: 'Ticket',
+          operation: 'findMany',
+          config,
+          core: async () => [],
+          fields,
+          enums: new Map(),
+          modelIndex: new Map(),
+        }),
+      ],
+    })
+    expect(tools.map((t) => t.name)).toEqual(['ticket_find_many'])
+    // and enableAll without a shape cannot produce a write tool at all
     expect(() => writeTool('create', { enableAll: true })).toThrow(
       /no guard configured/,
     )
@@ -285,43 +307,24 @@ const configFor = (operation: McpWriteOperation) => ({
 })
 
 describe('MCP write registration — every guarded write op, annotations from explicit metadata', () => {
+  // MCP semantics: destructiveHint false = ONLY additive updates, so
+  // everything that can overwrite or remove data is destructive
+  const hints = (destructive: boolean, idempotent: boolean) => ({
+    readOnlyHint: false,
+    destructiveHint: destructive,
+    idempotentHint: idempotent,
+    openWorldHint: false,
+  })
   const cases: Array<[McpWriteOperation, Record<string, boolean>]> = [
-    [
-      'create',
-      { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-    ],
-    [
-      'createMany',
-      { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-    ],
-    [
-      'createManyAndReturn',
-      { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-    ],
-    [
-      'update',
-      { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-    ],
-    [
-      'updateMany',
-      { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-    ],
-    [
-      'updateManyAndReturn',
-      { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-    ],
-    [
-      'upsert',
-      { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-    ],
-    [
-      'delete',
-      { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
-    ],
-    [
-      'deleteMany',
-      { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
-    ],
+    ['create', hints(false, false)],
+    ['createMany', hints(false, false)],
+    ['createManyAndReturn', hints(false, false)],
+    ['update', hints(true, false)],
+    ['updateMany', hints(true, false)],
+    ['updateManyAndReturn', hints(true, false)],
+    ['upsert', hints(true, true)],
+    ['delete', hints(true, true)],
+    ['deleteMany', hints(true, true)],
   ]
   for (const [operation, expected] of cases) {
     it(`${operation} registers and maps ${JSON.stringify(expected)}`, () => {
@@ -372,7 +375,7 @@ describe('MCP write registration — bulk operation schemas', () => {
     ).toBeDefined()
   })
 
-  it('updateMany uses the FILTER where surface; forced tenant lets where be sent empty', () => {
+  it('updateMany uses the FILTER where surface; the forced tenant is never client input', () => {
     const validate = validator(
       register([{ operation: 'updateMany', config: configFor('updateMany') }]),
     )
@@ -381,16 +384,42 @@ describe('MCP write registration — bulk operation schemas', () => {
         .issues,
     ).toBeUndefined()
     expect(
-      validate({ where: {}, data: { hidden: true } }).issues,
-    ).toBeUndefined()
-    // the forced siteId is never client input
-    expect(
       validate({ where: { siteId: { equals: 'b' } }, data: { hidden: true } })
         .issues,
     ).toBeDefined()
     expect(
       validate({ where: { title: { contains: 'x' } } }).issues,
     ).toBeDefined()
+  })
+
+  it('a forced tenant beside client filters still requires a client condition (no whole-tenant write by omission)', () => {
+    for (const operation of ['updateMany', 'deleteMany'] as const) {
+      const validate = validator(
+        register([{ operation, config: configFor(operation) }]),
+      )
+      const data = operation === 'updateMany' ? { data: { hidden: true } } : {}
+      expect(validate({ where: {}, ...data }).issues, operation).toBeDefined()
+      expect(validate({ ...data }).issues, operation).toBeDefined()
+      expect(
+        validate({ where: { title: { contains: 'x' } }, ...data }).issues,
+        operation,
+      ).toBeUndefined()
+    }
+  })
+
+  it('a FULLY forced bulk filter needs no client condition', () => {
+    const validate = validator(
+      register([
+        {
+          operation: 'updateManyAndReturn',
+          config: configFor('updateManyAndReturn'),
+        },
+      ]),
+    )
+    expect(
+      validate({ where: {}, data: { hidden: true } }).issues,
+    ).toBeUndefined()
+    expect(validate({ data: { hidden: true } }).issues).toBeUndefined()
   })
 
   it('an all-client bulk where must carry at least one condition', () => {
@@ -513,17 +542,12 @@ describe('MCP write registration — create data schema mirrors the guard contra
     ).toBeUndefined()
   })
 
-  it('forced data values merge server-side; the tool never sees them', () => {
-    // the parity/execution tests prove the merge against the real guard;
-    // here the CONTRACT is that the schema cannot carry them at all
-    const tools = register([{ operation: 'create', config }])
-    const schema = tools[0]?.config.inputSchema as unknown as {
-      '~standard': {
-        validate: (v: unknown) => { value?: unknown; issues?: unknown[] }
-      }
-    }
-    const result = schema['~standard'].validate({ data: { title: 't' } })
-    expect(result.issues).toBeUndefined()
+  it('a body without the forced field is complete (the forced value is server-owned)', () => {
+    // the server-side MERGE is proven against real guard + Postgres in
+    // mcpParity.postgres; here: the schema neither needs nor accepts it
+    const validate = validator(register([{ operation: 'create', config }]))
+    expect(validate({ data: { title: 't' } }).issues).toBeUndefined()
+    expect(validate({ data: { title: 't', siteId: 'x' } }).issues).toBeDefined()
   })
 })
 
@@ -975,8 +999,12 @@ describe('MCP write registration — writeStrategy follows the operation core', 
         .issues,
     ).toBeUndefined()
     // the tool keeps its name and annotations; only the contract widens
-    const tools = registerStrategy('createMany', plain, 'forceReturn')
-    expect(tools[0]?.name).toBe('ticket_create_many')
+    const forced = registerStrategy('createMany', plain, 'forceReturn')
+    const regular = registerStrategy('createMany', plain, 'regular')
+    expect(forced[0]?.name).toBe('ticket_create_many')
+    expect(forced[0]?.config.annotations).toEqual(
+      regular[0]?.config.annotations,
+    )
   })
 
   it('throwOnNonReturning: createMany/updateMany refuse at creation — their cores 501 every call', () => {

@@ -24,7 +24,10 @@ export interface OpMetadata {
   /**
    * EXPLICIT behaviour annotations, never inferred from `kind`. Mapped to MCP
    * tool hints (readOnlyHint / destructiveHint / idempotentHint) and available
-   * for any other transport that wants the same vocabulary.
+   * for any other transport that wants the same vocabulary. MCP semantics:
+   * `destructive: false` means ONLY additive updates — anything that can
+   * overwrite or remove existing data (update, upsert, delete families) is
+   * destructive.
    */
   readOnly: boolean
   destructive: boolean
@@ -381,7 +384,7 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   {
     name: 'update',
     readOnly: false,
-    destructive: false,
+    destructive: true,
     idempotent: false,
     method: 'put',
     pathSuffix: '',
@@ -405,7 +408,7 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   {
     name: 'updateMany',
     readOnly: false,
-    destructive: false,
+    destructive: true,
     idempotent: false,
     method: 'put',
     pathSuffix: '/many',
@@ -429,7 +432,7 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   {
     name: 'updateManyAndReturn',
     readOnly: false,
-    destructive: false,
+    destructive: true,
     idempotent: false,
     method: 'put',
     pathSuffix: '/many/return',
@@ -453,7 +456,7 @@ export const OPERATION_METADATA: readonly OpMetadata[] = [
   {
     name: 'upsert',
     readOnly: false,
-    destructive: false,
+    destructive: true,
     idempotent: true,
     method: 'patch',
     pathSuffix: '',

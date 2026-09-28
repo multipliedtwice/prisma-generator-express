@@ -1,16 +1,15 @@
 title: Prisma Generator Express Field Guide
 short_title: Prisma Express Field Guide
-description: Practical guides to shipping Prisma APIs faster with generated routes, OpenAPI, pagination, hooks, and guard features.
+description: Practical guides to shipping Prisma APIs faster with generated routes, OpenAPI, guarded MCP tools, pagination, hooks, and tenant boundaries.
 url: https://multipliedtwice.github.io
 baseurl: /prisma-generator-express
 repository: multipliedtwice/prisma-generator-express
 lang: en
-generator_version: "1.64.4"
 guard_version: "1.33.0"
 prism_version: "1.30.0"
-verified_on: "2026-08-16"
+updated_on: "2026-09-28"
 social_image: /assets/images/series-card.png
-assets_version: "20260816.4"
+assets_version: "20260928.1"
 markdown: kramdown
 highlighter: rouge
 permalink: pretty

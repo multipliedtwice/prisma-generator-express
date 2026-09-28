@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { access, cp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { force } from 'prisma-guard'
@@ -15,6 +15,12 @@ import {
   type AuthInfo,
 } from '@modelcontextprotocol/server'
 import { toNodeHandler } from '@modelcontextprotocol/node'
+import {
+  ARTICLE_GUARD_DIR,
+  PRISMA_BIN,
+  generateWithArticleGuard,
+  importFrom,
+} from './articleGuardStack'
 /**
  * REST versus MCP parity on a REAL Postgres, with the prisma-guard extension
  * ACTIVE — the guard-dropped SQLite harness cannot substitute for this gate.
@@ -32,15 +38,6 @@ const WORK_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../.parity-pg',
 )
-const ARTICLE_GUARD_DIR = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../../../../article-labs/guard',
-)
-const PRISMA_BIN = resolve(
-  ARTICLE_GUARD_DIR,
-  'node_modules/prisma/build/index.js',
-)
-const SCHEMA_PATH = resolve(ARTICLE_GUARD_DIR, 'parity/schema.prisma')
 
 const SCHEMA = `datasource db {
   provider = "postgresql"
@@ -231,89 +228,22 @@ let restPort = 0
 let mcpPort = 0
 const servers: Server[] = []
 
-/** Absolute URL import; vite transforms emitted .ts inside the project root. */
 async function dynamicImport<T>(modulePath: string): Promise<T> {
-  return (await import(pathToFileURL(resolve(WORK_DIR, modulePath)).href)) as T
-}
-
-async function waitForBuiltGenerator(timeoutMs = 120_000): Promise<void> {
-  // the consumer metadata test rebuilds `dist` via prepack; a parallel run can
-  // observe the directory mid-rebuild
-  const bin = resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    '../../../dist/bin.js',
-  )
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    try {
-      await access(bin)
-      return
-    } catch {
-      await new Promise((r) => setTimeout(r, 500))
-    }
-  }
-  throw new Error('dist/bin.js did not appear — did the generator build run?')
+  return importFrom<T>(WORK_DIR, modulePath)
 }
 
 beforeAll(async () => {
   // the PrismaClient below reads the URL from the environment, like the CLI
   process.env.DATABASE_URL = DATABASE_URL
-  await waitForBuiltGenerator()
-
-  // 1. generate into the work dir using the article-verified prisma 6 +
-  // prisma-guard 1.33 environment (the repo's hoisted prisma-guard 1.28
-  // generator rejects this CLI's config shape). The API generator under test
-  // is THIS worktree's build.
-  await mkdir(WORK_DIR, { recursive: true })
-  await mkdir(resolve(ARTICLE_GUARD_DIR, 'parity'), { recursive: true })
-  await writeFile(
-    SCHEMA_PATH,
-    SCHEMA.replace('${GUARD_OUT}', resolve(WORK_DIR, 'guard'))
-      .replace(
-        '${API_BIN}',
-        resolve(
-          dirname(fileURLToPath(import.meta.url)),
-          '../../../dist/bin.js',
-        ),
-      )
-      .replace('${API_OUT}', resolve(WORK_DIR, 'api')),
-    'utf8',
-  )
-  // the guard RUNTIME must match the generator that produced the type map:
-  // place 1.33 locally so the emitted guard/client resolves it, not the hoist
-  await mkdir(resolve(WORK_DIR, 'node_modules'), { recursive: true })
-  await cp(
-    resolve(ARTICLE_GUARD_DIR, 'node_modules/prisma-guard'),
-    resolve(WORK_DIR, 'node_modules/prisma-guard'),
-    { recursive: true },
-  )
-
-  const env = {
-    ...process.env,
-    // generator-by-name resolution: the article env's prisma-guard 1.33 must
-    // win over the repository's hoisted 1.28 (whose generator rejects this
-    // CLI's config shape)
-    PATH:
-      resolve(ARTICLE_GUARD_DIR, 'node_modules/.bin') +
-      ':' +
-      (process.env.PATH ?? ''),
-    DATABASE_URL,
-    // no engine stubs: the parity run needs the REAL engines (schema engine
-    // for db push, query engine copied for the client at runtime)
-  }
-  const generate = spawnSync(
-    process.execPath,
-    [PRISMA_BIN, 'generate', '--schema', SCHEMA_PATH],
-    { cwd: ARTICLE_GUARD_DIR, env, encoding: 'utf8' },
-  )
-  if (generate.status !== 0) {
-    throw new Error(
-      'parity prisma generate failed:\n' +
-        (generate.stdout ?? '') +
-        (generate.stderr ?? '') +
-        String(generate.error ?? ''),
-    )
-  }
+  // 1. generate with the article-verified prisma 6 + prisma-guard 1.33
+  // environment and THIS worktree's generator build
+  const { schemaPath: SCHEMA_PATH, env } = await generateWithArticleGuard({
+    workDir: WORK_DIR,
+    schemaDirName: 'parity',
+    schema: SCHEMA,
+    databaseUrl: DATABASE_URL,
+    label: 'parity',
+  })
   execFileSync(
     process.execPath,
     [
@@ -753,36 +683,35 @@ describe('Page writes: REST vs MCP parity on Postgres, guard active', () => {
     )
   })
 
-  it('update by id: same result, same override input and context on both transports', async () => {
+  it('update by id: identical body gives an identical result and identical override input/context on both transports', async () => {
     const { a } = await seedPages()
-    const rest = await restPage('PUT', '/', 'tenant-a', {
-      where: { id: a.id },
-      data: { title: 'A (REST)', views: '42' },
-    })
+    const body = { where: { id: a.id }, data: { title: 'A v2', views: '42' } }
+    const rest = await restPage('PUT', '/', 'tenant-a', body)
     expect(rest.status).toBe(200)
-    expect(rest.body).toMatchObject({
-      id: a.id,
-      title: 'A (REST)',
-      views: '42',
-    })
+    expect(rest.body).toMatchObject({ id: a.id, title: 'A v2', views: '42' })
 
-    const mcp = await mcpCall('page_update', {
-      where: { id: a.id },
-      data: { title: 'A (MCP)', views: null },
-    })
+    const mcp = await mcpCall('page_update', body)
     expect(mcp.isError).toBeFalsy()
-    expect(json(mcp)).toMatchObject({ id: a.id, title: 'A (MCP)', views: null })
+    // same row, same data applied twice: the returned records are equal
+    expect(json(mcp)).toEqual(rest.body)
 
-    // the operation override ran once per transport with the same input
-    // keys and the same resolved application context
-    expect(overrideCalls.map((c) => c.transport)).toEqual(['rest', 'mcp'])
+    // optional BigInt accepts null on the MCP surface too
+    const cleared = await mcpCall('page_update', {
+      where: { id: a.id },
+      data: { views: null },
+    })
+    expect(json(cleared)).toMatchObject({ id: a.id, views: null })
+
+    // the operation override ran per call with the same input and the same
+    // resolved application context
+    expect(overrideCalls.map((c) => c.transport)).toEqual([
+      'rest',
+      'mcp',
+      'mcp',
+    ])
+    expect(overrideCalls[0]?.input).toEqual(overrideCalls[1]?.input)
     expect(overrideCalls[0]?.context).toEqual({ tenant: 'tenant-a' })
-    expect(overrideCalls[1]?.context).toEqual({ tenant: 'tenant-a' })
-    const keysOf = (v: unknown) =>
-      Object.keys(typeof v === 'object' && v !== null ? v : {}).sort()
-    expect(keysOf(overrideCalls[0]?.input)).toEqual(
-      keysOf(overrideCalls[1]?.input),
-    )
+    expect(overrideCalls[1]?.context).toEqual(overrideCalls[0]?.context)
   })
 
   it('updateMany / updateManyAndReturn touch only the caller tenant', async () => {
@@ -802,18 +731,28 @@ describe('Page writes: REST vs MCP parity on Postgres, guard active', () => {
     expect(mcp.isError).toBeFalsy()
     expect(json(mcp)).toEqual({ count: 1 })
 
+    // updateManyAndReturn on BOTH transports: same projection, same rows,
+    // each scoped to its caller's tenant
+    const select = { siteId: true, published: true }
+    const restRet = await restPage('PUT', '/many/return', 'tenant-a', {
+      where: {},
+      data: { published: false },
+      select,
+    })
+    expect(restRet.status).toBe(200)
+    expect(restRet.body).toEqual([{ siteId: 'tenant-a', published: false }])
     const ret = await mcpCall(
       'page_update_many_and_return',
-      { where: {}, data: { published: false } },
+      { where: {}, data: { published: false }, select },
       'tenant-b',
     )
     expect(ret.isError).toBeFalsy()
     expect(JSON.parse(ret.text)).toEqual([
-      expect.objectContaining({ siteId: 'tenant-b', published: false }),
+      { siteId: 'tenant-b', published: false },
     ])
     const rows = await snapshot()
     expect(rows.map((r) => [r.siteId, r.published])).toEqual([
-      ['tenant-a', true],
+      ['tenant-a', false],
       ['tenant-b', false],
     ])
   })
@@ -889,7 +828,14 @@ describe('Page writes: REST vs MCP parity on Postgres, guard active', () => {
     expect(mcpAgain.isError).toBe(true)
     expect(json(mcpAgain).status).toBe(404)
 
+    // deleteMany on BOTH transports, each tenant-scoped
     await seedPages()
+    const restMany = await restPage('DELETE', '/many', 'tenant-a', {
+      where: { slug: { startsWith: '' } },
+    })
+    expect(restMany.status).toBe(200)
+    expect(restMany.body).toEqual({ count: 1 })
+    expect((await snapshot()).map((r) => r.siteId)).toEqual(['tenant-b'])
     const many = await mcpCall(
       'page_delete_many',
       { where: { slug: { startsWith: '' } } },
@@ -897,7 +843,17 @@ describe('Page writes: REST vs MCP parity on Postgres, guard active', () => {
     )
     expect(many.isError).toBeFalsy()
     expect(json(many)).toEqual({ count: 1 })
-    expect((await snapshot()).map((r) => r.siteId)).toEqual(['tenant-a'])
+    expect(await snapshot()).toEqual([])
+
+    // a whole-tenant bulk delete by omission is refused: the shape has a
+    // client filter, so MCP demands a client condition (REST would merge
+    // the forced tenant into {} and delete every tenant row)
+    await seedPages()
+    const omitted = await mcpCall('page_delete_many', { where: {} }, 'tenant-b')
+    expect(omitted.isError).toBe(true)
+    expect(await pageDelegate().count({ where: { siteId: 'tenant-b' } })).toBe(
+      1,
+    )
   })
 })
 
@@ -1020,24 +976,31 @@ describe('Page writes: authorization denial performs zero writes', () => {
     expect(read.isError).toBeFalsy()
   })
 
-  it('write annotations ride on the wire exactly as the metadata states', async () => {
+  it('annotations ride on the wire exactly as the metadata states, for every Page tool', async () => {
     const tools = await mcpListTools('tenant-a')
     const hints = Object.fromEntries(tools.map((t) => [t.name, t.annotations]))
-    const destructive = {
-      readOnlyHint: false,
-      destructiveHint: true,
-      idempotentHint: true,
-    }
-    const plain = {
-      readOnlyHint: false,
-      destructiveHint: false,
-      idempotentHint: false,
-    }
-    expect(hints.page_delete).toEqual(destructive)
-    expect(hints.page_delete_many).toEqual(destructive)
-    expect(hints.page_create).toEqual(plain)
-    expect(hints.page_create_many).toEqual(plain)
-    expect(hints.page_update_many_and_return).toEqual(plain)
-    expect(hints.page_upsert).toEqual({ ...plain, idempotentHint: true })
+    const h = (
+      readOnly: boolean,
+      destructive: boolean,
+      idempotent: boolean,
+    ) => ({
+      readOnlyHint: readOnly,
+      destructiveHint: destructive,
+      idempotentHint: idempotent,
+      openWorldHint: false,
+    })
+    expect(hints).toEqual({
+      ticket_find_many: h(true, false, true),
+      page_find_many: h(true, false, true),
+      page_create: h(false, false, false),
+      page_create_many: h(false, false, false),
+      page_create_many_and_return: h(false, false, false),
+      page_update: h(false, true, false),
+      page_update_many: h(false, true, false),
+      page_update_many_and_return: h(false, true, false),
+      page_upsert: h(false, true, true),
+      page_delete: h(false, true, true),
+      page_delete_many: h(false, true, true),
+    })
   })
 })

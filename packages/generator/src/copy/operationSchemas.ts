@@ -2687,12 +2687,14 @@ export type WriteSchemaOperation =
  * no opaque fallback). Only keys the shape declares are advertised:
  *  - unique-where ops (update/upsert/delete) reuse the findUnique selector
  *    surface, extended unique filters included;
- *  - bulk ops (updateMany*, deleteMany) reuse the filter where surface; an
- *    all-client where must carry at least one condition (guard refuses an
- *    empty bulk where);
- *  - `where` is optional only when fully forced — the runtime then injects
- *    `where: {}` so the operation core's required-field check passes and
- *    guard merges the forced selector;
+ *  - bulk ops (updateMany*, deleteMany) reuse the filter where surface; a
+ *    filter with ANY client-controlled key requires at least one client
+ *    condition (stricter than guard, which accepts `{}` beside a forced
+ *    tenant and then touches every tenant row);
+ *  - `where` is optional only when fully forced (every selector value or
+ *    filter leaf server-owned) — the runtime then injects `where: {}` so
+ *    the operation core's required-field check passes and guard merges the
+ *    forced values;
  *  - data/create/update are narrowed to the shape's client-controlled
  *    fields; createMany* take a non-empty array of them plus
  *    `skipDuplicates`;
@@ -2727,8 +2729,11 @@ export function buildModelAwareWriteArgsSchema(
   }
   if (shapeKeys.has('where') && FILTER_WHERE_WRITE_OPS.has(operation)) {
     const node = whereSchema(meta, shape.where)
-    const state = scanShapeClientState(shape.where)
-    if (!state.forced) {
+    // any client-controlled filter key makes the client state at least one
+    // condition — stricter than guard (which would merge a forced tenant
+    // into `{}` and touch EVERY tenant row): an agent cannot bulk-write a
+    // whole scope by omission. Fully forced filters stay optional.
+    if (scanShapeClientState(shape.where).client) {
       node.minProperties = 1
       required.push('where')
     }

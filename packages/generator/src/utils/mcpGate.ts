@@ -3,8 +3,8 @@ import path from 'node:path'
 
 /**
  * MCP is fail-closed at GENERATION time: a guard-dropped artifact must not
- * carry MCP support, because read-only tools enforce guard shapes and a
- * dropped guard would turn every tool into an unguarded read.
+ * carry MCP support, because every MCP tool enforces a guard shape and a
+ * dropped guard would turn reads and writes into unguarded operations.
  *
  * MCP tool schemas are built against prisma-guard 1.33 semantics (unique
  * selectors, operator configs, forced-value merging). A consumer running an
@@ -19,7 +19,7 @@ export function assertMcpGuardCompatibility(
   if (mcp && dropGuard) {
     throw new Error(
       'Generator option mcp=true cannot be combined with dropGuard=true. ' +
-        'MCP is fail-closed: read-only tools enforce guard shapes, so a ' +
+        'MCP is fail-closed: every tool enforces a guard shape, so a ' +
         'guard-dropped generation refuses to emit MCP support.',
     )
   }

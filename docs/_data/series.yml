@@ -2,7 +2,7 @@
   number: 1
   topic: Getting started
   title: "Build a Prisma CRUD API Without Writing Every Route"
-  description: Generate working CRUD routes from a Prisma schema, then add the API rules your product needs.
+  description: Generate working CRUD routes and optional MCP tools from a Prisma schema, then add the API rules your product needs.
   url: /articles/generated-prisma-rpc-api/
   next_id: A2
 - id: A2
@@ -57,7 +57,7 @@
   number: 8
   topic: Writes
   title: "Safe Prisma Writes: Create, Update, Upsert, and Delete"
-  description: Build write routes that validate input, apply server values, and avoid dangerous bulk changes.
+  description: Build REST and MCP write actions that validate input, apply server values, and avoid dangerous bulk changes.
   url: /articles/writes/
   previous_id: A7
   next_id: A9

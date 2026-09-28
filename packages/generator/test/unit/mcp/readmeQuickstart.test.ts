@@ -73,8 +73,6 @@ model Post {
 // exactly the README's route config: guard shapes with a FORCED tenant,
 // including the opt-in tenant-forced create + update write tools
 const userConfig = (force: (v: string) => unknown) => ({
-  addModelPrefix: false,
-  disableOpenApi: true,
   findMany: {
     shape: {
       where: { siteId: { equals: force('tenant-a') } },
@@ -143,8 +141,8 @@ beforeAll(async () => {
   const env = {
     ...process.env,
     DATABASE_URL,
-    // generator-by-name resolution: the article env's prisma-guard 1.33 must
-    // win over the repository's hoisted 1.28
+    // generator-by-name resolution: the `prisma-guard` generator binary is
+    // taken from the article env (1.33)
     PATH:
       resolve(ARTICLE_GUARD_DIR, 'node_modules/.bin') +
       ':' +
@@ -288,7 +286,7 @@ beforeAll(async () => {
             token,
             clientId: 'tenant-a',
             scopes: ['mcp'],
-            expiresAt: Date.now() + 3_600_000,
+            expiresAt: Math.floor(Date.now() / 1000) + 3600,
           }
         },
       },

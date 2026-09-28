@@ -15,10 +15,10 @@
   <text x="72" y="198" fill="#0b6e59" font-family="Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="3">10 VERIFIED ARTICLES</text>
   <text x="72" y="289" fill="#15201d" font-family="Georgia, serif" font-size="70" font-weight="700">Ship Prisma APIs faster.</text>
   <text x="72" y="367" fill="#15201d" font-family="Georgia, serif" font-size="70" font-weight="700">Generate the repetitive parts.</text>
-  <text x="72" y="432" fill="#36443f" font-family="Georgia, serif" font-size="28">CRUD routes · OpenAPI · pagination · hooks · guard shapes · SSE</text>
+  <text x="72" y="432" fill="#36443f" font-family="Georgia, serif" font-size="28">CRUD routes · OpenAPI · guarded MCP tools · pagination · hooks</text>
   <rect x="72" y="492" width="1056" height="1" fill="#b9b8af"/>
-  <text x="72" y="545" fill="#15201d" font-family="Arial, sans-serif" font-size="20" font-weight="700">prisma-generator-express 1.64.4</text>
-  <text x="470" y="545" fill="#15201d" font-family="Arial, sans-serif" font-size="20" font-weight="700">prisma-guard 1.33.0</text>
+  <text x="72" y="545" fill="#15201d" font-family="Arial, sans-serif" font-size="20" font-weight="700">prisma-generator-express · guarded REST + MCP</text>
+  <text x="650" y="545" fill="#15201d" font-family="Arial, sans-serif" font-size="20" font-weight="700">prisma-guard 1.33.0</text>
   <rect x="1000" y="511" width="128" height="52" rx="4" fill="#15201d"/>
   <text x="1064" y="545" fill="#f4f1e9" font-family="Arial, sans-serif" font-size="18" font-weight="700" text-anchor="middle">READ →</text>
 </svg>

@@ -25,12 +25,12 @@
     <meta property="og:description" content="{{ meta_description | strip_html | normalize_whitespace | escape }}">
     <meta property="og:type" content="{% if article %}article{% else %}website{% endif %}">
     <meta property="og:url" content="{{ canonical_url }}">
-    <meta property="og:image" content="{{ site.social_image | absolute_url }}">
+    <meta property="og:image" content="{{ site.social_image | absolute_url }}?v={{ site.assets_version }}">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="Prisma Express Series — 10 verified engineering articles">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:image" content="{{ site.social_image | absolute_url }}">
+    <meta name="twitter:image" content="{{ site.social_image | absolute_url }}?v={{ site.assets_version }}">
     <meta name="twitter:image:alt" content="Prisma Express Series — 10 verified engineering articles">
     <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}?v={{ site.assets_version }}">
     <script type="application/ld+json">
@@ -41,10 +41,10 @@
         "headline": {{ meta_title | jsonify }},
         "description": {{ meta_description | jsonify }},
         "url": {{ canonical_url | jsonify }},
-        "dateModified": {{ site.verified_on | jsonify }},
+        "dateModified": {{ site.updated_on | jsonify }},
         {% if article %}"position": {{ article.number }},{% endif %}
         "about": [
-          { "@type": "SoftwareSourceCode", "name": "prisma-generator-express", "version": {{ site.generator_version | jsonify }}, "codeRepository": "https://github.com/multipliedtwice/prisma-generator-express" },
+          { "@type": "SoftwareSourceCode", "name": "prisma-generator-express", "codeRepository": "https://github.com/multipliedtwice/prisma-generator-express" },
           { "@type": "SoftwareSourceCode", "name": "prisma-guard", "version": {{ site.guard_version | jsonify }}, "codeRepository": "https://github.com/multipliedtwice/prisma-guard" }
         ],
         "isPartOf": {
@@ -68,6 +68,7 @@
         </a>
         <nav class="site-nav" aria-label="Site">
           <a href="{{ '/' | relative_url }}">Read the series</a>
+          <a href="{{ '/guide/' | relative_url }}#mcp-model-context-protocol">MCP</a>
           <a class="site-nav__repo" href="https://github.com/multipliedtwice/prisma-generator-express" aria-label="View the prisma-generator-express repository on GitHub">
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
               <path d="M8 0C3.58 0 0 3.64 0 8.13c0 3.59 2.29 6.64 5.47 7.71.4.08.55-.17.55-.39 0-.19-.01-.83-.01-1.51-2.01.44-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.59 1.23.83.72 1.23 1.87.88 2.33.67.07-.53.28-.88.51-1.08-1.78-.21-3.64-.91-3.64-4.02 0-.89.31-1.62.82-2.19-.08-.2-.36-1.04.08-2.16 0 0 .67-.22 2.2.84A7.49 7.49 0 018 3.55c.68 0 1.36.09 2 .27 1.53-1.06 2.2-.84 2.2-.84.44 1.12.16 1.96.08 2.16.51.57.82 1.3.82 2.19 0 3.12-1.87 3.81-3.65 4.02.29.25.54.74.54 1.5 0 1.08-.01 1.95-.01 2.22 0 .21.15.47.55.39A8.016 8.016 0 0016 8.13C16 3.64 12.42 0 8 0z"/>
@@ -84,7 +85,7 @@
     <footer class="site-footer">
       <div class="shell site-footer__inner">
         <p><strong>Prisma Express Field Guide</strong><br>Practical guides for building Prisma APIs faster.</p>
-        <p>Verified {{ site.verified_on | date: "%-d %b %Y" }} · <a href="{{ '/feed.xml' | relative_url }}">Atom feed</a><br><a href="https://github.com/multipliedtwice/prisma-generator-express">prisma-generator-express</a> · <a href="https://github.com/multipliedtwice/prisma-guard">prisma-guard</a></p>
+        <p>Updated {{ site.updated_on | date: "%-d %b %Y" }} · <a href="{{ '/feed.xml' | relative_url }}">Atom feed</a><br><a href="https://github.com/multipliedtwice/prisma-generator-express">prisma-generator-express</a> · <a href="https://github.com/multipliedtwice/prisma-guard">prisma-guard</a></p>
       </div>
     </footer>
     {% if article %}

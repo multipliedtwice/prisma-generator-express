@@ -4,7 +4,7 @@ article_id: A1
 permalink: /articles/generated-prisma-rpc-api/
 ---
 
-This tutorial builds a working API for an online plant nursery. Prisma describes the data. `prisma-generator-express` creates the model routes. `prisma-guard` creates validation and tenant-filtering helpers. Your application still starts Express, authenticates requests, and decides which operations are public. You do not have to hand-write every CRUD route.
+This tutorial builds a working API for an online plant nursery. Prisma describes the data. `prisma-generator-express` creates the model routes and can also emit guarded MCP tools for authenticated agents. `prisma-guard` creates validation and tenant-filtering helpers. Your application still starts Express, authenticates requests, and decides which routes and tools are public. You do not have to hand-write every CRUD route.
 
 > **Project context.** This is maintainer-written documentation for the current open-source implementation. The examples are instructional and lab-backed; they are not reports of broad adoption or production history.
 
@@ -214,6 +214,8 @@ The generated Plant surface is:
 | deleteMany | DELETE | /plant/many |
 
 findMany alone needs /read for its POST twin because POST /plant/ is create. Other read twins share paths. addModelPrefix false removes the model segment; customUrlPrefix replaces it.
+
+The REST routes above and MCP are separate exposure lists. Set `mcp = true` on the API generator to emit MCP support in the same backend process, then import only the generated per-operation factories the application intends to serve. `enableAll` never exposes MCP writes. Every MCP tool still requires a guard shape, verified authentication, explicit authorization, and application allowlisting. The [MCP reference]({{ '/guide/' | relative_url }}#mcp-model-context-protocol) covers installation, mounting, read tools, all nine guarded write actions, and the fail-closed rules.
 
 ## 4. Define the public catalog
 

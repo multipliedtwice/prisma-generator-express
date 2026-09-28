@@ -8,15 +8,16 @@ layout: default
     <p class="hero__lede">{{ page.description }}</p>
     <div class="hero__actions">
       <a class="button" href="{{ site.data.series.first.url | relative_url }}">Start reading <span aria-hidden="true">→</span></a>
+      <a class="text-link" href="{{ '/guide/' | relative_url }}#mcp-model-context-protocol">MCP reference <span aria-hidden="true">→</span></a>
       <a class="text-link" href="https://github.com/multipliedtwice/prisma-generator-express">View the generator <span aria-hidden="true">↗</span></a>
     </div>
   </div>
   <aside class="hero__note" aria-label="Series scope">
     <p class="hero__note-label">What gets generated</p>
-    <p>CRUD routes. OpenAPI. Pagination. Hooks. POST reads. SSE. Guard shapes. Framework adapters.</p>
+    <p>CRUD routes. OpenAPI. Guarded MCP tools. Pagination. Hooks. POST reads. SSE. Framework adapters.</p>
     <dl>
       <div><dt>Articles</dt><dd>10</dd></div>
-      <div><dt>Generator</dt><dd>v{{ site.generator_version }}</dd></div>
+      <div><dt>MCP</dt><dd>Read + write actions</dd></div>
       <div><dt>Guard</dt><dd>v{{ site.guard_version }}</dd></div>
     </dl>
   </aside>
@@ -27,7 +28,7 @@ layout: default
     <p class="eyebrow">The reading path</p>
     <h2 id="articles-heading">From Prisma schema to working API</h2>
   </div>
-  <p>Start with generated routes, then add the features your product needs: callers, guards, hooks, pagination, streaming, and writes.</p>
+  <p>Start with generated routes, then add callers, guards, hooks, pagination, streaming, and explicitly allowlisted MCP tools for authenticated agents.</p>
 </section>
 
 <section aria-label="Articles">

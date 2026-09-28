@@ -460,7 +460,8 @@ describe('create data client input: MCP schema never more permissive than guard'
 })
 
 /**
- * Unique-where CONFIG parity for update/upsert/delete (and findUnique):
+ * Unique-where CONFIG parity, run through guard's delete, update, upsert
+ * AND findUnique (the extended form also reaches findUnique read tools):
  * guard's buildUniqueWhereSchema + validateUniqueEquality vs
  * findUniqueWhereConfigProblem, including the extended form that carries a
  * forced tenant beside the unique selector.
@@ -563,7 +564,17 @@ describe('unique-where configs: MCP validator vs prisma-guard 1.33', () => {
     modelIndex: new Map(),
   }
 
-  function guardDeleteAccepts(where: Record<string, unknown>): boolean {
+  type UniqueMethod = 'delete' | 'update' | 'upsert' | 'findUnique'
+
+  /**
+   * Runs one unique-where CONFIG through the real guard method. The client
+   * sends a value for every client-controlled key, so only the CONFIG
+   * decides acceptance.
+   */
+  function guardAccepts(
+    method: UniqueMethod,
+    where: Record<string, unknown>,
+  ): boolean {
     const guard = createGuard({
       scopeMap: {},
       typeMap,
@@ -578,27 +589,52 @@ describe('unique-where configs: MCP validator vs prisma-guard 1.33', () => {
       },
       zodDefaults: {},
     })
-    const ext = guard.extension() as unknown as {
-      model: {
-        w: {
-          guard: (
-            this: unknown,
-            s: unknown,
-          ) => { delete: (b: unknown) => unknown }
-        }
-      }
-    }
-    // the client sends a value for every client-controlled key, so only
-    // the CONFIG decides acceptance
     const body = Object.fromEntries(
       Object.entries(where)
         .filter(([, v]) => v === true)
         .map(([k]) => [k, 'x']),
     )
     try {
+      if (method === 'findUnique') {
+        guard
+          .query('W' as never, 'findUnique' as never, { where } as never)
+          .parse({ where: body })
+        return true
+      }
+      const ext = guard.extension() as unknown as {
+        model: {
+          w: {
+            guard: (
+              this: unknown,
+              s: unknown,
+            ) => Record<UniqueMethod, (b: unknown) => unknown>
+          }
+        }
+      }
+      const delegate = { [method]: (x: unknown) => x }
+      const shape =
+        method === 'delete'
+          ? { where }
+          : method === 'update'
+            ? { where, data: { notes: true } }
+            : {
+                where,
+                create: { email: true, siteId: true },
+                update: { notes: true },
+              }
+      const request =
+        method === 'delete'
+          ? { where: body }
+          : method === 'update'
+            ? { where: body, data: { notes: 'n' } }
+            : {
+                where: body,
+                create: { email: 'e', siteId: 's' },
+                update: { notes: 'n' },
+              }
       ext.model.w.guard
-        .call({ $parent: { w: { delete: (x: unknown) => x } } }, { where })
-        .delete({ where: body })
+        .call({ $parent: { w: delegate } }, shape)
+        [method](request)
       return true
     } catch {
       return false
@@ -620,10 +656,17 @@ describe('unique-where configs: MCP validator vs prisma-guard 1.33', () => {
     ['unknown key beside unique', { id: true, nope: true }],
   ]
   for (const [label, where] of cases) {
-    it(label, () => {
-      const mcp = findUniqueWhereConfigProblem(meta, where) === null
-      expect(mcp).toBe(guardDeleteAccepts(where))
-    })
+    for (const method of [
+      'delete',
+      'update',
+      'upsert',
+      'findUnique',
+    ] as const) {
+      it(`${method}: ${label}`, () => {
+        const mcp = findUniqueWhereConfigProblem(meta, where) === null
+        expect(mcp).toBe(guardAccepts(method, where))
+      })
+    }
   }
 })
 

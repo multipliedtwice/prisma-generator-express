@@ -720,6 +720,22 @@ The API consequence is important. If a default/catch field is omitted from the s
 
 Do not duplicate the same policy as a hook assignment. The generated Zod default already owns the value source and participates in create completeness. A hook that also writes it creates two definitions whose precedence is not documented as a contract.
 
+## 16. Expose MCP write actions one operation at a time
+
+**Treat every agent-visible write as a separate application permission.**
+
+With `mcp = true`, the generator emits factories for `create`, `createMany`, `createManyAndReturn`, `update`, `updateMany`, `updateManyAndReturn`, `upsert`, `delete`, and `deleteMany`. A write action (MCP represents each action as a tool) exists only when application code imports its factory and places its contribution in the MCP `tools` allowlist. `enableAll` never exposes writes, and there is no universal Prisma executor.
+
+MCP writes call the same guarded operation cores as REST. Forced tenant values, unique selectors, bulk filters, operation overrides, result shaping, and classified errors therefore stay in the backend boundary. The verified principal selects the static guard variant; caller or tenant identity is never accepted as a tool argument.
+
+The MCP schema must be known when the tool is registered. Dynamic write shapes, inline refinements, and relation-write data are refused instead of receiving an opaque input schema. Use static per-tenant variants and expose scalar foreign keys when an agent needs a guarded relation reference. `updateEach` has no MCP tool because it bypasses guard shapes.
+
+MCP is stricter than REST on one bulk case: the `{ where: {} }` shape-forced case above is refused over MCP whenever the filter also has a client-controlled key, so an agent cannot update or delete a whole tenant by omission. A write whose result exceeds the MCP result-size cap is still committed, so it comes back as a success with the result omitted, never as a retryable error.
+
+`writeStrategy` still controls bulk behavior. Under `regular`, `createMany` and `updateMany` return counts and cannot project. Under `forceReturn`, those tool names execute the returning methods and may advertise the configured projection. Under `throwOnNonReturning`, their factories refuse creation; expose the explicit `...AndReturn` tools instead.
+
+See the [MCP reference]({{ '/guide/' | relative_url }}#mcp-model-context-protocol) for mounting, authentication, annotations, limits, and tenant-safe Page-style examples.
+
 ## Rules
 
 1. Account for every required create field in the shape or an accepted default source.
@@ -736,6 +752,8 @@ Do not duplicate the same policy as a hook assignment. The generated Zod default
 12. Expose only the nested write operations the endpoint needs.
 13. Authorize relation selectors in application code or the database.
 14. Put compare-and-set preconditions in `where` and inspect count or array length.
+15. Allowlist each MCP write action explicitly; never derive write exposure from `enableAll`.
+16. Keep MCP write shapes static and tenant-forced; keep `updateEach` and relation writes out of MCP.
 
 ## Reproduction appendix
 

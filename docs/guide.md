@@ -1,11 +1,18 @@
+---
+layout: default
+title: Prisma Generator Express Reference
+description: Full reference for generated Express, Fastify, and Hono APIs, OpenAPI, guarded MCP tools, pagination, hooks, and configuration.
+permalink: /guide/
+---
+
 # Prisma Generator Express
 
 [![npm version](https://badge.fury.io/js/prisma-generator-express.svg)](https://badge.fury.io/js/prisma-generator-express)
 [![npm](https://img.shields.io/npm/dt/prisma-generator-express.svg)](https://www.npmjs.com/package/prisma-generator-express)
 [![Coverage](https://img.shields.io/codecov/c/github/multipliedtwice/prisma-generator-express/main.svg)](https://codecov.io/gh/multipliedtwice/prisma-generator-express)
-[![npm](https://img.shields.io/npm/l/prisma-generator-express.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/l/prisma-generator-express.svg)](https://github.com/multipliedtwice/prisma-generator-express/blob/master/LICENSE)
 
-Prisma generator that creates Express, Fastify, or Hono CRUD API routes with OpenAPI documentation from your Prisma schema.
+Prisma generator that creates Express, Fastify, or Hono CRUD API routes, OpenAPI documentation, and opt-in guarded MCP tools from your Prisma schema.
 
 Running `npx prisma generate` produces:
 
@@ -20,6 +27,7 @@ Running `npx prisma generate` produces:
 - Documentation helpers for contract view and Scalar UI (require manual mounting)
 - Client-side query parameter encoder
 - Guard/variant shape enforcement via prisma-guard integration
+- Opt-in same-process MCP tools for guarded reads and writes, with explicit per-operation allowlisting
 
 Supports **Express**, **Fastify**, and **Hono** targets via the `target` configuration option.
 
@@ -2913,7 +2921,17 @@ Reads: `findMany`, `findUnique`, `findFirst`, `count`, `findManyPaginated`. Writ
 
 `updateEach` has no MCP tool: it bypasses guard shapes entirely, and every MCP tool executes through a guard. Asking for one throws.
 
-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) come from explicit per-operation metadata, not from operation kind: reads are `readOnlyHint: true`; `delete` and `deleteMany` are `destructiveHint: true, idempotentHint: true`; `upsert` is `idempotentHint: true`; the create and update families carry all-false hints.
+Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) come from explicit per-operation metadata, not from operation kind. MCP defines `destructiveHint: false` as "performs only additive updates", so:
+
+| Actions | readOnly | destructive | idempotent |
+| --- | --- | --- | --- |
+| reads | `true` | `false` | `true` |
+| `create`, `createMany`, `createManyAndReturn` | `false` | `false` | `false` |
+| `update`, `updateMany`, `updateManyAndReturn` | `false` | `true` | `false` |
+| `upsert` | `false` | `true` | `true` |
+| `delete`, `deleteMany` | `false` | `true` | `true` |
+
+Every tool sets `openWorldHint: false`: it acts only on this application's database.
 
 ### Write actions (opt-in per operation)
 
@@ -2949,7 +2967,7 @@ Write actions execute through the same guarded operation pipeline as the REST ro
 | `delete` | `where` (unique selector) |
 | `deleteMany` | `where` (filter) |
 
-"Projection" means `select`/`include`, advertised only when the guard shape configures one (`create`, `update`, `upsert` and `delete` accept it too). The result-size cap applies to write results too.
+"Projection" means `select`/`include`, advertised only when the guard shape configures one (`create`, `update`, `upsert` and `delete` accept it too). The result-size cap applies to write results too, but a write is already committed when its result is measured: an oversized write result comes back as a SUCCESS, `{ "committed": true, "resultOmitted": true, "message": … }`, never as an error an agent might retry. Read the affected records with a narrower `select`.
 
 `writeStrategy` decides what the `createMany`/`updateMany` cores actually call, and the MCP contract follows it:
 
@@ -2963,9 +2981,13 @@ The tool name and annotations never change with the strategy; the returning acti
 
 #### Tenant-safe write shapes
 
-Force the tenant in every write shape, per tenant, with STATIC variants — the CMS Page contract the Postgres parity suite runs:
+Force the tenant in every write shape, per tenant, with STATIC variants. The Postgres parity suite runs this pattern on a Page model (with more fields and all nine actions):
+
+<!-- guide-example:mcp-tenant-page:start -->
 
 ```ts
+import { force } from 'prisma-guard'
+
 const tenantPage = (t: string) => ({
   create: { shape: { data: { slug: true, title: true, siteId: force(t) } } },
   // select by id AND the forced tenant (Prisma extended unique where):
@@ -2991,6 +3013,8 @@ const op = (name: keyof ReturnType<typeof tenantPage>) => ({
 const pageConfig = { create: op('create'), update: op('update'), upsert: op('upsert'), delete: op('delete'), deleteMany: op('deleteMany') }
 ```
 
+<!-- guide-example:mcp-tenant-page:end -->
+
 `resolveCaller(authInfo)` picks the variant from the verified principal; a caller routed to `tenant-b` cannot select, change or delete a `tenant-a` row through any write action.
 
 Dynamic (function) write shapes — single or per variant — are refused when the action's tool is created. A write action's input schema is narrowed from a static shape; there is no opaque `data`/`where` fallback. Use per-tenant static variants for tenant-forced values.
@@ -3001,7 +3025,7 @@ Advertised `data` surfaces mirror prisma-guard's data compilation:
 
 - only client-controlled fields — the shape's `true` entries — are advertised; forced (literal or `force()`) values are server-owned and never client input
 - a required field without a Prisma default stays mandatory in create-family data; fields with defaults (`@default`, `autoincrement`, `cuid`) are optional
-- optional fields accept `null` in create/update data (BigInt and Decimal included); required fields never do
+- optional fields accept `null` in create/update data (BigInt and Decimal included); required fields reject it, except `Json`, whose schema is unconstrained (Prisma decides)
 - data values are advertised in canonical JSON types (String as string, DateTime as ISO date-time string). Guard's lenient input coercion (String accepting numbers, Int accepting digit strings) is not advertised for data, so the schema may reject a body REST would coerce — never the other way round
 - forced data values are validated exactly as guard parses them: `Date` instances for DateTime, `bigint` for BigInt, `Uint8Array` for Bytes, coerced String/Int/Float forms, any JSON value (objects included) for Json; `null` only on optional and Json fields
 - relation fields cannot appear in MCP write data — keep nested relation writes (`create: { author: { connect: ... } }`) REST-only; set the FK scalar column (`authorId: true`) instead. A shape carrying a relation write refuses registration
@@ -3011,8 +3035,8 @@ Advertised `data` surfaces mirror prisma-guard's data compilation:
 Advertised `where` surfaces:
 
 - `update`/`upsert`/`delete` take a unique selector: a flat unique field or compound selector object, exactly like the `findUnique` tools. Other scalar fields may ride along (Prisma extended unique where) — `true` makes one an optional client filter, a literal or `force()` makes it server-owned. A `where` without any unique field or compound selector refuses registration
-- `updateMany`/`updateManyAndReturn`/`deleteMany` take the filter `where` the `findMany` tools use. Guard refuses an empty bulk `where`, so an all-client filter must carry at least one condition
-- when every selector value is forced, `where` is optional in the tool schema; the runtime sends `where: {}` to the operation core (its required-field check matches REST) and guard merges the forced selector into it
+- `updateMany`/`updateManyAndReturn`/`deleteMany` take the filter `where` the `findMany` tools use. When the filter has ANY client-controlled key, the client must send at least one condition — even beside a forced tenant. This is stricter than REST, where guard merges the forced tenant into `where: {}` and the action touches every row of the tenant; an agent cannot bulk-write a whole tenant by omission
+- only when every selector value or filter leaf is forced is `where` optional in the tool schema; the runtime then sends `where: {}` to the operation core (its required-field check matches REST) and guard merges the forced values into it
 
 ### Explicit allowlist
 
@@ -3089,7 +3113,7 @@ Per call, exactly:
 - An exposed operation whose REST config defines `authorize`, `before`, `after` or variant hooks throws at registration. Transport-specific policy is never silently ignored; there is no `allowHookDivergence` override.
 - `PGE_DROP_GUARD=true` (or deprecated `E2E=true`) in the environment makes `registerMcpTools` throw before registering any tool. `allowE2EGuardBypass` on a REST config cannot change this. There is no `allowUnguardedMcp`.
 - Guard-config validity is checked at registration per exposed variant, for the COMPLETE shape — not just `where`: prisma-guard 1.33 rejects (or crashes on) bare-`true` scalar filters, bare literal filters, empty `where`/relation/relation-operator configs, combinator configs that are not non-empty objects, unknown or field-incompatible filter operators, forced values with the wrong type, forced values under the negating relation operators `none`/`isNot` (guard: "mixes client-controlled and forced"), `findUnique` `where` configs that are not complete unique-selector configs, `cursor` configs that are not `true`-configured unique fields or all-`true` compound selectors, `orderBy` configs that are not `true` (to-many relations: `_count: true` only), `distinct` configs that are not a non-empty array of scalar field names, `select`/`include` configs with unknown fields, non-`true` scalars or scalar keys inside `include`, `_count` configs other than `true` or `{ select: { listRelation: true | { where } } }`, and `skip` configs other than `true`. Exposing a shape with any of those refuses registration with the exact problem — the tool never serves a request guard would reject on every input.
-- Write shapes carry the same registration-time validation, per exposed variant: per-operation shape keys (guard's own table: `createMany` allows only `data`; `createManyAndReturn`/`create` add `select`/`include`; `updateMany` allows `where`/`data`; `deleteMany` only `where`; `upsert` requires `where`+`create`+`update` and forbids `data`; `delete` requires `where` and forbids `data`), required `where`/`data`, unique-selector wheres for `update`/`upsert`/`delete`, filter wheres for the bulk ops, projection configs (delete included), and the data-config rules from [Write actions](#write-actions-opt-in-per-operation) — unknown fields, operator objects, mistyped forced values, `updatedAt` entries, relation writes and inline refines all refuse registration. Dynamic write shapes and `updateEach` are refused when the tool is created.
+- Write shapes carry registration-time validation, per exposed variant: per-operation shape keys (guard's own table: `createMany` allows only `data`; `createManyAndReturn`/`create` add `select`/`include`; `updateMany` allows `where`/`data`; `deleteMany` only `where`; `upsert` requires `where`+`create`+`update` and forbids `data`; `delete` requires `where` and forbids `data`), required `where`/`data`, unique-selector wheres for `update`/`upsert`/`delete`, filter wheres for the bulk ops, projection configs (delete included), and the data-config rules from [Write actions](#write-actions-opt-in-per-operation) — unknown fields, operator objects, mistyped forced values, `updatedAt` entries, relation writes and inline refines all refuse registration. Dynamic write shapes and `updateEach` are refused when the tool is created. One guard rule is NOT mirrored: create completeness (every required field without a default must appear in create data). Guard exempts scope foreign keys and `@zod` defaults, which MCP metadata cannot see, so an incomplete create shape registers and then fails every call with guard's 400.
 - `mcp = true` also gates at GENERATION time: the generator resolves `prisma-guard` from the schema project and refuses to emit MCP support below **1.33.0** (MCP tool schemas mirror 1.33 semantics). The published `prisma-guard` peer stays `>=1.0.0` and optional — REST-only consumers are unaffected.
 
 ### Row and result limits
@@ -3105,7 +3129,7 @@ For list queries (with guard shape present, where REST pagination alone would no
 - the injected default never exceeds the guard bound (checked at registration for static shapes, per call for dynamic ones)
 - tool descriptions state the effective limits
 
-`maxResultBytes` caps the UTF-8 byte size of the final serialized, transformed payload (measured with `TextEncoder`, not `string.length`). A result over the cap returns an MCP error telling the caller to narrow `take` or `select`. Structured JSON is never truncated.
+`maxResultBytes` caps the UTF-8 byte size of the final serialized, transformed payload (measured with `TextEncoder`, not `string.length`). A read result over the cap returns an MCP error telling the caller to narrow `take` or `select`. A write result over the cap returns success with the result omitted (the write is committed; see [Write actions](#write-actions-opt-in-per-operation)). Structured JSON is never truncated.
 
 ### Mounting /mcp
 

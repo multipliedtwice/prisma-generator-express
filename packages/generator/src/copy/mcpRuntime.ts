@@ -77,6 +77,7 @@ export interface McpRegistration {
       readOnlyHint?: boolean
       destructiveHint?: boolean
       idempotentHint?: boolean
+      openWorldHint?: boolean
     }
     inputSchema: StandardSchemaWithJSON<Record<string, unknown>>
   }
@@ -697,10 +698,13 @@ function createMcpOperationTool(
           shared.maxResultBytes +
           ' UTF-8 bytes are rejected — narrow take or select.'
 
+      // every tool acts on this application's own database — a closed world
+      // (the MCP default for openWorldHint is true)
       const annotations = {
         readOnlyHint: meta.readOnly,
         destructiveHint: meta.destructive,
         idempotentHint: meta.idempotent,
+        openWorldHint: false,
       }
 
       return {
@@ -750,17 +754,16 @@ async function runMcpCall(deps: {
       return isErrorResult('unauthenticated: a verified principal is required')
     }
 
-    const args = sanitizeKeys(deps.validatedArgs)
-    // a fully forced selector advertises no client `where`; the operation
+    const sanitized = sanitizeKeys(deps.validatedArgs)
+    // a fully forced selector leaves `where` optional in the schema; the operation
     // core still requires the body field (REST parity), so the empty object
     // is injected and guard merges the forced selector into it
-    if (
+    const args =
       write &&
-      args.where === undefined &&
+      sanitized.where === undefined &&
       OPERATION_BY_NAME[input.operation].requiredBodyFields.includes('where')
-    ) {
-      args.where = {}
-    }
+        ? { ...sanitized, where: {} }
+        : sanitized
     // REST write routes carry no query channel: parsedQuery stays empty and
     // the body channel alone feeds the operation core
     const holder: { value?: Record<string, unknown> } = {
@@ -877,6 +880,31 @@ async function runMcpCall(deps: {
     // 9. result-size enforcement on the final serialized payload
     const bytes = new TextEncoder().encode(json).byteLength
     if (bytes > shared.maxResultBytes) {
+      // a write is already COMMITTED here: an error would invite a retry
+      // (a duplicate create, a second update). Report success with the
+      // result omitted instead; reads keep the narrowing error.
+      if (write) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                committed: true,
+                resultOmitted: true,
+                message:
+                  input.operation +
+                  ' on ' +
+                  input.model +
+                  ' was committed. Its result (' +
+                  bytes +
+                  ' UTF-8 bytes) exceeds the MCP result-size cap of ' +
+                  shared.maxResultBytes +
+                  ' bytes and was omitted. Do not retry; read the affected records with a narrower select.',
+              }),
+            },
+          ],
+        }
+      }
       throw new McpResultSizeError(shared.maxResultBytes)
     }
 

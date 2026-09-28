@@ -180,10 +180,11 @@ describe('MCP Streamable HTTP integration (Express, same process)', () => {
     try {
       const listed = await client.listTools()
       expect(listed.tools.map((t) => t.name)).toEqual(['user_find_many'])
-      expect(listed.tools[0]?.annotations).toMatchObject({
+      expect(listed.tools[0]?.annotations).toEqual({
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
+        openWorldHint: false,
       })
 
       const called = await client.callTool({

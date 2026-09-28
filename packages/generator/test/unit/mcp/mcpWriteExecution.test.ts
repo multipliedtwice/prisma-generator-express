@@ -140,13 +140,17 @@ describe('MCP write execution — body channel', () => {
         return {}
       },
     )
-    await tools[0].handler(
-      {
-        data: { title: 't', siteId: 's', __proto__: 'x' },
-      } as Record<string, unknown>,
-      CALL_CTX,
-    )
-    expect(Object.keys(seen[0].body as object)).toEqual(['data'])
+    // JSON.parse creates REAL own `__proto__` / `constructor` keys (an
+    // object literal would not), exactly as a JSON-RPC body would
+    const args = JSON.parse(
+      '{"data":{"title":"t","siteId":"s","__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}}},"__proto__":{"polluted":true}}',
+    ) as Record<string, unknown>
+    expect(Object.keys(args.data as object)).toContain('__proto__')
+    await tools[0].handler(args, CALL_CTX)
+    const body = seen[0].body as Record<string, Record<string, unknown>>
+    expect(Object.keys(body)).toEqual(['data'])
+    expect(Object.keys(body.data)).toEqual(['title', 'siteId'])
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
   })
 })
 
@@ -222,8 +226,15 @@ describe('MCP write execution — authorization and ordering', () => {
       },
       shared,
     )
+    // arguments naming another caller/variant are ignored: routing comes
+    // from the verified principal only (tenant-b here)
     await tools[0].handler(
-      { where: { id: 'x' }, data: { hidden: true } },
+      {
+        where: { id: 'x' },
+        data: { hidden: true },
+        caller: 'tenant-a',
+        variant: 'tenant-a',
+      },
       { http: { authInfo: fakeAuthInfo({ clientId: 'tenant-b' }) } },
     )
     expect(variantsSeen).toEqual(['tenant-b'])
@@ -231,24 +242,35 @@ describe('MCP write execution — authorization and ordering', () => {
 })
 
 describe('MCP write execution — result handling', () => {
-  it('the result-size cap applies to write results', async () => {
+  it('an oversized write result is a SUCCESS with the result omitted — the write is committed, a retry would duplicate it', async () => {
+    let coreCalls = 0
     const { tools } = registerWrite(
       'create',
       { create: { shape: { data: { title: true, siteId: true } } } },
-      async () => ({ blob: 'x'.repeat(200) }),
+      async () => {
+        coreCalls++
+        return { blob: 'x'.repeat(200) }
+      },
       sharedWith({ maxResultBytes: 100 }),
     )
     const result = await tools[0].handler(
       { data: { title: 't', siteId: 's' } },
       CALL_CTX,
     )
-    expect(result.isError).toBe(true)
-    expect(JSON.parse(result.content[0].text).message).toMatch(
-      /exceeds the MCP result-size cap/,
-    )
+    expect(coreCalls).toBe(1)
+    expect(result.isError).toBeFalsy()
+    const payload = JSON.parse(result.content[0].text) as Record<
+      string,
+      unknown
+    >
+    expect(payload).toMatchObject({ committed: true, resultOmitted: true })
+    expect(payload.message).toMatch(/was committed/)
+    expect(payload.message).toMatch(/Do not retry/)
+    // the omission notice carries no record data
+    expect(result.content[0].text).not.toContain('xxxx')
   })
 
-  it('a guard rejection surfaces as a classified error result, not a throw', async () => {
+  it('a Prisma error thrown by the core is classified like REST (P2002 -> 409), not thrown', async () => {
     const { tools } = registerWrite(
       'create',
       { create: { shape: { data: { title: true, siteId: true } } } },
