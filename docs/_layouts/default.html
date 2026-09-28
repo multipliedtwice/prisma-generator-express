@@ -32,6 +32,11 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content="{{ site.social_image | absolute_url }}?v={{ site.assets_version }}">
     <meta name="twitter:image:alt" content="Prisma Express Series — 10 verified engineering articles">
+    {% if page.layout == 'guide' %}
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Newsreader:opsz,wght@6..72,400..600&display=swap">
+    {% endif %}
     <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}?v={{ site.assets_version }}">
     <script type="application/ld+json">
       {
@@ -66,6 +71,16 @@
             <small>Engineering field guide</small>
           </span>
         </a>
+        {% if page.layout == 'guide' %}
+          <button type="button" class="guide-search-trigger" aria-label="Search the reference" data-guide-search-open>
+            <svg class="guide-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <circle cx="8.75" cy="8.75" r="5.25" />
+              <path d="m12.75 12.75 4 4" />
+            </svg>
+            <span>Search the reference</span>
+            <kbd data-guide-shortcut>Ctrl K</kbd>
+          </button>
+        {% endif %}
         <nav class="site-nav" aria-label="Site">
           <a href="{{ '/' | relative_url }}">Read the series</a>
           <a href="{{ '/guide/' | relative_url }}#mcp-model-context-protocol">MCP</a>
@@ -78,6 +93,9 @@
           <a href="https://github.com/multipliedtwice/prisma-guard">Guard</a>
         </nav>
       </div>
+      {% if page.layout == 'guide' %}
+        <span class="guide-progress" aria-hidden="true"><span data-guide-progress></span></span>
+      {% endif %}
     </header>
     <main id="content" class="shell main-content">
       {{ content }}

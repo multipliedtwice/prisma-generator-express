@@ -1,0 +1,19 @@
+parts:
+  - title: Get started
+    start: compatibility
+  - title: Framework targets
+    start: usage-express
+  - title: Guard shapes
+    start: guard-shapes-prisma-guard-integration
+  - title: Requests
+    start: request-body-format
+  - title: Streaming and views
+    start: materialized-views-router-express
+  - title: Operations and responses
+    start: updateeach-express-fastify-hono-internal-batch
+  - title: MCP
+    start: mcp-model-context-protocol
+  - title: Docs and integrations
+    start: documentation-endpoints
+  - title: Configuration
+    start: configuration

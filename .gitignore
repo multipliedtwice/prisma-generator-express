@@ -19,3 +19,5 @@ packages/generator/.mcp-smoke
 article-labs/guard/parity
 article-labs/guard/guide-example
 article-labs/guard/.engine-stub
+docs/_site
+docs/.jekyll-cache

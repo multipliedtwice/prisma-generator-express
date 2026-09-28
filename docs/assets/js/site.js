@@ -237,6 +237,8 @@
     return legacyCopy(text);
   };
 
+  window.fieldGuide = { copyText: copyText };
+
   const selectCode = function (codeBlock) {
     const selection = window.getSelection();
 

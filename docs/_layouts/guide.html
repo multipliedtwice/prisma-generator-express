@@ -2,105 +2,100 @@
 layout: default
 ---
 
-<div class="guide-progress" aria-hidden="true">
-  <span data-guide-progress></span>
-</div>
+<div class="guide" data-guide-root>
+  <div class="guide-mobilebar">
+    <button
+      type="button"
+      class="guide-mobilebar__menu"
+      aria-controls="guide-nav"
+      aria-expanded="false"
+      data-guide-nav-open
+    >
+      <svg class="guide-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+        <path d="M3 5.5h14M3 10h14M3 14.5h9" />
+      </svg>
+      <span class="guide-mobilebar__label">
+        <small>Contents</small>
+        <strong data-guide-current>Overview</strong>
+      </span>
+    </button>
+    <button
+      type="button"
+      class="guide-mobilebar__search"
+      aria-label="Search the reference"
+      data-guide-search-open
+    >
+      <svg class="guide-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+        <circle cx="8.75" cy="8.75" r="5.25" />
+        <path d="m12.75 12.75 4 4" />
+      </svg>
+    </button>
+    <span class="guide-progress" aria-hidden="true"><span data-guide-progress></span></span>
+  </div>
 
-<div class="guide-stage" data-guide-root>
-  <aside class="guide-sidebar" aria-label="Reference navigation">
-    <div class="guide-sidebar__sticky">
-      <div class="guide-sidebar__intro">
-        <p class="guide-sidebar__eyebrow">Reference manual</p>
-        <p class="guide-sidebar__title">
-          Find the contract.<br />Ship the route.
-        </p>
-        <p class="guide-sidebar__summary">
-          Generated APIs, guard boundaries, and MCP tools—indexed in one place.
-        </p>
-      </div>
-
-      <div class="guide-search" data-guide-search-shell>
-        <label for="guide-search">Search the reference</label>
-        <div class="guide-search__field">
-          <span class="guide-search__icon" aria-hidden="true"></span>
-          <input
-            id="guide-search"
-            type="search"
-            role="combobox"
-            inputmode="search"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="Routes, guards, MCP…"
-            aria-controls="guide-search-results"
-            aria-describedby="guide-search-hint"
-            aria-autocomplete="list"
-            aria-expanded="false"
-            data-guide-search
-          />
-          <kbd aria-hidden="true">/</kbd>
-          <button
-            type="button"
-            aria-label="Clear search"
-            title="Clear search"
-            data-guide-search-clear
-            hidden
-          >
-            ×
-          </button>
-        </div>
-        <p id="guide-search-hint" class="guide-search__hint">
-          <span role="status" aria-live="polite" data-guide-search-status
-            >Search every section</span
-          ><span>↑↓ to move · ↵ to open</span>
-        </p>
-        <ol
-          id="guide-search-results"
-          class="guide-search-results"
-          role="listbox"
-          data-guide-search-results
-          hidden
-        ></ol>
-      </div>
-
-      <nav class="guide-toc" aria-label="On this page" data-guide-toc>
-        <div class="guide-toc__header">
-          <p>On this page</p>
-          <span data-guide-section-count>— sections</span>
-          <button
-            type="button"
-            aria-expanded="false"
-            aria-controls="guide-toc-panel"
-            data-guide-toc-toggle
-          >
-            <span>Contents</span>
-            <span aria-hidden="true">+</span>
-          </button>
-        </div>
-        <div id="guide-toc-panel" class="guide-toc__panel" data-guide-toc-panel>
-          <ol data-guide-toc-list></ol>
-        </div>
-      </nav>
-
-      <div class="guide-sidebar__footer">
-        <span><strong data-guide-reading-time>—</strong> min read</span>
-        <a href="#guide-top" data-guide-back-top>Back to top ↑</a>
-      </div>
+  <aside id="guide-nav" class="guide-nav" aria-label="Reference sections" data-guide-nav>
+    <div class="guide-nav__head">
+      <p>Contents</p>
+      <button type="button" aria-label="Close contents" data-guide-nav-close>
+        <svg class="guide-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <path d="m5 5 10 10M15 5 5 15" />
+        </svg>
+      </button>
     </div>
+    <nav aria-label="Sections" data-guide-nav-list></nav>
+    <noscript><p class="guide-noscript">Contents and search need JavaScript. The full reference is on this page.</p></noscript>
   </aside>
+  <div class="guide-scrim" data-guide-nav-scrim hidden></div>
 
-  <article id="guide-top" class="article-body guide-prose" data-guide-content>
-    <div class="guide-prose__mastline" aria-label="Document status">
-      <span>Prisma Generator Express</span>
-      <span>Searchable reference</span>
-      <span>Updated {{ site.updated_on | date: "%b %Y" }}</span>
-    </div>
+  <article id="guide-top" class="guide-prose" data-guide-content>
     {{ content }}
   </article>
+
+  <aside class="guide-rail" aria-labelledby="guide-rail-title">
+    <p id="guide-rail-title" class="guide-rail__title" data-guide-rail-title>Overview</p>
+    <ol class="guide-rail__list" data-guide-rail-list></ol>
+    <div class="guide-rail__footer">
+      <div class="guide-rail__meter" aria-hidden="true"><span data-guide-progress></span></div>
+      <p><span data-guide-progress-label>0%</span> read, about <span data-guide-reading-time>—</span> min total</p>
+      <p>Updated {{ site.updated_on | date: "%-d %b %Y" }}</p>
+      <a href="#guide-top" data-guide-top>Back to top</a>
+    </div>
+  </aside>
 </div>
 
-<noscript>
-  <p class="guide-noscript">
-    Search and the generated table of contents require JavaScript. The complete
-    reference remains available below.
-  </p>
-</noscript>
+<dialog class="guide-palette" aria-labelledby="guide-palette-label" data-guide-palette>
+  <div class="guide-palette__field">
+    <label id="guide-palette-label" for="guide-palette-input" class="visually-hidden">Search the reference</label>
+    <svg class="guide-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+      <circle cx="8.75" cy="8.75" r="5.25" />
+      <path d="m12.75 12.75 4 4" />
+    </svg>
+    <input
+      id="guide-palette-input"
+      type="text"
+      role="combobox"
+      aria-expanded="true"
+      aria-controls="guide-palette-results"
+      aria-autocomplete="list"
+      aria-describedby="guide-palette-status"
+      autocomplete="off"
+      autocapitalize="off"
+      spellcheck="false"
+      enterkeyhint="go"
+      placeholder="Search options, operations, guard shapes…"
+      data-guide-palette-input
+    />
+    <button type="button" class="guide-palette__close" data-guide-palette-close>Esc</button>
+  </div>
+  <p id="guide-palette-status" class="guide-palette__status" role="status" aria-live="polite" data-guide-palette-status></p>
+  <ul id="guide-palette-results" class="guide-palette__results" role="listbox" aria-label="Search results" data-guide-palette-results></ul>
+  <div class="guide-palette__keys" aria-hidden="true">
+    <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+    <span><kbd>↵</kbd> open</span>
+    <span><kbd>Esc</kbd> close</span>
+  </div>
+</dialog>
+
+<p class="guide-toast" role="status" aria-live="polite" data-guide-toast></p>
+
+<script type="application/json" data-guide-parts>{{ site.data.guide.parts | jsonify }}</script>
