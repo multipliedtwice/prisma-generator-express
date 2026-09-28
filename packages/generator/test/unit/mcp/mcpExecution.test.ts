@@ -365,7 +365,10 @@ describe('MCP execution — row limits (verified guard semantics: take >= 1)', (
           operation: 'findMany',
           config: {
             findMany: {
-              shape: () => ({ where: { site_id: { equals: 'a' } }, take: { max: 10 } }),
+              shape: () => ({
+                where: { site_id: { equals: 'a' } },
+                take: { max: 10 },
+              }),
             },
           },
           core: async () => {
@@ -393,7 +396,11 @@ describe('MCP execution — row limits (verified guard semantics: take >= 1)', (
         createMcpReadTool({
           model: 'User',
           operation: 'findMany',
-          config: { findMany: { shape: () => ({ where: { site_id: { equals: 'a' } } }) } },
+          config: {
+            findMany: {
+              shape: () => ({ where: { site_id: { equals: 'a' } } }),
+            },
+          },
           core: async () => {
             coreCalls++
             return []
@@ -500,8 +507,12 @@ describe('MCP execution — caller comes only from verified AuthInfo', () => {
       {
         findMany: {
           variants: {
-            'tenant-a': { shape: { where: { site_id: { equals: 'a' } }, take: 50 } },
-            'tenant-b': { shape: { where: { site_id: { equals: 'b' } }, take: 50 } },
+            'tenant-a': {
+              shape: { where: { site_id: { equals: 'a' } }, take: 50 },
+            },
+            'tenant-b': {
+              shape: { where: { site_id: { equals: 'b' } }, take: 50 },
+            },
           },
         },
       },
@@ -540,7 +551,10 @@ describe('MCP execution — REST parity of the execution context', () => {
           config: {
             pagination: { distinctCountLimit: 42 },
             findMany: {
-              shape: { where: { site_id: { equals: 'a' } }, take: { max: 500 } },
+              shape: {
+                where: { site_id: { equals: 'a' } },
+                take: { max: 500 },
+              },
               override: async (input: { core: () => Promise<unknown> }) =>
                 input.core(),
             },

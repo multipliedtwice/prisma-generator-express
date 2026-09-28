@@ -83,7 +83,8 @@ export function compareSemver(a: string, b: string): number {
     const yn = /^\d+$/.test(y)
     if (xn && yn) {
       if (Number(x) !== Number(y)) return Number(x) - Number(y)
-    } else if (xn) return -1 // numeric identifiers are lower
+    } else if (xn)
+      return -1 // numeric identifiers are lower
     else if (yn) return 1
     else if (x !== y) return x < y ? -1 : 1
   }
@@ -102,7 +103,12 @@ export function resolveInstalledGuardVersion(
   const schemaDir = path.dirname(path.resolve(schemaPath))
   let dir: string | undefined = schemaDir
   while (dir) {
-    const pkgPath = path.join(dir, 'node_modules', 'prisma-guard', 'package.json')
+    const pkgPath = path.join(
+      dir,
+      'node_modules',
+      'prisma-guard',
+      'package.json',
+    )
     try {
       const version = (
         JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as {

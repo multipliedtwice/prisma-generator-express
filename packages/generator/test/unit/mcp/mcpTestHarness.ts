@@ -75,9 +75,7 @@ export function modelMeta(
     name,
     fields,
     enums: new Map(),
-    uniqueFields: fields
-      .filter((f) => f.isId || f.isUnique)
-      .map((f) => f.name),
+    uniqueFields: fields.filter((f) => f.isId || f.isUnique).map((f) => f.name),
     compoundUniques: [],
     modelIndex: new Map(),
     ...overrides,

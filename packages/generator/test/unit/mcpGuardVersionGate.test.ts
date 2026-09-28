@@ -8,7 +8,10 @@ import {
   resolveInstalledGuardVersion,
 } from '../../src/utils/mcpGate'
 
-const GEN = basename(process.cwd()) === 'generator' ? process.cwd() : resolve('packages/generator')
+const GEN =
+  basename(process.cwd()) === 'generator'
+    ? process.cwd()
+    : resolve('packages/generator')
 function basename(p: string): string {
   return p.split('/').pop() ?? p
 }
@@ -21,10 +24,31 @@ describe('mcp=true prisma-guard version gate', () => {
   })
 
   it('parseSemver rejects invalid semver', () => {
-    for (const bad of ['01.33.0', '1.033.0', '1.33.0-alpha..1', '1.33.0-', '1.33.0+', '1.33.0-a..b', '1.33', 'v1.33.0', '1.33.0-alpha_1', '1.33.0-01', '1.33.0-rc.007']) {
+    for (const bad of [
+      '01.33.0',
+      '1.033.0',
+      '1.33.0-alpha..1',
+      '1.33.0-',
+      '1.33.0+',
+      '1.33.0-a..b',
+      '1.33',
+      'v1.33.0',
+      '1.33.0-alpha_1',
+      '1.33.0-01',
+      '1.33.0-rc.007',
+    ]) {
       expect(parseSemver(bad), bad).toBeNull()
     }
-    for (const good of ['0.0.0', '1.33.0', '1.33.0-alpha', '1.33.0-alpha.1', '1.33.0-0', '1.33.0+build.1', '1.33.0+01', '1.33.0-alpha.1+b.2']) {
+    for (const good of [
+      '0.0.0',
+      '1.33.0',
+      '1.33.0-alpha',
+      '1.33.0-alpha.1',
+      '1.33.0-0',
+      '1.33.0+build.1',
+      '1.33.0+01',
+      '1.33.0-alpha.1+b.2',
+    ]) {
       expect(parseSemver(good), good).not.toBeNull()
     }
   })
@@ -58,7 +82,10 @@ describe('mcp=true prisma-guard version gate', () => {
         join(dir, 'node_modules', 'prisma-guard', 'package.json'),
         JSON.stringify({ name: 'prisma-guard', version: '1.33.0-beta.2' }),
       )
-      writeFileSync(join(dir, 'schema.prisma'), 'datasource db { provider = "sqlite" }')
+      writeFileSync(
+        join(dir, 'schema.prisma'),
+        'datasource db { provider = "sqlite" }',
+      )
       expect(() =>
         assertMcpGuardVersion(true, join(dir, 'schema.prisma')),
       ).toThrow(/requires prisma-guard >= 1\.33\.0/)
@@ -68,7 +95,9 @@ describe('mcp=true prisma-guard version gate', () => {
   })
 
   it('resolves the installed prisma-guard from the repo', () => {
-    const version = resolveInstalledGuardVersion(join(GEN, 'matrix/schema.prisma'))
+    const version = resolveInstalledGuardVersion(
+      join(GEN, 'matrix/schema.prisma'),
+    )
     expect(version).toMatch(/^\d+\.\d+\.\d+/)
   })
 
@@ -80,7 +109,10 @@ describe('mcp=true prisma-guard version gate', () => {
         join(dir, 'node_modules', 'prisma-guard', 'package.json'),
         JSON.stringify({ name: 'prisma-guard', version: '1.28.0' }),
       )
-      writeFileSync(join(dir, 'schema.prisma'), 'datasource db { provider = "sqlite" }')
+      writeFileSync(
+        join(dir, 'schema.prisma'),
+        'datasource db { provider = "sqlite" }',
+      )
       expect(() =>
         assertMcpGuardVersion(true, join(dir, 'schema.prisma')),
       ).toThrow(/requires prisma-guard >= 1\.33\.0/)
@@ -101,7 +133,10 @@ describe('mcp=true prisma-guard version gate', () => {
         join(dir, 'node_modules', 'prisma-guard', 'package.json'),
         JSON.stringify({ name: 'prisma-guard', version: '1.33.0' }),
       )
-      writeFileSync(join(dir, 'schema.prisma'), 'datasource db { provider = "sqlite" }')
+      writeFileSync(
+        join(dir, 'schema.prisma'),
+        'datasource db { provider = "sqlite" }',
+      )
       expect(() =>
         assertMcpGuardVersion(true, join(dir, 'schema.prisma')),
       ).not.toThrow()
@@ -124,7 +159,9 @@ describe('mcp=true prisma-guard version gate', () => {
     const root = mkdtempSync(join(GEN, '.guard-gate-'))
     try {
       const deep = join(root, 'a', 'b', 'c')
-      mkdirSync(join(root, 'a', 'node_modules', 'prisma-guard'), { recursive: true })
+      mkdirSync(join(root, 'a', 'node_modules', 'prisma-guard'), {
+        recursive: true,
+      })
       writeFileSync(
         join(root, 'a', 'node_modules', 'prisma-guard', 'package.json'),
         JSON.stringify({ name: 'prisma-guard', version: '1.30.0' }),

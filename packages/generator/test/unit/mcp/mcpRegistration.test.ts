@@ -463,9 +463,7 @@ describe('MCP registration — cyclic relations terminate', () => {
         isRequired: true,
       },
     ]
-    const modelIndex = new Map([
-      ['Post', modelMeta('Post', postFields)],
-    ])
+    const modelIndex = new Map([['Post', modelMeta('Post', postFields)]])
     const { server, tools } = fakeServer()
     registerMcpTools(server, {
       ...baseShared,
@@ -699,9 +697,7 @@ describe('MCP registration — cyclic relations terminate', () => {
     expect(
       v({ where: { posts: { every: { id: 'p1' } } } }).issues,
     ).toBeDefined()
-    expect(
-      v({ where: { posts: { none: { id: 'p1' } } } }).issues,
-    ).toBeDefined()
+    expect(v({ where: { posts: { none: { id: 'p1' } } } }).issues).toBeDefined()
   })
 
   it('guard-invalid relation configs refuse registration', () => {
@@ -851,9 +847,7 @@ describe('MCP registration — cyclic relations terminate', () => {
         isRequired: true,
       },
     ]
-    const modelIndex = new Map([
-      ['Post', modelMeta('Post', postFields)],
-    ])
+    const modelIndex = new Map([['Post', modelMeta('Post', postFields)]])
     const { server, tools } = fakeServer()
     registerMcpTools(server, {
       ...baseShared,
