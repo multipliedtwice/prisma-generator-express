@@ -26,6 +26,7 @@ import {
 } from '../../src/generators/generateMcpApp'
 import { generateFastifyRouterFunction } from '../../src/generators/generateRouterFastify'
 import { generateRouterFunction } from '../../src/generators/generateRouter'
+import { OPERATION_METADATA } from '../../src/copy/operationDefinitions'
 import {
   generateRelationMeta,
   generateRelationModelsIndex,
@@ -53,11 +54,29 @@ async function emit(content: string): Promise<string> {
   return prettier.format(content, { parser: 'typescript' })
 }
 
+/**
+ * The prisma-guard shape types a guarded router imports, as a permissive stub:
+ * enough for `tsc` to prove every name the emitted route config references is
+ * in scope, without running the guard generator.
+ */
+function guardShapesStub(modelName: string): string {
+  return OPERATION_METADATA.filter((m) => m.name !== 'updateEach')
+    .map((m) => {
+      const prefix = `${modelName}${m.name.charAt(0).toUpperCase()}${m.name.slice(1)}Shape`
+      return (
+        `export type ${prefix} = Record<string, unknown>\n` +
+        `export type ${prefix}Input<TCtx = unknown> = ${prefix} | ((ctx: TCtx) => ${prefix})\n`
+      )
+    })
+    .join('')
+}
+
 export async function writeEmittedRouterProject(args: {
   target: EmittedTarget
   model: DMMF.Model
   dropGuard?: boolean
   mcp?: boolean
+  guardShapes?: boolean
 }): Promise<{ routerPath: string; cleanup: () => Promise<void> }> {
   const modelName = args.model.name
   /**
@@ -82,11 +101,19 @@ export async function writeEmittedRouterProject(args: {
     await emit(generateQueryBuilderHelper()),
     'utf8',
   )
+  const guardShapesImport = args.guardShapes ? '../guardShapes' : null
+  if (guardShapesImport) {
+    await writeFile(
+      join(dir, 'guardShapes.ts'),
+      await emit(guardShapesStub(modelName)),
+      'utf8',
+    )
+  }
 
   const shared = {
     model: args.model,
     enums: [] as DMMF.DatamodelEnum[],
-    guardShapesImport: null,
+    guardShapesImport,
     importStyle: 'none' as never,
     writeStrategy: 'regular' as never,
     findManyPaginatedMode: 'transaction' as never,
@@ -106,7 +133,7 @@ export async function writeEmittedRouterProject(args: {
       ? generateHonoOpenApiRoutes({
           model: args.model,
           enums: [],
-          guardShapesImport: null,
+          guardShapesImport,
           importStyle: 'none' as never,
           writeStrategy: 'regular' as never,
           pathCase: 'raw' as never,

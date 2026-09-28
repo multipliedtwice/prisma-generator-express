@@ -70,13 +70,19 @@ afterAll(async () => {
   for (const cleanup of cleanups) await cleanup()
 })
 
-describe.each(['hono', 'express', 'fastify'] as const)(
-  '%s emitted tree',
-  (target) => {
+describe.each(
+  (['hono', 'express', 'fastify'] as const).flatMap((target) => [
+    { target, guardShapes: false },
+    { target, guardShapes: true },
+  ]),
+)(
+  '$target emitted tree (guard shapes: $guardShapes)',
+  ({ target, guardShapes }) => {
     it('compiles under tsc --strict, exactly as the artifact typechecks itself', async () => {
       const project = await writeEmittedRouterProject({
         target,
         model: ARTICLE_MODEL,
+        guardShapes,
       })
       cleanups.push(project.cleanup)
       const root = dirname(dirname(project.routerPath))

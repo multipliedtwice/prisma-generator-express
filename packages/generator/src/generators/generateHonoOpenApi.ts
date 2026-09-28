@@ -38,6 +38,9 @@ import type {
   RouteConfig,
   HonoEnvBase,
   GeneratedHonoEnv,
+  HonoBeforeHook,
+  HonoAfterHook,
+  PaginationConfig,
   PrismaClientLike,
 } from '../routeConfig.target${ext}'
 import { normalizePrefix, getEnv } from '../misc${ext}'
