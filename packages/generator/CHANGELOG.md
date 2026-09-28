@@ -1,3 +1,13 @@
+# [1.68.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.67.0...v1.68.0) (2026-09-28)
+
+
+### Features
+
+* enhance documentation and tests for MCP tenant safety and schema generation ([38fb8d4](https://github.com/multipliedtwice/prisma-generator-express/commit/38fb8d4e4c961f7cc3ca73d9faddd5a82f4f387f))
+* generate guarded read-only MCP tools ([1604f70](https://github.com/multipliedtwice/prisma-generator-express/commit/1604f7053e11a2fe8785ef2742247c7237fd013f))
+* **mcp:** add opt-in guarded write actions ([94281a9](https://github.com/multipliedtwice/prisma-generator-express/commit/94281a959132e2dc78933659f694f904ce25cabb))
+* **tests:** enhance MCP tests with additional annotations and improved structure ([c8ec389](https://github.com/multipliedtwice/prisma-generator-express/commit/c8ec389e95e4a960ab3fe1d38568e8b915808131))
+
 # [1.67.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.66.0...v1.67.0) (2026-09-26)
 
 
