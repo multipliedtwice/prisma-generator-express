@@ -80,10 +80,22 @@ Decision: per-op exports + assembly API.
 - `operationRuntime`'s optional `prisma-sql` probe moved from module load to first use, so the copied runtime is free of top-level side effects (pure ESM).
 - CI budget: esbuild-bundled two-model Hono CRUD sample (findMany+findUnique+count / findMany, `hono` external, minified). Measured 29,276 bytes at authoring time; budget 36,000 (see `test/unit/bundleBudget.test.ts`). Enabling the OpenAPI part grows the bundle to ~119,000 bytes.
 
-## Read-only MCP transport (phase 10)
+## MCP transport, reads (phase 10)
 
 Second transport over the shared pipeline, in the same process. Emitted only for `mcp = true`: per-model tool factories (`UserMcp.ts`, per-op named exports — the same static-boundary discipline), app-level `mcp.ts` (`registerMcpTools(server, options)` with an explicit `tools` allowlist), target mount glue `mcpMount.ts`, shared `mcpRuntime.ts`. Tool input schemas come from the shared operation-contract builder (`operationSchemas.ts`, also feeding OpenAPI POST-read bodies), narrowed by the static guard shape so fields the shape rejects are not advertised.
 
 Verified SDK v2 surfaces (ts.sdk.modelcontextprotocol.io/v2, packages at 2.x): `createMcpHandler(factory)` web-standard handler with `.fetch(request, { authInfo, parsedBody })`; factory receives `ctx.authInfo`; tool handlers read `ctx.http?.authInfo`; `fromJsonSchema` wraps plain JSON Schema; `toNodeHandler` (from `@modelcontextprotocol/node`) adapts to Express/Fastify. No legacy `@modelcontextprotocol/sdk`.
 
 Security invariants (fail closed): generation refuses `mcp = true` + `dropGuard = true`; effective `PGE_DROP_GUARD`/`E2E` env makes `registerMcpTools` throw before registering anything; every exposed operation requires a guard shape or variants (list shapes must declare `take` with room for the injected default); REST hooks on an exposed operation refuse registration; unroutable callers get no tool; caller/variant/principal are never accepted in tool arguments.
+
+## MCP write actions (phase 11)
+
+Same transport, same pipeline. `UserMcp.ts` also exports one factory per guarded write op, derived from `OPERATION_METADATA` (`create`, `createMany`, `createManyAndReturn`, `update`, `updateMany`, `updateManyAndReturn`, `upsert`, `delete` -> `deleteUnique` core, `deleteMany`). `updateEach` bypasses guard shapes, so it has no factory and `createMcpWriteTool` refuses it by name. A write exists only when application code imports its factory and places it in `tools`; `enableAll` never implies one, and there is no universal tool, no implicit registration and no server-side confirmation flag — annotations are hints, `authorize` plus the allowlist enforce.
+
+`createMcpWriteTool` and `createMcpReadTool` share one factory (`createMcpOperationTool`): guard required, REST hooks refused, per-variant shape validation, fail-closed routing. Write-specific rules: dynamic (function) write shapes are refused at creation — schemas narrow from static shapes only, never an opaque fallback; `writeShapeConfigProblem` mirrors guard's mutation table (per-op shape keys, required `where`/`data`, unique-selector `where` for update/upsert/delete incl. extended non-unique keys, filter `where` for bulk ops, data configs, projections); `buildModelAwareWriteArgsSchema` advertises only `true` data fields, create requiredness from `hasDefaultValue`, nullable optional fields. Relation writes and inline refines refuse registration — a static JSON Schema cannot mirror them.
+
+`writeStrategy` is baked into every emitted write factory (same value the cores were generated with): under `forceReturn` the createMany/updateMany tools validate and advertise against the returning guard methods the cores call; under `throwOnNonReturning` those two factories throw at creation, because their cores 501 on every call.
+
+Execution: sanitized tool arguments become `ctx.body`, `parsedQuery` stays empty — exactly what REST write routes hand the operation core. A fully forced selector advertises no `where`; the runtime injects `where: {}` so the core's required-field check matches REST and guard merges the forced selector. Guard compile, forced merge, override, Prisma call and error classification are the REST path; the result-size cap applies to writes too.
+
+Tenant safety is a shape property: per-tenant static variants forcing the tenant column in data, in unique wheres (`{ id: true, siteId: force(t) }` or a compound selector with the tenant half forced) and in bulk filters. The Postgres parity suite runs cross-tenant update/delete/upsert/bulk attacks and authorization denials and asserts zero writes.

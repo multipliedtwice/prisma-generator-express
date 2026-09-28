@@ -92,7 +92,7 @@ That is a full CRUD API with OpenAPI docs at `/user/openapi.json`.
 - Per-route and per-endpoint pagination config, including materialized-view count sources — [pagination](docs/guide.md#pagination)
 - POST read endpoints for complex queries exceeding URL length limits — [POST reads](docs/guide.md#post-read-endpoints)
 - Guard/variant shape enforcement with tenant isolation via [prisma-guard](https://github.com/multipliedtwice/prisma-guard) — [guard shapes](docs/guide.md#guard-shapes-prisma-guard-integration)
-- Opt-in read-only MCP transport (`mcp = true`): one Streamable HTTP `/mcp` endpoint in the same process, explicit per-model allowlist, verified-principal authorization, SDK v2 — [MCP guide](docs/guide.md#mcp-model-context-protocol)
+- Opt-in MCP transport (`mcp = true`): one Streamable HTTP `/mcp` endpoint in the same process, explicit per-model allowlist, verified-principal authorization, SDK v2. Read and write actions are exposed only when allowlisted; all nine guarded write actions (create, createMany, createManyAndReturn, update, updateMany, updateManyAndReturn, upsert, delete, deleteMany) are per-operation opt-in and never implied by `enableAll`. MCP represents each action as a tool — [MCP guide](docs/guide.md#mcp-model-context-protocol)
 - Express-only progressive read streaming over SSE (manual stages or auto-include splitting) — [progressive composition](docs/guide.md#progressive-endpoint-composition-express-sse)
 - Express-only read-only materialized view router — [materialized views](docs/guide.md#materialized-views-router-express)
 - Client-side query parameter encoder — [query encoding](docs/guide.md#query-encoding-client-side)
@@ -119,7 +119,7 @@ The full reference lives in [`docs/guide.md`](docs/guide.md):
 - [Environment variables](docs/guide.md#environment-variables)
 - [Pagination](docs/guide.md#pagination), [error handling](docs/guide.md#error-handling), [security notes](docs/guide.md#security)
 - [updateEach batch route](docs/guide.md#updateeach-express-fastify-hono-internal-batch)
-- [MCP read-only tools](docs/guide.md#mcp-model-context-protocol) — enable, allowlist, auth, limits, fail-closed rules
+- [MCP tools](docs/guide.md#mcp-model-context-protocol) — enable, allowlist, auth, limits, opt-in writes, fail-closed rules
 
 ### MCP quickstart
 
@@ -196,19 +196,36 @@ import { toNodeHandler } from '@modelcontextprotocol/node'
 import { force } from 'prisma-guard'
 import { PrismaClient } from '@prisma/client'
 import { guard } from './generated/guard/client'
-import { userFindManyTool } from './generated/api/User/UserMcp'
+import {
+  userFindManyTool,
+  userCreateTool,
+  userUpdateTool,
+} from './generated/api/User/UserMcp'
 import { registerMcpToolsOnServer } from './generated/api/mcp'
 
 // guarded client: guard(shape, caller) is what the tools execute through
 const prisma = new PrismaClient().$extends(guard.extension())
 
-// a real route config: a guard shape with a FORCED tenant value + bounded take
-// (MCP schemas assume prisma-guard >= 1.33 semantics)
+// a real route config: guard shapes with a FORCED tenant value + bounded take
+// (MCP schemas assume prisma-guard >= 1.33 semantics). Write actions are
+// per-operation opt-in: nothing writes until you import its factory and
+// place it in `tools`. `enableAll` never exposes writes.
 const userConfig = {
   findMany: {
     shape: {
       where: { siteId: { equals: force('tenant-a') } },
       take: { max: 50 },
+    },
+  },
+  create: {
+    // siteId is server-owned: agents cannot choose the tenant
+    shape: { data: { email: true, siteId: force('tenant-a') } },
+  },
+  update: {
+    // select by id AND the forced tenant: another tenant's row is a 404
+    shape: {
+      where: { id: true, siteId: force('tenant-a') },
+      data: { email: true },
     },
   },
 }
@@ -218,7 +235,11 @@ const MCP_TOKEN = process.env.MCP_TOKEN // your issuer's token
 const buildServer = (authInfo: AuthInfo): McpServer => {
   const server = new McpServer({ name: 'my-api', version: '1.0.0' })
   registerMcpToolsOnServer(server, {
-    tools: [userFindManyTool({ config: userConfig })],
+    tools: [
+      userFindManyTool({ config: userConfig }),
+      userCreateTool({ config: userConfig }),
+      userUpdateTool({ config: userConfig }),
+    ],
     resolveCaller: (info) => info.clientId, // routing key only
     authorize: ({ principal }) => {
       if (!principal) throw new Error('unauthenticated')

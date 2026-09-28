@@ -2875,7 +2875,7 @@ During `prisma generate`, if no prisma-guard artifacts are detected the generato
 
 ## MCP (Model Context Protocol)
 
-Read-only MCP transport, generated opt-in. Same process as your REST backend, one Streamable HTTP endpoint at `/mcp`, using the current MCP TypeScript SDK v2 (`@modelcontextprotocol/server` plus your framework's adapter). MCP tools reuse the REST pipeline: variant resolution, guard enforcement, pagination, operation overrides, result transform, classified errors.
+MCP transport, generated opt-in. Same process as your REST backend, one Streamable HTTP endpoint at `/mcp`, using the current MCP TypeScript SDK v2 (`@modelcontextprotocol/server` plus your framework's adapter). MCP tools reuse the REST pipeline: variant resolution, guard enforcement, pagination, operation overrides, result transform, classified errors. Every action — read or write — is exposed only when allowlisted; write actions are per-operation opt-in and never implied by anything else. MCP represents each action as a tool (`page_create` is the tool for the Page create action).
 
 ### Enable
 
@@ -2890,7 +2890,7 @@ generator api {
 
 `mcp = true` adds: per-model `UserMcp.ts` (one named tool factory per operation), app-level `mcp.ts` (`registerMcpTools`), target mount glue `mcpMount.ts`, shared runtime `mcpRuntime.ts`. With `mcp` off (default) none of these exist and no MCP package is needed.
 
-`mcp = true` + `dropGuard = true` fails generation. Read-only tools enforce guard shapes — no exception.
+`mcp = true` + `dropGuard = true` fails generation. Every tool — read and write — enforces guard shapes; no exception.
 
 ### Install (generated consumer)
 
@@ -2909,9 +2909,110 @@ Advertised operator surfaces are field-specific, matching guard: scalar lists ex
 
 ### Supported operations
 
-Read-only release: `findMany`, `findUnique`, `findFirst`, `count`, `findManyPaginated`. Tool names are stable snake case: `user_find_many`, `ticket_find_many_paginated`. No `execute_prisma`, no stdio, no writes.
+Reads: `findMany`, `findUnique`, `findFirst`, `count`, `findManyPaginated`. Writes: `create`, `createMany`, `createManyAndReturn`, `update`, `updateMany`, `updateManyAndReturn`, `upsert`, `delete`, `deleteMany`. Tool names are stable snake case: `user_find_many`, `ticket_find_many_paginated`, `page_create`, `page_update_many_and_return`, `page_delete`. No `execute_prisma`, no stdio.
 
-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) come from explicit per-operation metadata, not from operation kind.
+`updateEach` has no MCP tool: it bypasses guard shapes entirely, and every MCP tool executes through a guard. Asking for one throws.
+
+Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) come from explicit per-operation metadata, not from operation kind: reads are `readOnlyHint: true`; `delete` and `deleteMany` are `destructiveHint: true, idempotentHint: true`; `upsert` is `idempotentHint: true`; the create and update families carry all-false hints.
+
+### Write actions (opt-in per operation)
+
+A write action exists only where application code imports its factory and places it in `tools` — the same explicit allowlist reads use. MCP represents each action as a tool; the factory returns that tool's contribution:
+
+```ts
+import {
+  pageFindManyTool,
+  pageCreateTool,
+  pageUpdateTool,
+} from './generated/api/Page/PageMcp'
+
+tools: [
+  pageFindManyTool({ config: pageConfig }),
+  pageCreateTool({ config: pageConfig }),   // nothing writes until this line exists
+  pageUpdateTool({ config: pageConfig }),
+]
+```
+
+`enableAll` never exposes writes. There is no `enableWrites`, no implicit registration by model or operation kind, and no server-side fake "confirmation" boolean — MCP annotations are hints; your `authorize` callback and the explicit allowlist are the enforcement boundary.
+
+Write actions execute through the same guarded operation pipeline as the REST routes — the same guard compile, forced-value merge, unique-where enforcement, operation override, operation core and error classification. Tool arguments ARE the Prisma body:
+
+| Action | Tool arguments |
+| --- | --- |
+| `create` | `data` |
+| `createMany` | `data` (non-empty array), `skipDuplicates?` |
+| `createManyAndReturn` | `data` (non-empty array), `skipDuplicates?`, projection |
+| `update` | `where` (unique selector), `data` |
+| `updateMany` | `where` (filter), `data` |
+| `updateManyAndReturn` | `where` (filter), `data`, projection |
+| `upsert` | `where` (unique selector), `create`, `update` |
+| `delete` | `where` (unique selector) |
+| `deleteMany` | `where` (filter) |
+
+"Projection" means `select`/`include`, advertised only when the guard shape configures one (`create`, `update`, `upsert` and `delete` accept it too). The result-size cap applies to write results too.
+
+`writeStrategy` decides what the `createMany`/`updateMany` cores actually call, and the MCP contract follows it:
+
+| `writeStrategy` | `createMany` / `updateMany` action |
+| --- | --- |
+| `regular` (default) | non-returning; the shape may not configure `select`/`include`; result `{ count }` |
+| `forceReturn` | the cores call `createManyAndReturn` / `updateManyAndReturn`; the shape may configure a projection, the tool advertises it, the result is the records |
+| `throwOnNonReturning` | the cores answer 501 on every call, so the factory throws when the tool is created — expose `createManyAndReturn` / `updateManyAndReturn` instead |
+
+The tool name and annotations never change with the strategy; the returning actions (`createManyAndReturn`, `updateManyAndReturn`) behave the same under every strategy.
+
+#### Tenant-safe write shapes
+
+Force the tenant in every write shape, per tenant, with STATIC variants — the CMS Page contract the Postgres parity suite runs:
+
+```ts
+const tenantPage = (t: string) => ({
+  create: { shape: { data: { slug: true, title: true, siteId: force(t) } } },
+  // select by id AND the forced tenant (Prisma extended unique where):
+  // another tenant's id is a 404, never a write
+  update: { shape: { where: { id: true, siteId: force(t) }, data: { title: true } } },
+  // compound @@unique([siteId, slug]) with the tenant half forced
+  upsert: {
+    shape: {
+      where: { siteId_slug: { siteId: force(t), slug: true } },
+      create: { slug: true, title: true, siteId: force(t) },
+      update: { title: true },
+    },
+  },
+  delete: { shape: { where: { id: true, siteId: force(t) } } },
+  // bulk ops filter on the forced tenant
+  deleteMany: { shape: { where: { siteId: { equals: force(t) }, slug: { startsWith: true } } } },
+})
+
+const tenants = ['tenant-a', 'tenant-b']
+const op = (name: keyof ReturnType<typeof tenantPage>) => ({
+  variants: Object.fromEntries(tenants.map((t) => [t, tenantPage(t)[name]])),
+})
+const pageConfig = { create: op('create'), update: op('update'), upsert: op('upsert'), delete: op('delete'), deleteMany: op('deleteMany') }
+```
+
+`resolveCaller(authInfo)` picks the variant from the verified principal; a caller routed to `tenant-b` cannot select, change or delete a `tenant-a` row through any write action.
+
+Dynamic (function) write shapes — single or per variant — are refused when the action's tool is created. A write action's input schema is narrowed from a static shape; there is no opaque `data`/`where` fallback. Use per-tenant static variants for tenant-forced values.
+
+#### Advertised surfaces
+
+Advertised `data` surfaces mirror prisma-guard's data compilation:
+
+- only client-controlled fields — the shape's `true` entries — are advertised; forced (literal or `force()`) values are server-owned and never client input
+- a required field without a Prisma default stays mandatory in create-family data; fields with defaults (`@default`, `autoincrement`, `cuid`) are optional
+- optional fields accept `null` in create/update data (BigInt and Decimal included); required fields never do
+- data values are advertised in canonical JSON types (String as string, DateTime as ISO date-time string). Guard's lenient input coercion (String accepting numbers, Int accepting digit strings) is not advertised for data, so the schema may reject a body REST would coerce — never the other way round
+- forced data values are validated exactly as guard parses them: `Date` instances for DateTime, `bigint` for BigInt, `Uint8Array` for Bytes, coerced String/Int/Float forms, any JSON value (objects included) for Json; `null` only on optional and Json fields
+- relation fields cannot appear in MCP write data — keep nested relation writes (`create: { author: { connect: ... } }`) REST-only; set the FK scalar column (`authorId: true`) instead. A shape carrying a relation write refuses registration
+- inline refine functions (`data: { title: z.string().min(3) }` style zod chains) cannot be mirrored in a static JSON Schema — a shape using them refuses registration
+- `updatedAt` fields are guard-rejected in data shapes; unknown fields, operator objects (`{ contains: true }`) and mistyped forced values refuse registration
+
+Advertised `where` surfaces:
+
+- `update`/`upsert`/`delete` take a unique selector: a flat unique field or compound selector object, exactly like the `findUnique` tools. Other scalar fields may ride along (Prisma extended unique where) — `true` makes one an optional client filter, a literal or `force()` makes it server-owned. A `where` without any unique field or compound selector refuses registration
+- `updateMany`/`updateManyAndReturn`/`deleteMany` take the filter `where` the `findMany` tools use. Guard refuses an empty bulk `where`, so an all-client filter must carry at least one condition
+- when every selector value is forced, `where` is optional in the tool schema; the runtime sends `where: {}` to the operation core (its required-field check matches REST) and guard merges the forced selector into it
 
 ### Explicit allowlist
 
@@ -2949,7 +3050,7 @@ const buildServer = (authInfo: AuthInfo): McpServer => {
 
 Unimported tools drop out of the bundle — the same static boundary the Hono per-op router parts use. Tool input schemas are model-aware: only keys the guard shape declares are advertised, `where`/`select`/`include`/`omit` enumerate real model fields (recursively for nested projection shapes), and undeclared keys are rejected before any handler runs.
 
-`findUnique` tools advertise a unique-selector `where` (never filter operators): a flat unique field is advertised only when the shape configures it with exactly `true`, and a compound `@@unique([a, b])` is advertised as its selector object `a_b` when the shape configures that key with `{ a: true, b: true }` — only `true`-configured fields are advertised and required. Forced (literal or `force()`) configs are never advertised; a guard-invalid configuration (`where: true`, field-wise compound declarations, operator configs) refuses registration outright — prisma-guard 1.33 rejects or crashes on every input for it. `cursor` follows the same rule: flat keys configured with `true`, compound selectors whose inner object maps every constraint field to `true`.
+`findUnique` tools advertise a unique-selector `where` (never filter operators): a flat unique field is advertised only when the shape configures it with exactly `true`, and a compound `@@unique([a, b])` is advertised as its selector object `a_b` when the shape configures that key with `{ a: true, b: true }` — only `true`-configured fields are advertised and required. Other scalar fields may ride beside a covering selector (Prisma extended unique where; e.g. `{ id: true, siteId: force(t) }`): `true` advertises an optional client filter, a literal or `force()` stays server-owned. Forced (literal or `force()`) configs are never advertised; a guard-invalid configuration (`where: true`, field-wise compound declarations, operator configs) refuses registration outright — prisma-guard 1.33 rejects or crashes on every input for it. `cursor` follows the same rule: flat keys configured with `true`, compound selectors whose inner object maps every constraint field to `true`.
 
 ### Authentication
 
@@ -2982,12 +3083,13 @@ Per call, exactly:
 
 ### Guard requirements (fail closed)
 
-- Every exposed operation needs a guard shape or variants. Read-only tools are not exempt.
+- Every exposed operation needs a guard shape or variants. Read and write actions are not exempt.
 - Every exposed `findMany`/`findManyPaginated` shape (each variant) must declare `take` (`take: N` or `take: { max, default? }`). Static violations throw at registration; dynamic (function) shapes are checked after resolution and fail as classified 500 without a database call.
 - `shape.take.max` below `defaultLimit` throws at registration — the injected default must not exceed the guard bound.
 - An exposed operation whose REST config defines `authorize`, `before`, `after` or variant hooks throws at registration. Transport-specific policy is never silently ignored; there is no `allowHookDivergence` override.
 - `PGE_DROP_GUARD=true` (or deprecated `E2E=true`) in the environment makes `registerMcpTools` throw before registering any tool. `allowE2EGuardBypass` on a REST config cannot change this. There is no `allowUnguardedMcp`.
 - Guard-config validity is checked at registration per exposed variant, for the COMPLETE shape — not just `where`: prisma-guard 1.33 rejects (or crashes on) bare-`true` scalar filters, bare literal filters, empty `where`/relation/relation-operator configs, combinator configs that are not non-empty objects, unknown or field-incompatible filter operators, forced values with the wrong type, forced values under the negating relation operators `none`/`isNot` (guard: "mixes client-controlled and forced"), `findUnique` `where` configs that are not complete unique-selector configs, `cursor` configs that are not `true`-configured unique fields or all-`true` compound selectors, `orderBy` configs that are not `true` (to-many relations: `_count: true` only), `distinct` configs that are not a non-empty array of scalar field names, `select`/`include` configs with unknown fields, non-`true` scalars or scalar keys inside `include`, `_count` configs other than `true` or `{ select: { listRelation: true | { where } } }`, and `skip` configs other than `true`. Exposing a shape with any of those refuses registration with the exact problem — the tool never serves a request guard would reject on every input.
+- Write shapes carry the same registration-time validation, per exposed variant: per-operation shape keys (guard's own table: `createMany` allows only `data`; `createManyAndReturn`/`create` add `select`/`include`; `updateMany` allows `where`/`data`; `deleteMany` only `where`; `upsert` requires `where`+`create`+`update` and forbids `data`; `delete` requires `where` and forbids `data`), required `where`/`data`, unique-selector wheres for `update`/`upsert`/`delete`, filter wheres for the bulk ops, projection configs (delete included), and the data-config rules from [Write actions](#write-actions-opt-in-per-operation) — unknown fields, operator objects, mistyped forced values, `updatedAt` entries, relation writes and inline refines all refuse registration. Dynamic write shapes and `updateEach` are refused when the tool is created.
 - `mcp = true` also gates at GENERATION time: the generator resolves `prisma-guard` from the schema project and refuses to emit MCP support below **1.33.0** (MCP tool schemas mirror 1.33 semantics). The published `prisma-guard` peer stays `>=1.0.0` and optional — REST-only consumers are unaffected.
 
 ### Row and result limits

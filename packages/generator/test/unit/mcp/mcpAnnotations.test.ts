@@ -3,8 +3,9 @@ import { OPERATION_METADATA } from '../../../src/copy/operationDefinitions'
 
 /**
  * Every operation metadata entry carries EXPLICIT readOnly/destructive/
- * idempotent values — never inferred from `kind` — and the five exposed
- * read-only MCP operations map them to the MCP hints verbatim.
+ * idempotent values — never inferred from `kind` — and every exposed MCP
+ * action (five reads, nine guarded writes) maps them to the MCP hints
+ * verbatim.
  */
 describe('operation annotations are explicit and exhaustive', () => {
   it('every metadata entry has all three annotation fields as booleans', () => {
@@ -18,7 +19,7 @@ describe('operation annotations are explicit and exhaustive', () => {
     }
   })
 
-  it('covers every operation, including ones not exposed in the read-only release', () => {
+  it('covers every operation, including updateEach, which has no MCP action', () => {
     const names = new Set(OPERATION_METADATA.map((m) => m.name))
     for (const name of [
       'findMany',
@@ -75,17 +76,46 @@ describe('MCP hint mapping for the exposed read operations', () => {
       })
     })
   }
+})
 
-  it('a write operation would map its destructive/idempotent hints explicitly (phase 11 contract)', () => {
-    const del = byName.get('delete')
-    expect({
-      readOnlyHint: del?.readOnly,
-      destructiveHint: del?.destructive,
-      idempotentHint: del?.idempotent,
-    }).toEqual({
-      readOnlyHint: false,
-      destructiveHint: true,
-      idempotentHint: true,
+describe('MCP hint mapping for every exposed write action', () => {
+  const byName = new Map(OPERATION_METADATA.map((m) => [m.name, m]))
+
+  const expected: Record<string, [boolean, boolean, boolean]> = {
+    create: [false, false, false],
+    createMany: [false, false, false],
+    createManyAndReturn: [false, false, false],
+    update: [false, false, false],
+    updateMany: [false, false, false],
+    updateManyAndReturn: [false, false, false],
+    upsert: [false, false, true],
+    delete: [false, true, true],
+    deleteMany: [false, true, true],
+  }
+
+  for (const [name, [ro, de, idem]] of Object.entries(expected)) {
+    it(`${name} maps to readOnlyHint=${ro}, destructiveHint=${de}, idempotentHint=${idem}`, () => {
+      const meta = byName.get(name)
+      expect(meta).toBeDefined()
+      // the mapping in mcpRuntime is literal:
+      // { readOnlyHint: meta.readOnly, destructiveHint: meta.destructive, idempotentHint: meta.idempotent }
+      expect({
+        readOnlyHint: meta?.readOnly,
+        destructiveHint: meta?.destructive,
+        idempotentHint: meta?.idempotent,
+      }).toEqual({
+        readOnlyHint: ro,
+        destructiveHint: de,
+        idempotentHint: idem,
+      })
     })
+  }
+
+  it('the table covers every guarded write action and nothing else', () => {
+    const guardedWrites = OPERATION_METADATA.filter(
+      (m) =>
+        (m.kind === 'write' || m.kind === 'batch') && m.name !== 'updateEach',
+    ).map((m) => m.name)
+    expect(Object.keys(expected).sort()).toEqual(guardedWrites.sort())
   })
 })

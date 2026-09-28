@@ -70,7 +70,8 @@ model Post {
 }
 `
 
-// exactly the README's route config: a real guard shape with a FORCED tenant
+// exactly the README's route config: guard shapes with a FORCED tenant,
+// including the opt-in tenant-forced create + update write tools
 const userConfig = (force: (v: string) => unknown) => ({
   addModelPrefix: false,
   disableOpenApi: true,
@@ -80,11 +81,23 @@ const userConfig = (force: (v: string) => unknown) => ({
       take: { max: 50 },
     },
   },
+  create: {
+    shape: { data: { email: true, siteId: force('tenant-a') } },
+  },
+  update: {
+    shape: {
+      where: { id: true, siteId: force('tenant-a') },
+      data: { email: true },
+    },
+  },
 })
 
 const servers: Server[] = []
 const disconnects: Array<() => Promise<void>> = []
 let port = 0
+let otherTenantUserId = ''
+type UserRow = { id: string; email: string; siteId: string }
+let findUsers: (() => Promise<UserRow[]>) | undefined
 
 /**
  * Self-contained: a plain `npx vitest` on a clean checkout has no dist/, so
@@ -191,24 +204,38 @@ beforeAll(async () => {
     base as unknown as { $extends: (e: unknown) => unknown }
   ).$extends(
     (guardMod.guard as unknown as { extension: () => unknown }).extension(),
-  ) as { $disconnect: () => Promise<void>; user: Record<string, unknown> }
+  ) as {
+    $disconnect: () => Promise<void>
+    user: Record<string, unknown>
+    post: Record<string, unknown>
+  }
+  const findManyUsers = prisma.user.findMany as (
+    a: unknown,
+  ) => Promise<UserRow[]>
+  findUsers = () => findManyUsers({ orderBy: { email: 'asc' } })
   disconnects.push(() => prisma.$disconnect())
+  await (prisma.post.deleteMany as () => Promise<unknown>)()
   await (prisma.user.deleteMany as () => Promise<unknown>)()
   const createUser = prisma.user.create as (a: {
     data: { email: string; siteId: string }
-  }) => Promise<unknown>
+  }) => Promise<{ id: string }>
   await createUser({ data: { email: 'readme@test', siteId: 'tenant-a' } })
-  // tenant B exists and MUST be excluded by the forced-tenant guard shape
-  await createUser({ data: { email: 'other@test', siteId: 'tenant-b' } })
+  // tenant B exists and MUST be excluded by the forced-tenant guard shape,
+  // and MUST NOT be writable through the tenant-a write tools
+  const other = await createUser({
+    data: { email: 'other@test', siteId: 'tenant-b' },
+  })
+  otherTenantUserId = other.id
 
   // emitted tool factory + registry
   const mcpMod = (await import(
     pathToFileURL(resolve(WORK, 'api/User/UserMcp.js')).href
-  )) as {
-    userFindManyTool: (o: {
+  )) as Record<
+    'userFindManyTool' | 'userCreateTool' | 'userUpdateTool',
+    (o: {
       config: unknown
     }) => import('../../../src/copy/mcpRuntime').McpToolContribution
-  }
+  >
   const registry = (await import(
     pathToFileURL(resolve(WORK, 'api/mcp.js')).href
   )) as {
@@ -224,6 +251,8 @@ beforeAll(async () => {
     registry.registerMcpToolsOnServer(server, {
       tools: [
         mcpMod.userFindManyTool({ config: userConfig(guardRuntime.force) }),
+        mcpMod.userCreateTool({ config: userConfig(guardRuntime.force) }),
+        mcpMod.userUpdateTool({ config: userConfig(guardRuntime.force) }),
       ],
       resolveCaller: (info: AuthInfo) => info.clientId,
       authorize: ({ principal }: { principal: AuthInfo }) => {
@@ -301,26 +330,77 @@ describe('README MCP quickstart, executed on the real stack', () => {
     await client.connect(transport)
     try {
       const listed = await client.listTools()
-      expect(listed.tools.map((t) => t.name)).toEqual(['user_find_many'])
+      expect(listed.tools.map((t) => t.name)).toEqual([
+        'user_find_many',
+        'user_create',
+        'user_update',
+      ])
 
       const called = await client.callTool({
         name: 'user_find_many',
         arguments: { take: 10 },
       })
       expect(called.isError).toBeFalsy()
-      const block = (
-        called.content as Array<{ type: string; text?: string }>
-      )[0]
-      const parsed = JSON.parse(block?.text ?? '[]') as Array<{
-        email: string
-        siteId: string
-      }>
+      const text = (r: unknown) =>
+        (r as { content: Array<{ type: string; text?: string }> }).content[0]
+          ?.text ?? ''
+      const parsed = JSON.parse(text(called)) as UserRow[]
       // the forced tenant value reached the database query
       expect(parsed).toHaveLength(1)
       expect(parsed[0]).toMatchObject({
         email: 'readme@test',
         siteId: 'tenant-a',
       })
+
+      // THE WRITE WORKFLOW: an authenticated agent creates a record through
+      // the guarded pipeline, then updates it — the tenant is server-owned
+      const created = await client.callTool({
+        name: 'user_create',
+        arguments: { data: { email: 'agent@test' } },
+      })
+      expect(created.isError).toBeFalsy()
+      const createdUser = JSON.parse(text(created)) as UserRow
+      expect(createdUser).toMatchObject({
+        email: 'agent@test',
+        siteId: 'tenant-a',
+      })
+
+      const updated = await client.callTool({
+        name: 'user_update',
+        arguments: {
+          where: { id: createdUser.id },
+          data: { email: 'agent2@test' },
+        },
+      })
+      expect(updated.isError).toBeFalsy()
+      expect(JSON.parse(text(updated))).toMatchObject({
+        id: createdUser.id,
+        email: 'agent2@test',
+      })
+
+      // the other tenant's row is unreachable: selector id + forced siteId
+      const attack = await client.callTool({
+        name: 'user_update',
+        arguments: {
+          where: { id: otherTenantUserId },
+          data: { email: 'pwned@test' },
+        },
+      })
+      expect(attack.isError).toBe(true)
+      expect(JSON.parse(text(attack)).status).toBe(404)
+
+      // a client-chosen tenant is not an input
+      const spoof = await client.callTool({
+        name: 'user_create',
+        arguments: { data: { email: 'x@test', siteId: 'tenant-b' } },
+      })
+      expect(spoof.isError).toBe(true)
+
+      expect((await findUsers?.())?.map((u) => [u.email, u.siteId])).toEqual([
+        ['agent2@test', 'tenant-a'],
+        ['other@test', 'tenant-b'],
+        ['readme@test', 'tenant-a'],
+      ])
     } finally {
       await client.close()
     }

@@ -6,15 +6,7 @@ Rule: no commit without GPT authorization. Each phase = one PR, GPT reviews diff
 
 Size legend: S < half day. M = day-ish. L = multi-day. XL = week+.
 
-Order:
-
-1. Leftovers of phases 1, 7 — cheap, any time, independent.
-2. Phase 11 — MCP writes.
-
-Phase 11 (MCP writes) builds on the merged read-only MCP surface (phases
-S/5/9/10): per-op tool factories, explicit allowlist,
-`McpAuthorizationError`, per-op `readOnly`/`destructive`/`idempotent`
-annotation metadata.
+Order: leftovers of phases 1, 7 — cheap, any time, independent.
 
 ---
 
@@ -46,21 +38,6 @@ GitHub topics now: `express, generator, prisma, api, api-rest, crud`. Add `fasti
 
 Accept:
 - repo topics list all three frameworks + openapi + rest
-
-## Phase 11 — MCP writes
-
-Size: M-L. After phase 10 parity tests green.
-
-1. Per-op explicit opt-in for write ops. `enableAll` never implies.
-2. Annotations: `destructiveHint`, `idempotentHint` from explicit per-op metadata added in phase 10. Mapping test per write op.
-3. Same fail-closed rules as phase 10.
-4. Parity tests extended to every exposed write op.
-
-Accept:
-- write parity tests green
-- writes absent unless opted in per op
-
----
 
 ## Global definition of done
 

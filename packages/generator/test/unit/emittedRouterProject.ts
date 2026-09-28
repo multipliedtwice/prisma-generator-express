@@ -183,6 +183,7 @@ export async function writeEmittedRouterProject(args: {
           model: args.model,
           allModels: [args.model],
           importStyle: 'none' as never,
+          writeStrategy: 'regular',
         }),
       ),
       'utf8',

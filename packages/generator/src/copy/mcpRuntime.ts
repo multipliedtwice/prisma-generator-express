@@ -33,6 +33,9 @@ import { HttpError } from './errorMapper'
 import {
   argsShapeConfigProblem,
   buildModelAwareArgsSchema,
+  buildModelAwareWriteArgsSchema,
+  writeShapeConfigProblem,
+  type WriteSchemaOperation,
   type SchemaFieldMeta,
   type SchemaModelMeta,
 } from './operationSchemas'
@@ -43,7 +46,9 @@ import type { OpKind } from './projectionDefaults'
 import { OPERATION_BY_NAME } from './operationDefinitions'
 
 /**
- * Read-only MCP transport over the shared operation pipeline.
+ * MCP transport over the shared operation pipeline: explicitly allowlisted
+ * read actions and guarded write actions (no updateEach), each represented
+ * as one tool.
  *
  * Reuses the REST core: variant resolution, guard enforcement, pagination,
  * operation overrides, memoized context, the Prisma operation core,
@@ -99,6 +104,37 @@ const MCP_READ_OPERATIONS: ReadonlySet<string> = new Set([
   'count',
   'findManyPaginated',
 ])
+
+/**
+ * Every guarded write operation. `updateEach` is NOT one: it bypasses guard
+ * shapes entirely, so no MCP tool can expose it under the fail-closed rules.
+ */
+export type McpWriteOperation = WriteSchemaOperation
+
+const MCP_WRITE_OPERATIONS: ReadonlySet<string> = new Set([
+  'create',
+  'createMany',
+  'createManyAndReturn',
+  'update',
+  'updateMany',
+  'updateManyAndReturn',
+  'upsert',
+  'delete',
+  'deleteMany',
+])
+
+/** OpKind per write op (the dropped-guard vocabulary; MCP never drops). */
+const WRITE_OP_KIND: Record<McpWriteOperation, OpKind> = {
+  create: 'create',
+  createMany: 'createMany',
+  createManyAndReturn: 'createMany',
+  update: 'update',
+  updateMany: 'updateMany',
+  updateManyAndReturn: 'updateMany',
+  upsert: 'upsert',
+  delete: 'delete',
+  deleteMany: 'deleteMany',
+}
 
 /** Thrown by an `authorize` callback to DENY a call. */
 export class McpAuthorizationError extends Error {
@@ -289,7 +325,13 @@ function requireListShapeTake(
 }
 
 function opKindOf(operation: string): OpKind {
-  return operation === 'findUnique' ? 'readUnique' : 'read'
+  if (operation === 'findUnique') return 'readUnique'
+  if (isWriteOperation(operation)) return WRITE_OP_KIND[operation]
+  return 'read'
+}
+
+function isWriteOperation(operation: string): operation is McpWriteOperation {
+  return MCP_WRITE_OPERATIONS.has(operation)
 }
 
 function snakeCase(value: string): string {
@@ -351,6 +393,38 @@ export interface McpCallContext {
   http?: { authInfo?: AuthInfo }
 }
 
+/** The generator's `writeStrategy`, baked into every emitted write factory. */
+export type McpWriteStrategy = 'regular' | 'throwOnNonReturning' | 'forceReturn'
+
+export type CreateMcpWriteToolInput = Omit<
+  CreateMcpReadToolInput,
+  'operation'
+> & {
+  operation: McpWriteOperation
+  /**
+   * What the operation core actually calls for createMany/updateMany:
+   * `forceReturn` routes them to the returning guard methods (projection
+   * allowed), `throwOnNonReturning` makes their cores 501 on every call.
+   * Defaults to `regular`.
+   */
+  writeStrategy?: McpWriteStrategy
+}
+
+/**
+ * The guard method the operation core really invokes under the generator's
+ * writeStrategy (mirrors generateOperationCore decideWriteOp): the schema
+ * and shape validation follow THAT method, never the tool's name.
+ */
+function effectiveWriteOperation(
+  operation: McpWriteOperation,
+  strategy: McpWriteStrategy,
+): McpWriteOperation {
+  if (strategy !== 'forceReturn') return operation
+  if (operation === 'createMany') return 'createManyAndReturn'
+  if (operation === 'updateMany') return 'updateManyAndReturn'
+  return operation
+}
+
 /**
  * Creates one model-operation tool contribution. Registration-time refusals
  * (missing guard, REST hooks present) throw HERE, at creation, so a
@@ -361,17 +435,70 @@ export interface McpCallContext {
 export function createMcpReadTool(
   input: CreateMcpReadToolInput,
 ): McpToolContribution {
-  if (!MCP_READ_OPERATIONS.has(input.operation)) {
+  return createMcpOperationTool(input, false)
+}
+
+/**
+ * The write twin: same pipeline, same fail-closed rules, plus the write-shape
+ * contract — data configs must be statically mirrorable (no relation writes,
+ * no inline refines) or registration refuses.
+ */
+export function createMcpWriteTool(
+  input: CreateMcpWriteToolInput,
+): McpToolContribution {
+  return createMcpOperationTool(input, true)
+}
+
+function createMcpOperationTool(
+  input: CreateMcpReadToolInput | CreateMcpWriteToolInput,
+  write: boolean,
+): McpToolContribution {
+  const operationName: string = input.operation
+  if (write && operationName === 'updateEach') {
+    throw new Error(
+      'MCP tool for ' +
+        input.model +
+        '.updateEach: refused. updateEach bypasses guard shapes entirely, ' +
+        'and every MCP tool must execute through a guard.',
+    )
+  }
+  const allowedOperations = write ? MCP_WRITE_OPERATIONS : MCP_READ_OPERATIONS
+  if (!allowedOperations.has(input.operation)) {
     throw new Error(
       'MCP tool for ' +
         input.model +
         '.' +
         input.operation +
-        ': this release exposes findMany, findUnique, findFirst, count and findManyPaginated only.',
+        ': this release exposes ' +
+        (write
+          ? 'create, createMany, createManyAndReturn, update, updateMany, updateManyAndReturn, upsert, delete and deleteMany only.'
+          : 'findMany, findUnique, findFirst, count and findManyPaginated only.'),
     )
   }
 
   const location = input.model + '.' + input.operation + ' (MCP)'
+  const writeStrategy: McpWriteStrategy =
+    'writeStrategy' in input && input.writeStrategy
+      ? input.writeStrategy
+      : 'regular'
+  if (
+    write &&
+    writeStrategy === 'throwOnNonReturning' &&
+    (operationName === 'createMany' || operationName === 'updateMany')
+  ) {
+    throw new Error(
+      location +
+        ': disabled by writeStrategy="throwOnNonReturning" — its operation ' +
+        'core returns 501 for every call. Expose the returning variant ' +
+        '(' +
+        operationName +
+        'AndReturn) instead.',
+    )
+  }
+  // the guard method the core invokes: schemas and shape validation follow it
+  const schemaOperation = isWriteOperation(input.operation)
+    ? effectiveWriteOperation(input.operation, writeStrategy)
+    : undefined
   const raw = input.config[input.operation]
   validateOperationConfig(
     raw as { shape?: unknown; variants?: unknown } | undefined,
@@ -384,7 +511,7 @@ export function createMcpReadTool(
   if (!opConfig.guardShape) {
     throw new Error(
       location +
-        ': no guard configured. Every MCP-exposed operation requires a guard shape or variants; read-only tools are not exempt.',
+        ': no guard configured. Every MCP-exposed operation requires a guard shape or variants; read and write tools are not exempt.',
     )
   }
 
@@ -406,6 +533,26 @@ export function createMcpReadTool(
         '). MCP refuses to expose an operation whose transport-specific policy ' +
         'would be silently ignored. Remove the hooks or keep the operation REST-only.',
     )
+  }
+
+  // write schemas are narrowed from a STATIC shape only: a dynamic write
+  // shape would need an opaque data/where surface, which MCP refuses
+  if (write) {
+    const shapes =
+      opConfig.guardRouting.kind === 'named'
+        ? Object.entries(opConfig.guardShape as Record<string, unknown>)
+        : [['', opConfig.guardShape] as const]
+    for (const [key, entry] of shapes) {
+      if (typeof entry === 'function') {
+        throw new Error(
+          location +
+            (key ? ' variant "' + key + '"' : '') +
+            ': dynamic (function) write shapes are refused. MCP write tools ' +
+            'advertise a schema narrowed from a static shape; use static ' +
+            'shapes (per-tenant variants for tenant-forced values).',
+        )
+      }
+    }
   }
 
   const isList =
@@ -450,20 +597,27 @@ export function createMcpReadTool(
             )
           }
         } else {
-          requireListShapeTake(opConfig.guardShape, location, shared.defaultLimit)
+          requireListShapeTake(
+            opConfig.guardShape,
+            location,
+            shared.defaultLimit,
+          )
         }
       }
       // guard-config validity per exposed variant — the COMPLETE shape,
       // not just where: guard 1.33 rejects (or crashes on) invalid cursor,
-      // orderBy, distinct, select, include and _count configs for EVERY
-      // input too, so the tool must not register — fail closed at boot
+      // orderBy, distinct, select, include, _count AND write data/where
+      // configs for EVERY input too, so the tool must not register —
+      // fail closed at boot
       const checkShape = (shape: unknown, loc: string): void => {
         if (!isPlainObject(shape)) return
-        const problem = argsShapeConfigProblem(
-          modelMeta,
-          input.operation,
-          shape,
-        )
+        const problem = write
+          ? writeShapeConfigProblem(
+              modelMeta,
+              schemaOperation ?? input.operation,
+              shape,
+            )
+          : argsShapeConfigProblem(modelMeta, input.operation, shape)
         if (problem) {
           throw new Error(loc + ': ' + problem)
         }
@@ -501,33 +655,47 @@ export function createMcpReadTool(
           ? (opConfig.guardShape as Record<string, unknown>)[routed.variantKey]
           : opConfig.guardShape
 
-      const schema = buildModelAwareArgsSchema(
-        input.operation,
-        modelMeta,
-        variantShape,
-      )
+      const schema = schemaOperation
+        ? buildModelAwareWriteArgsSchema(
+            schemaOperation,
+            modelMeta,
+            variantShape,
+          )
+        : buildModelAwareArgsSchema(input.operation, modelMeta, variantShape)
       const takeCfg = takeConfigOfShape(variantShape)
       const effectiveMax =
         takeCfg.kind === 'none'
           ? shared.maxLimit
           : Math.min(shared.maxLimit, takeCfg.max)
 
-      const description =
-        'Read-only ' +
-        input.operation +
-        ' over ' +
-        input.model +
-        ' through the guarded REST pipeline.' +
-        (isList
-          ? ' Rows are limited: take defaults to ' +
-            shared.defaultLimit +
-            ', must be a positive integer, and is clamped down to ' +
-            effectiveMax +
-            " (the guard shape may cap lower); take above the guard shape's own max is rejected."
-          : '') +
-        ' Results larger than ' +
-        shared.maxResultBytes +
-        ' UTF-8 bytes are rejected — narrow take or select.'
+      const description = write
+        ? 'Guarded ' +
+          input.operation +
+          ' over ' +
+          input.model +
+          ' through the same pipeline as REST: guard enforcement, forced values, classified errors.' +
+          ' Explicitly allowlisted by the application; authorization runs before any database call.' +
+          (meta.destructive
+            ? ' This operation is destructive (destructiveHint).'
+            : '') +
+          ' Results larger than ' +
+          shared.maxResultBytes +
+          ' UTF-8 bytes are rejected.'
+        : 'Read-only ' +
+          input.operation +
+          ' over ' +
+          input.model +
+          ' through the guarded REST pipeline.' +
+          (isList
+            ? ' Rows are limited: take defaults to ' +
+              shared.defaultLimit +
+              ', must be a positive integer, and is clamped down to ' +
+              effectiveMax +
+              " (the guard shape may cap lower); take above the guard shape's own max is rejected."
+            : '') +
+          ' Results larger than ' +
+          shared.maxResultBytes +
+          ' UTF-8 bytes are rejected — narrow take or select.'
 
       const annotations = {
         readOnlyHint: meta.readOnly,
@@ -553,6 +721,7 @@ export function createMcpReadTool(
             validatedArgs: args,
             principal: ctx?.http?.authInfo,
             isList,
+            write,
           }),
       }
     },
@@ -560,18 +729,19 @@ export function createMcpReadTool(
 }
 
 async function runMcpCall(deps: {
-  input: CreateMcpReadToolInput
+  input: CreateMcpReadToolInput | CreateMcpWriteToolInput
   opConfig: NormalizedOperationConfig<McpHook, McpHook>
   mergedPagination: PaginationConfig | undefined
   shared: McpSharedOptions
   validatedArgs: Record<string, unknown>
   principal: AuthInfo | undefined
   isList: boolean
+  write: boolean
 }): Promise<{
   content: Array<{ type: 'text'; text: string }>
   isError?: boolean
 }> {
-  const { input, opConfig, shared, isList } = deps
+  const { input, opConfig, shared, isList, write } = deps
   const location = input.model + '.' + input.operation + ' (MCP)'
   try {
     // Fail closed on missing verified authentication BEFORE any work.
@@ -581,7 +751,21 @@ async function runMcpCall(deps: {
     }
 
     const args = sanitizeKeys(deps.validatedArgs)
-    const holder: { value?: Record<string, unknown> } = { value: args }
+    // a fully forced selector advertises no client `where`; the operation
+    // core still requires the body field (REST parity), so the empty object
+    // is injected and guard merges the forced selector into it
+    if (
+      write &&
+      args.where === undefined &&
+      OPERATION_BY_NAME[input.operation].requiredBodyFields.includes('where')
+    ) {
+      args.where = {}
+    }
+    // REST write routes carry no query channel: parsedQuery stays empty and
+    // the body channel alone feeds the operation core
+    const holder: { value?: Record<string, unknown> } = {
+      value: write ? {} : args,
+    }
     const channel: ArgsChannel = {
       read: () => holder.value,
       write: (next) => {
@@ -670,13 +854,16 @@ async function runMcpCall(deps: {
       }
     }
 
-    // 7. execute — the SAME shared stage REST uses
+    // 7. execute — the SAME shared stage REST uses. Write cores read their
+    // arguments from ctx.body, exactly like the REST write routes: the tool
+    // arguments ARE the request body.
     const result = await executeOperation(
       { variantKey: routed.variantKey, caller: routed.caller },
       { guardShape: guard.guardShape },
       {
         core: input.core,
         args: channel,
+        body: write ? args : undefined,
         prisma: requirePrisma(shared.prisma),
         pagination: deps.mergedPagination,
         override: opConfig.override,

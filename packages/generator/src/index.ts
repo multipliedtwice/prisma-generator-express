@@ -216,7 +216,7 @@ export async function runGenerate(options: GeneratorOptions): Promise<void> {
     const importStyle = resolveImportStyle(options)
 
     console.log(`\n═══ Prisma Generator (${target.toUpperCase()}) ═══`)
-    if (mcp) console.log(`  MCP: enabled (read-only)`)
+    if (mcp) console.log(`  MCP: enabled (reads + opt-in writes)`)
     console.log(`  Target: ${target}`)
     console.log(`  Output: ${options.generator.output?.value}`)
     console.log(`  Import style: ${importStyle}`)
@@ -414,6 +414,7 @@ export async function runGenerate(options: GeneratorOptions): Promise<void> {
               modelNames.includes(m.name),
             ) as DMMF.Model[],
             importStyle,
+            writeStrategy,
           }),
           options,
           model: model as DMMF.Model,

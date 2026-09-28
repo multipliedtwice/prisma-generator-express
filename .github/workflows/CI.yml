@@ -97,6 +97,10 @@ jobs:
           test -f matrix/generated/User/UserRouter.ts
           test -f matrix/generated/Post/PostRouter.ts
           test -f matrix/generated/User/UserMcp.ts
+          for op in FindMany FindUnique FindFirst Count FindManyPaginated Create CreateMany CreateManyAndReturn Update UpdateMany UpdateManyAndReturn Upsert Delete DeleteMany; do
+            grep -q "export function user${op}Tool" matrix/generated/User/UserMcp.ts || { echo "missing user${op}Tool"; exit 1; }
+          done
+          if grep -q "userUpdateEachTool" matrix/generated/User/UserMcp.ts; then echo "updateEach must have no MCP factory"; exit 1; fi
           test -f matrix/generated/mcpRuntime.ts
           test -f matrix/generated/mcp.ts
           test -f matrix/generated/mcpMount.ts

@@ -11,7 +11,10 @@ import {
   type SchemaFieldMeta,
   type SchemaModelMeta,
 } from '../../../src/copy/operationSchemas'
-import { createMcpReadTool, registerMcpTools } from '../../../src/copy/mcpRuntime'
+import {
+  createMcpReadTool,
+  registerMcpTools,
+} from '../../../src/copy/mcpRuntime'
 import { fakeServer, fakeAuthInfo } from './mcpTestHarness'
 
 /**
@@ -53,14 +56,62 @@ function loadGuard(): Promise<GuardClient> {
 // Plant metadata (article-labs schema: id, name, priceCents Int,
 // isPublished/isDeleted Boolean, nurseryId; relations nursery + orderItems)
 const PLANT_FIELDS = [
-  { name: 'id', kind: 'scalar', type: 'String', isList: false, isRequired: true },
-  { name: 'name', kind: 'scalar', type: 'String', isList: false, isRequired: true },
-  { name: 'priceCents', kind: 'scalar', type: 'Int', isList: false, isRequired: true },
-  { name: 'isPublished', kind: 'scalar', type: 'Boolean', isList: false, isRequired: true },
-  { name: 'isDeleted', kind: 'scalar', type: 'Boolean', isList: false, isRequired: true },
-  { name: 'nurseryId', kind: 'scalar', type: 'String', isList: false, isRequired: true },
-  { name: 'nursery', kind: 'object', type: 'Nursery', isList: false, isRequired: true },
-  { name: 'orderItems', kind: 'object', type: 'OrderItem', isList: true, isRequired: true },
+  {
+    name: 'id',
+    kind: 'scalar',
+    type: 'String',
+    isList: false,
+    isRequired: true,
+  },
+  {
+    name: 'name',
+    kind: 'scalar',
+    type: 'String',
+    isList: false,
+    isRequired: true,
+  },
+  {
+    name: 'priceCents',
+    kind: 'scalar',
+    type: 'Int',
+    isList: false,
+    isRequired: true,
+  },
+  {
+    name: 'isPublished',
+    kind: 'scalar',
+    type: 'Boolean',
+    isList: false,
+    isRequired: true,
+  },
+  {
+    name: 'isDeleted',
+    kind: 'scalar',
+    type: 'Boolean',
+    isList: false,
+    isRequired: true,
+  },
+  {
+    name: 'nurseryId',
+    kind: 'scalar',
+    type: 'String',
+    isList: false,
+    isRequired: true,
+  },
+  {
+    name: 'nursery',
+    kind: 'object',
+    type: 'Nursery',
+    isList: false,
+    isRequired: true,
+  },
+  {
+    name: 'orderItems',
+    kind: 'object',
+    type: 'OrderItem',
+    isList: true,
+    isRequired: true,
+  },
 ] as const
 
 const ORDER_ITEM_META: SchemaModelMeta = {
@@ -118,17 +169,73 @@ interface ParityFixture {
 }
 
 const PARITY_FIXTURES: ParityFixture[] = [
-  { label: 'contains (client-controlled)', body: { where: { name: { contains: 'fern' } } }, bothAccept: true },
-  { label: 'gte (client-controlled)', body: { where: { priceCents: { gte: 10 } } }, bothAccept: true },
-  { label: 'undeclared field rejected by both', body: { where: { description: { contains: 'x' } } }, bothAccept: false },
-  { label: 'some relation filter (client-controlled)', body: { where: { orderItems: { some: { quantity: { gte: 5 } } } } }, bothAccept: true },
-  { label: 'empty some condition rejected by both', body: { where: { orderItems: { some: {} } } }, bothAccept: false },
-  { label: 'every when only some configured — rejected by both', body: { where: { orderItems: { every: { quantity: { gte: 5 } } } } }, bothAccept: false },
-  { label: 'orderBy declared field (client-controlled)', body: { orderBy: { name: 'asc' } }, bothAccept: true },
-  { label: 'orderBy {sort, nulls} object form (client-controlled)', body: { where: { name: { contains: 'x' } }, orderBy: { name: { sort: 'asc', nulls: 'last' } }, take: 2 }, bothAccept: true },
-  { label: 'orderBy object form without sort rejected by both', body: { where: { name: { contains: 'x' } }, orderBy: { name: { nulls: 'last' } }, take: 2 }, bothAccept: false },
-  { label: 'orderBy object form with invalid nulls rejected by both', body: { where: { name: { contains: 'x' } }, orderBy: { name: { sort: 'asc', nulls: 'middle' } }, take: 2 }, bothAccept: false },
-  { label: 'orderBy undeclared field rejected by both', body: { orderBy: { priceCents: 'asc' } }, bothAccept: false },
+  {
+    label: 'contains (client-controlled)',
+    body: { where: { name: { contains: 'fern' } } },
+    bothAccept: true,
+  },
+  {
+    label: 'gte (client-controlled)',
+    body: { where: { priceCents: { gte: 10 } } },
+    bothAccept: true,
+  },
+  {
+    label: 'undeclared field rejected by both',
+    body: { where: { description: { contains: 'x' } } },
+    bothAccept: false,
+  },
+  {
+    label: 'some relation filter (client-controlled)',
+    body: { where: { orderItems: { some: { quantity: { gte: 5 } } } } },
+    bothAccept: true,
+  },
+  {
+    label: 'empty some condition rejected by both',
+    body: { where: { orderItems: { some: {} } } },
+    bothAccept: false,
+  },
+  {
+    label: 'every when only some configured — rejected by both',
+    body: { where: { orderItems: { every: { quantity: { gte: 5 } } } } },
+    bothAccept: false,
+  },
+  {
+    label: 'orderBy declared field (client-controlled)',
+    body: { orderBy: { name: 'asc' } },
+    bothAccept: true,
+  },
+  {
+    label: 'orderBy {sort, nulls} object form (client-controlled)',
+    body: {
+      where: { name: { contains: 'x' } },
+      orderBy: { name: { sort: 'asc', nulls: 'last' } },
+      take: 2,
+    },
+    bothAccept: true,
+  },
+  {
+    label: 'orderBy object form without sort rejected by both',
+    body: {
+      where: { name: { contains: 'x' } },
+      orderBy: { name: { nulls: 'last' } },
+      take: 2,
+    },
+    bothAccept: false,
+  },
+  {
+    label: 'orderBy object form with invalid nulls rejected by both',
+    body: {
+      where: { name: { contains: 'x' } },
+      orderBy: { name: { sort: 'asc', nulls: 'middle' } },
+      take: 2,
+    },
+    bothAccept: false,
+  },
+  {
+    label: 'orderBy undeclared field rejected by both',
+    body: { orderBy: { priceCents: 'asc' } },
+    bothAccept: false,
+  },
 ]
 
 describe('differential guard parity (prisma-guard 1.33 runtime)', () => {
@@ -148,7 +255,10 @@ describe('differential guard parity (prisma-guard 1.33 runtime)', () => {
         guardOk = false
         guardErr = (error as Error).message
       }
-      expect(guardOk, `guard ${guardOk ? 'accepted' : 'rejected'}: ${guardErr}`).toBe(accept)
+      expect(
+        guardOk,
+        `guard ${guardOk ? 'accepted' : 'rejected'}: ${guardErr}`,
+      ).toBe(accept)
 
       // MCP side: schema built from the same shape via the shipped builder
       // MCP side: schema built from the same shape via the shipped builder
@@ -161,7 +271,8 @@ describe('differential guard parity (prisma-guard 1.33 runtime)', () => {
         '~standard': { validate: (x: unknown) => { issues?: unknown[] } }
       }
       const result = wrapped['~standard'].validate(fixture.body)
-      const mcpRejected = result.issues !== undefined && result.issues.length > 0
+      const mcpRejected =
+        result.issues !== undefined && result.issues.length > 0
       expect(
         mcpRejected,
         `MCP ${mcpRejected ? 'rejected' : 'accepted'}: ${JSON.stringify(result.issues)}`,
@@ -219,7 +330,9 @@ describe('differential guard parity (prisma-guard 1.33 runtime)', () => {
       }
     )['~standard'].validate
     const result = validate({ where: { isDeleted: { equals: false } } })
-    expect(result.issues !== undefined, 'forced key must be rejected').toBe(true)
+    expect(result.issues !== undefined, 'forced key must be rejected').toBe(
+      true,
+    )
   }, 30_000)
 })
 
@@ -294,9 +407,33 @@ async function loadCompoundGuard(): Promise<RuntimeGuard> {
 const ENROLLMENT_META: SchemaModelMeta = {
   name: 'Enrollment',
   fields: [
-    { name: 'id', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: true, isUnique: false },
-    { name: 'studentId', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: false, isUnique: false },
-    { name: 'courseId', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: false, isUnique: false },
+    {
+      name: 'id',
+      kind: 'scalar',
+      type: 'String',
+      isList: false,
+      isRequired: true,
+      isId: true,
+      isUnique: false,
+    },
+    {
+      name: 'studentId',
+      kind: 'scalar',
+      type: 'String',
+      isList: false,
+      isRequired: true,
+      isId: false,
+      isUnique: false,
+    },
+    {
+      name: 'courseId',
+      kind: 'scalar',
+      type: 'String',
+      isList: false,
+      isRequired: true,
+      isId: false,
+      isUnique: false,
+    },
   ] as never,
   enums: new Map(),
   uniqueFields: ['id'],
@@ -321,44 +458,64 @@ interface CompoundFixture {
 const COMPOUND_FIXTURES: CompoundFixture[] = [
   {
     label: 'findUnique selector input under selector shape',
-    shape: { where: { studentId_courseId: { studentId: true, courseId: true } } },
+    shape: {
+      where: { studentId_courseId: { studentId: true, courseId: true } },
+    },
     body: { where: { studentId_courseId: SEL } },
     bothAccept: true,
   },
   {
     label: 'findUnique partial selector input rejected by both',
-    shape: { where: { studentId_courseId: { studentId: true, courseId: true } } },
+    shape: {
+      where: { studentId_courseId: { studentId: true, courseId: true } },
+    },
     body: { where: { studentId_courseId: { studentId: 's1' } } },
     bothAccept: false,
   },
   {
     label: 'findUnique flat id input rejected when only selector configured',
-    shape: { where: { studentId_courseId: { studentId: true, courseId: true } } },
+    shape: {
+      where: { studentId_courseId: { studentId: true, courseId: true } },
+    },
     body: { where: { id: 'x' } },
     bothAccept: false,
   },
   {
     label: 'findUnique flat alternative under mixed shape',
-    shape: { where: { id: true, studentId_courseId: { studentId: true, courseId: true } } },
+    shape: {
+      where: {
+        id: true,
+        studentId_courseId: { studentId: true, courseId: true },
+      },
+    },
     body: { where: { id: 'x' } },
     bothAccept: true,
   },
   {
     label: 'findUnique selector alternative under mixed shape',
-    shape: { where: { id: true, studentId_courseId: { studentId: true, courseId: true } } },
+    shape: {
+      where: {
+        id: true,
+        studentId_courseId: { studentId: true, courseId: true },
+      },
+    },
     body: { where: { studentId_courseId: SEL } },
     bothAccept: true,
   },
   {
-    label: 'findUnique field-wise compound declaration is guard-invalid — guard rejects, schema advertises nothing but the empty body',
+    label:
+      'findUnique field-wise compound declaration is guard-invalid — guard rejects, schema advertises nothing but the empty body',
     shape: { where: { studentId: true, courseId: true } },
     body: { where: { studentId: 's1' } },
     bothAccept: false,
   },
   {
-    label: 'findUnique forced inner selector field is merged by guard and omittable in the schema',
+    label:
+      'findUnique forced inner selector field is merged by guard and omittable in the schema',
     shape: (m) => ({
-      where: { studentId_courseId: { studentId: true, courseId: m.force('c1') } },
+      where: {
+        studentId_courseId: { studentId: true, courseId: m.force('c1') },
+      },
     }),
     body: { where: { studentId_courseId: { studentId: 's1' } } },
     bothAccept: true,
@@ -370,26 +527,41 @@ const COMPOUND_FIXTURES: CompoundFixture[] = [
     bothAccept: false,
   },
   {
-    label: 'findUnique fully-forced selector — client sends no where, both accept',
-    shape: { where: { studentId_courseId: { studentId: 's1', courseId: 'c1' } } },
+    label:
+      'findUnique fully-forced selector — client sends no where, both accept',
+    shape: {
+      where: { studentId_courseId: { studentId: 's1', courseId: 'c1' } },
+    },
     body: {},
     bothAccept: true,
   },
   {
-    label: 'findUnique with client-controlled selector but no where rejected by both',
-    shape: { where: { id: true, studentId_courseId: { studentId: true, courseId: true } } },
+    label:
+      'findUnique with client-controlled selector but no where rejected by both',
+    shape: {
+      where: {
+        id: true,
+        studentId_courseId: { studentId: true, courseId: true },
+      },
+    },
     body: {},
     bothAccept: false,
   },
   {
     label: 'cursor compound selector input under selector cursor shape',
-    shape: { take: { max: 5 }, cursor: { studentId_courseId: { studentId: true, courseId: true } } },
+    shape: {
+      take: { max: 5 },
+      cursor: { studentId_courseId: { studentId: true, courseId: true } },
+    },
     body: { take: 2, cursor: { studentId_courseId: SEL } },
     bothAccept: true,
   },
   {
     label: 'cursor partial compound selector rejected by both',
-    shape: { take: { max: 5 }, cursor: { studentId_courseId: { studentId: true, courseId: true } } },
+    shape: {
+      take: { max: 5 },
+      cursor: { studentId_courseId: { studentId: true, courseId: true } },
+    },
     body: { take: 2, cursor: { studentId_courseId: { studentId: 's1' } } },
     bothAccept: false,
   },
@@ -407,7 +579,9 @@ describe('compound unique selector parity (prisma-guard 1.33 runtime)', () => {
     it(`${fixture.label}: guard and MCP ${accept ? 'accept' : 'reject'}`, async () => {
       const guard = await loadCompoundGuard()
       const shape =
-        typeof fixture.shape === 'function' ? fixture.shape(guardForce()) : fixture.shape
+        typeof fixture.shape === 'function'
+          ? fixture.shape(guardForce())
+          : fixture.shape
       const method = 'cursor' in shape ? 'findMany' : 'findUnique'
       // guard side
       let guardOk = true
@@ -420,18 +594,23 @@ describe('compound unique selector parity (prisma-guard 1.33 runtime)', () => {
         guardOk = false
         guardErr = (error as Error).message
       }
-      expect(guardOk, `guard ${guardOk ? 'accepted' : 'rejected'}: ${guardErr}`).toBe(accept)
+      expect(
+        guardOk,
+        `guard ${guardOk ? 'accepted' : 'rejected'}: ${guardErr}`,
+      ).toBe(accept)
 
       // MCP side: findUnique where via uniqueSelectorWhereSchema, list cursor
       // via buildModelAwareArgsSchema (cursor lives on findMany)
-      const schema = method === 'findMany'
-        ? buildModelAwareArgsSchema('findMany', ENROLLMENT_META, shape)
-        : buildModelAwareArgsSchema('findUnique', ENROLLMENT_META, shape)
+      const schema =
+        method === 'findMany'
+          ? buildModelAwareArgsSchema('findMany', ENROLLMENT_META, shape)
+          : buildModelAwareArgsSchema('findUnique', ENROLLMENT_META, shape)
       const wrapped = fromJsonSchema(schema as never) as {
         '~standard': { validate: (x: unknown) => { issues?: unknown[] } }
       }
       const result = wrapped['~standard'].validate(fixture.body)
-      const mcpRejected = result.issues !== undefined && result.issues.length > 0
+      const mcpRejected =
+        result.issues !== undefined && result.issues.length > 0
       expect(
         mcpRejected,
         `MCP ${mcpRejected ? 'rejected' : 'accepted'}: ${JSON.stringify(result.issues)}`,
@@ -445,7 +624,7 @@ describe('compound unique selector parity (prisma-guard 1.33 runtime)', () => {
       where: { studentId_courseId: { studentId: true, courseId: forced } },
     })
     expect(schema.required).toEqual(['where'])
-    const where = schema.properties.where as {
+    const where = schema.properties?.where as {
       properties?: Record<string, unknown>
     }
     const selector = where.properties?.studentId_courseId as {
@@ -559,7 +738,10 @@ const REL_MAPS = {
 
 function metasFromMaps(
   maps: Record<string, Record<string, unknown>>,
-  uniqueMap: Record<string, ReadonlyArray<{ selector: string; fields: readonly string[] }>>,
+  uniqueMap: Record<
+    string,
+    ReadonlyArray<{ selector: string; fields: readonly string[] }>
+  >,
   enums: ReadonlyMap<string, readonly string[]> = new Map(),
 ): Map<string, SchemaModelMeta> {
   const index = new Map<string, SchemaModelMeta>()
@@ -572,7 +754,11 @@ function metasFromMaps(
       })) as never,
       enums,
       uniqueFields: Object.entries(fields)
-        .filter(([, m]) => (m as { isId?: boolean; isUnique?: boolean }).isId || (m as { isUnique?: boolean }).isUnique)
+        .filter(
+          ([, m]) =>
+            (m as { isId?: boolean; isUnique?: boolean }).isId ||
+            (m as { isUnique?: boolean }).isUnique,
+        )
         .map(([fname]) => fname),
       compoundUniques: (uniqueMap[name] ?? []).map((c) => ({
         selector: c.selector,
@@ -853,7 +1039,10 @@ const REL_FIXTURES: RelFixture[] = [
     label: 'mode literal config: client-sent mode rejected by both',
     model: 'Plant',
     method: 'findMany',
-    shape: { where: { name: { contains: true, mode: 'insensitive' } }, take: { max: 5 } },
+    shape: {
+      where: { name: { contains: true, mode: 'insensitive' } },
+      take: { max: 5 },
+    },
     body: { where: { name: { contains: 'x', mode: 'insensitive' } }, take: 2 },
     bothAccept: false,
   },
@@ -861,7 +1050,10 @@ const REL_FIXTURES: RelFixture[] = [
     label: 'mode literal config: omitted mode accepted by both',
     model: 'Plant',
     method: 'findMany',
-    shape: { where: { name: { contains: true, mode: 'insensitive' } }, take: { max: 5 } },
+    shape: {
+      where: { name: { contains: true, mode: 'insensitive' } },
+      take: { max: 5 },
+    },
     body: { where: { name: { contains: 'x' } }, take: 2 },
     bothAccept: true,
   },
@@ -877,7 +1069,10 @@ const REL_FIXTURES: RelFixture[] = [
     label: 'AND member empty object accepted by both (forced config)',
     model: 'Plant',
     method: 'findMany',
-    shape: { where: { AND: { isDeleted: { equals: false } } }, take: { max: 5 } },
+    shape: {
+      where: { AND: { isDeleted: { equals: false } } },
+      take: { max: 5 },
+    },
     body: { where: { AND: [{}] }, take: 2 },
     bothAccept: true,
   },
@@ -893,7 +1088,10 @@ const REL_FIXTURES: RelFixture[] = [
     label: 'empty is body rejected by both (client config)',
     model: 'Plant',
     method: 'findMany',
-    shape: { where: { nursery: { is: { name: { contains: true } } } }, take: { max: 5 } },
+    shape: {
+      where: { nursery: { is: { name: { contains: true } } } },
+      take: { max: 5 },
+    },
     body: { where: { nursery: { is: {} } }, take: 2 },
     bothAccept: false,
   },
@@ -910,7 +1108,11 @@ const REL_FIXTURES: RelFixture[] = [
     model: 'Plant',
     method: 'findMany',
     shape: {
-      select: { _count: { select: { orderItems: { where: { quantity: { gte: true } } } } } },
+      select: {
+        _count: {
+          select: { orderItems: { where: { quantity: { gte: true } } } },
+        },
+      },
       take: { max: 5 },
     },
     body: { select: { _count: { select: { orderItems: true } } }, take: 2 },
@@ -921,17 +1123,27 @@ const REL_FIXTURES: RelFixture[] = [
     model: 'Plant',
     method: 'findMany',
     shape: {
-      select: { _count: { select: { orderItems: { where: { quantity: { gte: true } } } } } },
+      select: {
+        _count: {
+          select: { orderItems: { where: { quantity: { gte: true } } } },
+        },
+      },
       take: { max: 5 },
     },
-    body: { select: { _count: { select: { orderItems: { where: {} } } } }, take: 2 },
+    body: {
+      select: { _count: { select: { orderItems: { where: {} } } } },
+      take: 2,
+    },
     bothAccept: true,
   },
   {
     label: 'nested select inside a list relation entry accepted by both',
     model: 'Plant',
     method: 'findMany',
-    shape: { select: { orderItems: { select: { id: true } } }, take: { max: 5 } },
+    shape: {
+      select: { orderItems: { select: { id: true } } },
+      take: { max: 5 },
+    },
     body: { select: { orderItems: { select: { id: true } } }, take: 2 },
     bothAccept: true,
   },
@@ -939,7 +1151,10 @@ const REL_FIXTURES: RelFixture[] = [
     label: 'nested skip:true and object take accepted by both',
     model: 'Plant',
     method: 'findMany',
-    shape: { select: { orderItems: { skip: true, take: { max: 2 } } }, take: { max: 5 } },
+    shape: {
+      select: { orderItems: { skip: true, take: { max: 2 } } },
+      take: { max: 5 },
+    },
     body: { select: { orderItems: { skip: 1, take: 1 } }, take: 2 },
     bothAccept: true,
   },
@@ -947,7 +1162,10 @@ const REL_FIXTURES: RelFixture[] = [
     label: 'to-one nested select projection accepted by both',
     model: 'Plant',
     method: 'findMany',
-    shape: { select: { nursery: { select: { name: true } } }, take: { max: 5 } },
+    shape: {
+      select: { nursery: { select: { name: true } } },
+      take: { max: 5 },
+    },
     body: { select: { nursery: { select: { name: true } } }, take: 2 },
     bothAccept: true,
   },
@@ -1344,16 +1562,23 @@ describe('forced-config parity (prisma-guard 1.33 runtime)', () => {
       let guardErr = ''
       try {
         h.guard
-          .query(fixture.model as never, 'findMany' as never, {
-            where: fixture.where,
-            take: { max: 5 },
-          } as never)
+          .query(
+            fixture.model as never,
+            'findMany' as never,
+            {
+              where: fixture.where,
+              take: { max: 5 },
+            } as never,
+          )
           .parse({ take: 2 }, { caller: 'backoffice' })
       } catch (error) {
         guardOk = false
         guardErr = (error as Error).message
       }
-      expect(guardOk, `guard ${guardOk ? 'accepted' : 'rejected'}: ${guardErr}`).toBe(compiles)
+      expect(
+        guardOk,
+        `guard ${guardOk ? 'accepted' : 'rejected'}: ${guardErr}`,
+      ).toBe(compiles)
 
       // validator side: registration must agree
       const problem = filterWhereConfigProblem(
@@ -1376,10 +1601,17 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     let guardOk = true
     try {
       h.named
-        .query('Plant' as never, 'findUnique' as never, {
-          where: { name_priceCents: { name: true } },
-        } as never)
-        .parse({ where: { name_priceCents: { name: 'a' } } }, { caller: 'backoffice' })
+        .query(
+          'Plant' as never,
+          'findUnique' as never,
+          {
+            where: { name_priceCents: { name: true } },
+          } as never,
+        )
+        .parse(
+          { where: { name_priceCents: { name: 'a' } } },
+          { caller: 'backoffice' },
+        )
     } catch {
       guardOk = false
     }
@@ -1432,9 +1664,27 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     const meta: SchemaModelMeta = {
       name: 'Plant',
       fields: [
-        { name: 'name', kind: 'scalar', type: 'String', isList: false, isRequired: true },
-        { name: 'priceCents', kind: 'scalar', type: 'Int', isList: false, isRequired: true },
-        { name: 'tags', kind: 'scalar', type: 'String', isList: true, isRequired: true },
+        {
+          name: 'name',
+          kind: 'scalar',
+          type: 'String',
+          isList: false,
+          isRequired: true,
+        },
+        {
+          name: 'priceCents',
+          kind: 'scalar',
+          type: 'Int',
+          isList: false,
+          isRequired: true,
+        },
+        {
+          name: 'tags',
+          kind: 'scalar',
+          type: 'String',
+          isList: true,
+          isRequired: true,
+        },
       ] as never,
       enums: new Map(),
       uniqueFields: [],
@@ -1444,20 +1694,26 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     expect(filterWhereConfigProblem(meta, { name: { bogus: true } })).toMatch(
       /not supported/,
     )
-    expect(filterWhereConfigProblem(meta, { priceCents: { contains: true } })).toMatch(
-      /not supported/,
-    )
+    expect(
+      filterWhereConfigProblem(meta, { priceCents: { contains: true } }),
+    ).toMatch(/not supported/)
     expect(filterWhereConfigProblem(meta, { tags: { in: true } })).toMatch(
       /not supported/,
     )
-    expect(filterWhereConfigProblem(meta, { name: {} })).toMatch(/at least one operator/)
-    expect(filterWhereConfigProblem(meta, { name: { mode: 'insensitive' } })).toMatch(
-      /only "mode"/,
+    expect(filterWhereConfigProblem(meta, { name: {} })).toMatch(
+      /at least one operator/,
     )
-    expect(filterWhereConfigProblem(meta, { name: { contains: true, mode: 'bogus' } })).toMatch(
-      /mode/,
-    )
-    expect(filterWhereConfigProblem(meta, { name: { contains: true } })).toBeNull()
+    expect(
+      filterWhereConfigProblem(meta, { name: { mode: 'insensitive' } }),
+    ).toMatch(/only "mode"/)
+    expect(
+      filterWhereConfigProblem(meta, {
+        name: { contains: true, mode: 'bogus' },
+      }),
+    ).toMatch(/mode/)
+    expect(
+      filterWhereConfigProblem(meta, { name: { contains: true } }),
+    ).toBeNull()
     expect(filterWhereConfigProblem(meta, { tags: { has: true } })).toBeNull()
   })
 
@@ -1472,15 +1728,22 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
       let guardOk = true
       try {
         h.guard
-          .query('Plant' as never, 'findMany' as never, { where: cfg, take: { max: 5 } } as never)
+          .query(
+            'Plant' as never,
+            'findMany' as never,
+            { where: cfg, take: { max: 5 } } as never,
+          )
           .parse({ take: 2 }, { caller: 'backoffice' })
       } catch {
         guardOk = false
       }
       expect(guardOk).toBe(false)
-      expect(filterWhereConfigProblem(h.metaIndex.get('Plant') as SchemaModelMeta, cfg)).toMatch(
-        /cannot carry forced values/,
-      )
+      expect(
+        filterWhereConfigProblem(
+          h.metaIndex.get('Plant') as SchemaModelMeta,
+          cfg,
+        ),
+      ).toMatch(/cannot carry forced values/)
     }
     // is: null stays legal (forced null)
     expect(
@@ -1494,13 +1757,57 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     const meta: SchemaModelMeta = {
       name: 'Doc',
       fields: [
-        { name: 'id', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: true, isUnique: true },
-        { name: 'name', kind: 'scalar', type: 'String', isList: false, isRequired: true },
-        { name: 'opt', kind: 'scalar', type: 'String', isList: false, isRequired: false },
-        { name: 'meta', kind: 'scalar', type: 'Json', isList: false, isRequired: true },
-        { name: 'color', kind: 'enum', type: 'Color', isList: false, isRequired: true },
-        { name: 'nums', kind: 'scalar', type: 'Int', isList: false, isRequired: true },
-        { name: 'items', kind: 'object', type: 'Item', isList: true, isRequired: true },
+        {
+          name: 'id',
+          kind: 'scalar',
+          type: 'String',
+          isList: false,
+          isRequired: true,
+          isId: true,
+          isUnique: true,
+        },
+        {
+          name: 'name',
+          kind: 'scalar',
+          type: 'String',
+          isList: false,
+          isRequired: true,
+        },
+        {
+          name: 'opt',
+          kind: 'scalar',
+          type: 'String',
+          isList: false,
+          isRequired: false,
+        },
+        {
+          name: 'meta',
+          kind: 'scalar',
+          type: 'Json',
+          isList: false,
+          isRequired: true,
+        },
+        {
+          name: 'color',
+          kind: 'enum',
+          type: 'Color',
+          isList: false,
+          isRequired: true,
+        },
+        {
+          name: 'nums',
+          kind: 'scalar',
+          type: 'Int',
+          isList: false,
+          isRequired: true,
+        },
+        {
+          name: 'items',
+          kind: 'object',
+          type: 'Item',
+          isList: true,
+          isRequired: true,
+        },
       ] as never,
       enums: new Map([['Color', ['RED', 'GREEN']]]),
       uniqueFields: ['id'],
@@ -1511,8 +1818,21 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
           {
             name: 'Item',
             fields: [
-              { name: 'id', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: true },
-              { name: 'plant', kind: 'object', type: 'Doc', isList: false, isRequired: true },
+              {
+                name: 'id',
+                kind: 'scalar',
+                type: 'String',
+                isList: false,
+                isRequired: true,
+                isId: true,
+              },
+              {
+                name: 'plant',
+                kind: 'object',
+                type: 'Doc',
+                isList: false,
+                isRequired: true,
+              },
             ] as never,
             enums: new Map(),
             uniqueFields: ['id'],
@@ -1536,7 +1856,9 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
       argsShapeConfigProblem(meta, 'count', { select: { _all: true } }),
     ).toBeNull()
     expect(
-      argsShapeConfigProblem(meta, 'count', { select: { _all: true, name: true } }),
+      argsShapeConfigProblem(meta, 'count', {
+        select: { _all: true, name: true },
+      }),
     ).toBeNull()
     expect(
       argsShapeConfigProblem(meta, 'count', { select: { _all: 1 } }),
@@ -1550,7 +1872,9 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
       /does not match the field type/,
     )
     // ...but Json and OPTIONAL fields accept null in filter operators
-    expect(filterWhereConfigProblem(meta, { meta: { equals: null } })).toBeNull()
+    expect(
+      filterWhereConfigProblem(meta, { meta: { equals: null } }),
+    ).toBeNull()
     expect(filterWhereConfigProblem(meta, { opt: { equals: null } })).toBeNull()
     expect(filterWhereConfigProblem(meta, { name: { equals: null } })).toMatch(
       /operator/,
@@ -1558,21 +1882,33 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
 
     // operator surface: String search, Json array_* and strict path,
     // enum equals/not only
-    expect(filterWhereConfigProblem(meta, { name: { search: true } })).toBeNull()
+    expect(
+      filterWhereConfigProblem(meta, { name: { search: true } }),
+    ).toBeNull()
     expect(
       filterWhereConfigProblem(meta, { meta: { array_starts_with: true } }),
     ).toBeNull()
     expect(
       filterWhereConfigProblem(meta, { meta: { array_ends_with: 42 } }),
     ).toBeNull()
-    expect(filterWhereConfigProblem(meta, { meta: { array_contains: 'x' } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { meta: { path: [] } })).toMatch(/operator/)
-    expect(filterWhereConfigProblem(meta, { meta: { path: ['a', 1] } })).toMatch(/operator/)
+    expect(
+      filterWhereConfigProblem(meta, { meta: { array_contains: 'x' } }),
+    ).toBeNull()
+    expect(filterWhereConfigProblem(meta, { meta: { path: [] } })).toMatch(
+      /operator/,
+    )
+    expect(
+      filterWhereConfigProblem(meta, { meta: { path: ['a', 1] } }),
+    ).toMatch(/operator/)
     // enum in/notIn ARE supported (round-7 correction: the round-6 probe
     // omitted isEnum, producing a false rejection)
     expect(filterWhereConfigProblem(meta, { color: { in: true } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { color: { notIn: true } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { color: { gte: true } })).toMatch(/not supported/)
+    expect(
+      filterWhereConfigProblem(meta, { color: { notIn: true } }),
+    ).toBeNull()
+    expect(filterWhereConfigProblem(meta, { color: { gte: true } })).toMatch(
+      /not supported/,
+    )
     expect(filterWhereConfigProblem(meta, { color: { not: true } })).toBeNull()
 
     // forced nested `not` with plain literal object is legal
@@ -1581,7 +1917,11 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     ).toBeNull()
     expect(
       filterWhereConfigProblem(meta, {
-        name: { not: { contains: { [Symbol.for('prisma-guard.forced')]: true, value: 'x' } } },
+        name: {
+          not: {
+            contains: { [Symbol.for('prisma-guard.forced')]: true, value: 'x' },
+          },
+        },
       }),
     ).toMatch(/operator/)
 
@@ -1599,16 +1939,18 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
       filterWhereConfigProblem(meta, { nums: { not: { gte: '2' } } }),
     ).toBeNull()
     // enum in/notIn member validation
-    expect(
-      filterWhereConfigProblem(meta, { color: { in: ['NOPE'] } }),
-    ).toMatch(/operator/)
+    expect(filterWhereConfigProblem(meta, { color: { in: ['NOPE'] } })).toMatch(
+      /operator/,
+    )
     expect(
       filterWhereConfigProblem(meta, { color: { in: ['RED'] } }),
     ).toBeNull()
     expect(filterWhereConfigProblem(meta, { nums: { in: [1, 'x'] } })).toMatch(
       /operator/,
     )
-    expect(filterWhereConfigProblem(meta, { nums: { in: [1, '2'] } })).toBeNull()
+    expect(
+      filterWhereConfigProblem(meta, { nums: { in: [1, '2'] } }),
+    ).toBeNull()
 
     // nested select/include exclusivity and exact _count keys
     expect(
@@ -1631,7 +1973,7 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
       },
       take: { max: 5 },
     })
-    const where = schema.properties.where as {
+    const where = schema.properties?.where as {
       properties?: Record<string, { properties?: Record<string, unknown> }>
     }
     const nameOps = where.properties?.name?.properties
@@ -1639,7 +1981,8 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     const metaOps = where.properties?.meta?.properties
     expect(metaOps && 'array_contains' in metaOps).toBe(true)
     expect(
-      metaOps && JSON.stringify((metaOps as { path?: { minItems?: number } }).path),
+      metaOps &&
+        JSON.stringify((metaOps as { path?: { minItems?: number } }).path),
     ).toContain('"minItems":1')
     // equals:true wraps as anyOf [base, operator-object]
     const colorNode = where.properties?.color as {
@@ -1656,11 +1999,42 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     const meta: SchemaModelMeta = {
       name: 'Tag',
       fields: [
-        { name: 'id', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: true },
-        { name: 'opt', kind: 'scalar', type: 'String', isList: false, isRequired: false },
-        { name: 'colors', kind: 'enum', type: 'Color', isList: true, isRequired: true },
-        { name: 'dec', kind: 'scalar', type: 'Decimal', isList: false, isRequired: true },
-        { name: 'big', kind: 'scalar', type: 'BigInt', isList: false, isRequired: true },
+        {
+          name: 'id',
+          kind: 'scalar',
+          type: 'String',
+          isList: false,
+          isRequired: true,
+          isId: true,
+        },
+        {
+          name: 'opt',
+          kind: 'scalar',
+          type: 'String',
+          isList: false,
+          isRequired: false,
+        },
+        {
+          name: 'colors',
+          kind: 'enum',
+          type: 'Color',
+          isList: true,
+          isRequired: true,
+        },
+        {
+          name: 'dec',
+          kind: 'scalar',
+          type: 'Decimal',
+          isList: false,
+          isRequired: true,
+        },
+        {
+          name: 'big',
+          kind: 'scalar',
+          type: 'BigInt',
+          isList: false,
+          isRequired: true,
+        },
       ] as never,
       enums: new Map([['Color', ['RED', 'GREEN']]]),
       uniqueFields: ['id'],
@@ -1671,10 +2045,14 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     // a valid nested equals:null does not short-circuit past later
     // invalid operators
     expect(
-      filterWhereConfigProblem(meta, { opt: { not: { equals: null, bogus: 1 } } }),
+      filterWhereConfigProblem(meta, {
+        opt: { not: { equals: null, bogus: 1 } },
+      }),
     ).toMatch(/operator/)
     expect(
-      filterWhereConfigProblem(meta, { opt: { not: { equals: null, contains: 'x' } } }),
+      filterWhereConfigProblem(meta, {
+        opt: { not: { equals: null, contains: 'x' } },
+      }),
     ).toBeNull()
 
     // enum-list base is an ARRAY of enum items, not one enum scalar
@@ -1683,11 +2061,16 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
       take: { max: 5 },
     })
     // equals:true wraps as anyOf [bare array, operator-object]
-    const colorsNode = (schema.properties.where as {
-      properties?: Record<string, unknown>
-    }).properties?.colors as {
+    const colorsNode = (
+      schema.properties?.where as {
+        properties?: Record<string, unknown>
+      }
+    ).properties?.colors as {
       anyOf?: Array<{
-        properties?: Record<string, { items?: { enum?: string[] }; enum?: string[] }>
+        properties?: Record<
+          string,
+          { items?: { enum?: string[] }; enum?: string[] }
+        >
       }>
     }
     const opObj = colorsNode?.anyOf?.[1]?.properties
@@ -1700,22 +2083,43 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
 
     // Decimal / BigInt JSON-representable forms
     expect(filterWhereConfigProblem(meta, { dec: { equals: 1.5 } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { dec: { equals: '1.5' } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { dec: { equals: 'x' } })).toMatch(/operator/)
+    expect(
+      filterWhereConfigProblem(meta, { dec: { equals: '1.5' } }),
+    ).toBeNull()
+    expect(filterWhereConfigProblem(meta, { dec: { equals: 'x' } })).toMatch(
+      /operator/,
+    )
     expect(filterWhereConfigProblem(meta, { big: { equals: 1 } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { big: { equals: 9007199254740993 } })).toMatch(/operator/)
+    expect(
+      filterWhereConfigProblem(meta, { big: { equals: 9007199254740993 } }),
+    ).toMatch(/operator/)
     expect(
       filterWhereConfigProblem(meta, { big: { equals: '9007199254740993' } }),
     ).toBeNull()
-    expect(filterWhereConfigProblem(meta, { big: { equals: 1.5 } })).toMatch(/operator/)
+    expect(filterWhereConfigProblem(meta, { big: { equals: 1.5 } })).toMatch(
+      /operator/,
+    )
   })
 
   it('round-5 semantics: nested projection forms, take forms, per-op keys, operator values', () => {
     const orderItemMeta: SchemaModelMeta = {
       name: 'OrderItem',
       fields: [
-        { name: 'id', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: true },
-        { name: 'quantity', kind: 'scalar', type: 'Int', isList: false, isRequired: true },
+        {
+          name: 'id',
+          kind: 'scalar',
+          type: 'String',
+          isList: false,
+          isRequired: true,
+          isId: true,
+        },
+        {
+          name: 'quantity',
+          kind: 'scalar',
+          type: 'Int',
+          isList: false,
+          isRequired: true,
+        },
       ] as never,
       enums: new Map(),
       uniqueFields: ['id'],
@@ -1725,12 +2129,50 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     const meta: SchemaModelMeta = {
       name: 'Plant',
       fields: [
-        { name: 'id', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: true, isUnique: true },
-        { name: 'name', kind: 'scalar', type: 'String', isList: false, isRequired: true },
-        { name: 'tags', kind: 'scalar', type: 'String', isList: true, isRequired: true },
-        { name: 'meta', kind: 'scalar', type: 'Json', isList: false, isRequired: true },
-        { name: 'orderItems', kind: 'object', type: 'OrderItem', isList: true, isRequired: true },
-        { name: 'nursery', kind: 'object', type: 'Nursery', isList: false, isRequired: true },
+        {
+          name: 'id',
+          kind: 'scalar',
+          type: 'String',
+          isList: false,
+          isRequired: true,
+          isId: true,
+          isUnique: true,
+        },
+        {
+          name: 'name',
+          kind: 'scalar',
+          type: 'String',
+          isList: false,
+          isRequired: true,
+        },
+        {
+          name: 'tags',
+          kind: 'scalar',
+          type: 'String',
+          isList: true,
+          isRequired: true,
+        },
+        {
+          name: 'meta',
+          kind: 'scalar',
+          type: 'Json',
+          isList: false,
+          isRequired: true,
+        },
+        {
+          name: 'orderItems',
+          kind: 'object',
+          type: 'OrderItem',
+          isList: true,
+          isRequired: true,
+        },
+        {
+          name: 'nursery',
+          kind: 'object',
+          type: 'Nursery',
+          isList: false,
+          isRequired: true,
+        },
       ] as never,
       enums: new Map(),
       uniqueFields: ['id'],
@@ -1742,8 +2184,21 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
           {
             name: 'Nursery',
             fields: [
-              { name: 'id', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: true },
-              { name: 'name', kind: 'scalar', type: 'String', isList: false, isRequired: true },
+              {
+                name: 'id',
+                kind: 'scalar',
+                type: 'String',
+                isList: false,
+                isRequired: true,
+                isId: true,
+              },
+              {
+                name: 'name',
+                kind: 'scalar',
+                type: 'String',
+                isList: false,
+                isRequired: true,
+              },
             ] as never,
             enums: new Map(),
             uniqueFields: ['id'],
@@ -1792,28 +2247,48 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     ).toMatch(/accepts only select\/include/)
 
     // take forms
-    expect(argsShapeConfigProblem(meta, 'findMany', { take: -5 })).toMatch(/positive/)
-    expect(argsShapeConfigProblem(meta, 'findMany', { take: 2.5 })).toMatch(/positive/)
-    expect(argsShapeConfigProblem(meta, 'findMany', { take: { max: 0 } })).toMatch(/positive/)
+    expect(argsShapeConfigProblem(meta, 'findMany', { take: -5 })).toMatch(
+      /positive/,
+    )
+    expect(argsShapeConfigProblem(meta, 'findMany', { take: 2.5 })).toMatch(
+      /positive/,
+    )
     expect(
-      argsShapeConfigProblem(meta, 'findMany', { take: { max: 5, default: 10 } }),
+      argsShapeConfigProblem(meta, 'findMany', { take: { max: 0 } }),
+    ).toMatch(/positive/)
+    expect(
+      argsShapeConfigProblem(meta, 'findMany', {
+        take: { max: 5, default: 10 },
+      }),
     ).toMatch(/default/)
-    expect(argsShapeConfigProblem(meta, 'findMany', { take: { max: 5, default: 2 } })).toBeNull()
+    expect(
+      argsShapeConfigProblem(meta, 'findMany', {
+        take: { max: 5, default: 2 },
+      }),
+    ).toBeNull()
 
     // per-operation shape keys
     expect(
-      argsShapeConfigProblem(meta, 'findMany', { where: { name: { contains: true } }, bogus: 1 }),
+      argsShapeConfigProblem(meta, 'findMany', {
+        where: { name: { contains: true } },
+        bogus: 1,
+      }),
     ).toMatch(/not a valid shape config key/)
-    expect(argsShapeConfigProblem(meta, 'findUnique', { select: { name: true } })).toMatch(
-      /must define "where"/,
-    )
     expect(
-      argsShapeConfigProblem(meta, 'findUnique', { where: { id: true }, take: 5 }),
+      argsShapeConfigProblem(meta, 'findUnique', { select: { name: true } }),
+    ).toMatch(/must define "where"/)
+    expect(
+      argsShapeConfigProblem(meta, 'findUnique', {
+        where: { id: true },
+        take: 5,
+      }),
     ).toMatch(/not a valid shape config key/)
     expect(
       argsShapeConfigProblem(meta, 'count', { include: { orderItems: true } }),
     ).toMatch(/not a valid shape config key/)
-    expect(argsShapeConfigProblem(meta, 'findFirst', { distinct: ['name'] })).toBeNull()
+    expect(
+      argsShapeConfigProblem(meta, 'findFirst', { distinct: ['name'] }),
+    ).toBeNull()
 
     // compound cursor: exact key set, literal true only
     expect(
@@ -1821,23 +2296,46 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     ).toMatch(/exactly/)
     expect(
       cursorOnly(meta, {
-        name_tags: { name: true, tags: { [Symbol.for('prisma-guard.forced')]: true, value: true } },
+        name_tags: {
+          name: true,
+          tags: { [Symbol.for('prisma-guard.forced')]: true, value: true },
+        },
       }),
     ).toMatch(/literal true/)
 
     // operator-level forced values
-    expect(filterWhereConfigProblem(meta, { name: { in: ['a', 'b'] } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { name: { in: 'a' } })).toMatch(/operator/)
+    expect(
+      filterWhereConfigProblem(meta, { name: { in: ['a', 'b'] } }),
+    ).toBeNull()
+    expect(filterWhereConfigProblem(meta, { name: { in: 'a' } })).toMatch(
+      /operator/,
+    )
     expect(filterWhereConfigProblem(meta, { tags: { has: 'x' } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { tags: { has: ['x'] } })).toMatch(/operator/)
-    expect(filterWhereConfigProblem(meta, { tags: { hasSome: ['x'] } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { tags: { isEmpty: true } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { tags: { isEmpty: 'yes' } })).toMatch(/operator/)
-    expect(filterWhereConfigProblem(meta, { name: { equals: null } })).toMatch(/operator/)
+    expect(filterWhereConfigProblem(meta, { tags: { has: ['x'] } })).toMatch(
+      /operator/,
+    )
+    expect(
+      filterWhereConfigProblem(meta, { tags: { hasSome: ['x'] } }),
+    ).toBeNull()
+    expect(
+      filterWhereConfigProblem(meta, { tags: { isEmpty: true } }),
+    ).toBeNull()
+    expect(
+      filterWhereConfigProblem(meta, { tags: { isEmpty: 'yes' } }),
+    ).toMatch(/operator/)
+    expect(filterWhereConfigProblem(meta, { name: { equals: null } })).toMatch(
+      /operator/,
+    )
     // Json operators
-    expect(filterWhereConfigProblem(meta, { meta: { string_contains: true } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { meta: { string_contains: 'x' } })).toBeNull()
-    expect(filterWhereConfigProblem(meta, { meta: { contains: true } })).toMatch(/not supported/)
+    expect(
+      filterWhereConfigProblem(meta, { meta: { string_contains: true } }),
+    ).toBeNull()
+    expect(
+      filterWhereConfigProblem(meta, { meta: { string_contains: 'x' } }),
+    ).toBeNull()
+    expect(
+      filterWhereConfigProblem(meta, { meta: { contains: true } }),
+    ).toMatch(/not supported/)
     // deep orderBy validates the whole tree
     expect(
       argsShapeConfigProblem(meta, 'findMany', {
@@ -1850,11 +2348,43 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
     const meta: SchemaModelMeta = {
       name: 'Plant',
       fields: [
-        { name: 'id', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: true, isUnique: true },
-        { name: 'name', kind: 'scalar', type: 'String', isList: false, isRequired: true },
-        { name: 'tags', kind: 'scalar', type: 'String', isList: true, isRequired: true },
-        { name: 'orderItems', kind: 'object', type: 'OrderItem', isList: true, isRequired: true },
-        { name: 'nursery', kind: 'object', type: 'Nursery', isList: false, isRequired: true },
+        {
+          name: 'id',
+          kind: 'scalar',
+          type: 'String',
+          isList: false,
+          isRequired: true,
+          isId: true,
+          isUnique: true,
+        },
+        {
+          name: 'name',
+          kind: 'scalar',
+          type: 'String',
+          isList: false,
+          isRequired: true,
+        },
+        {
+          name: 'tags',
+          kind: 'scalar',
+          type: 'String',
+          isList: true,
+          isRequired: true,
+        },
+        {
+          name: 'orderItems',
+          kind: 'object',
+          type: 'OrderItem',
+          isList: true,
+          isRequired: true,
+        },
+        {
+          name: 'nursery',
+          kind: 'object',
+          type: 'Nursery',
+          isList: false,
+          isRequired: true,
+        },
       ] as never,
       enums: new Map(),
       uniqueFields: ['id'],
@@ -1865,7 +2395,14 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
           {
             name: 'Nursery',
             fields: [
-              { name: 'id', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: true },
+              {
+                name: 'id',
+                kind: 'scalar',
+                type: 'String',
+                isList: false,
+                isRequired: true,
+                isId: true,
+              },
             ] as never,
             enums: new Map(),
             uniqueFields: ['id'],
@@ -1878,8 +2415,21 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
           {
             name: 'OrderItem',
             fields: [
-              { name: 'id', kind: 'scalar', type: 'String', isList: false, isRequired: true, isId: true },
-              { name: 'quantity', kind: 'scalar', type: 'Int', isList: false, isRequired: true },
+              {
+                name: 'id',
+                kind: 'scalar',
+                type: 'String',
+                isList: false,
+                isRequired: true,
+                isId: true,
+              },
+              {
+                name: 'quantity',
+                kind: 'scalar',
+                type: 'Int',
+                isList: false,
+                isRequired: true,
+              },
             ] as never,
             enums: new Map(),
             uniqueFields: ['id'],
@@ -1889,35 +2439,45 @@ describe('guard-shape validator parity (prisma-guard 1.33 runtime)', () => {
         ],
       ]),
     }
-    expect(argsShapeConfigProblem(meta, 'findMany', { cursor: { name: true } })).toMatch(
-      /not a unique field/,
-    )
-    expect(argsShapeConfigProblem(meta, 'findMany', { cursor: { id: 'lit' } })).toMatch(
-      /must be true/,
-    )
-    expect(argsShapeConfigProblem(meta, 'findMany', { orderBy: { name: 'asc' } })).toMatch(
-      /must be true/,
-    )
-    expect(argsShapeConfigProblem(meta, 'findMany', { orderBy: { tags: true } })).toMatch(
-      /cannot be used in orderBy/,
-    )
     expect(
-      argsShapeConfigProblem(meta, 'findMany', { orderBy: { orderItems: { name: true } } }),
+      argsShapeConfigProblem(meta, 'findMany', { cursor: { name: true } }),
+    ).toMatch(/not a unique field/)
+    expect(
+      argsShapeConfigProblem(meta, 'findMany', { cursor: { id: 'lit' } }),
+    ).toMatch(/must be true/)
+    expect(
+      argsShapeConfigProblem(meta, 'findMany', { orderBy: { name: 'asc' } }),
+    ).toMatch(/must be true/)
+    expect(
+      argsShapeConfigProblem(meta, 'findMany', { orderBy: { tags: true } }),
+    ).toMatch(/cannot be used in orderBy/)
+    expect(
+      argsShapeConfigProblem(meta, 'findMany', {
+        orderBy: { orderItems: { name: true } },
+      }),
     ).toMatch(/only supports _count/)
-    expect(argsShapeConfigProblem(meta, 'findMany', { distinct: 'name' })).toMatch(
-      /non-empty array/,
-    )
-    expect(argsShapeConfigProblem(meta, 'findMany', { distinct: ['nope'] })).toMatch(
-      /unknown field/,
-    )
     expect(
-      argsShapeConfigProblem(meta, 'findMany', { select: { _count: { select: { nursery: true } } } }),
+      argsShapeConfigProblem(meta, 'findMany', { distinct: 'name' }),
+    ).toMatch(/non-empty array/)
+    expect(
+      argsShapeConfigProblem(meta, 'findMany', { distinct: ['nope'] }),
+    ).toMatch(/unknown field/)
+    expect(
+      argsShapeConfigProblem(meta, 'findMany', {
+        select: { _count: { select: { nursery: true } } },
+      }),
     ).toMatch(/to-one/)
-    expect(argsShapeConfigProblem(meta, 'findMany', { skip: 2 })).toMatch(/skip/)
+    expect(argsShapeConfigProblem(meta, 'findMany', { skip: 2 })).toMatch(
+      /skip/,
+    )
     expect(argsShapeConfigProblem(meta, 'findMany', { skip: true })).toBeNull()
     expect(
       argsShapeConfigProblem(meta, 'findMany', {
-        select: { _count: { select: { orderItems: { where: { quantity: { gte: true } } } } } },
+        select: {
+          _count: {
+            select: { orderItems: { where: { quantity: { gte: true } } } },
+          },
+        },
       }),
     ).toBeNull()
   })
@@ -1944,13 +2504,20 @@ describe('filter/orderBy/projection parity (prisma-guard 1.33 runtime)', () => {
       let guardErr = ''
       try {
         guard
-          .query(fixture.model as never, fixture.method as never, fixture.shape as never)
+          .query(
+            fixture.model as never,
+            fixture.method as never,
+            fixture.shape as never,
+          )
           .parse(fixture.body, { caller: 'backoffice' })
       } catch (error) {
         guardOk = false
         guardErr = (error as Error).message
       }
-      expect(guardOk, `guard ${guardOk ? 'accepted' : 'rejected'}: ${guardErr}`).toBe(accept)
+      expect(
+        guardOk,
+        `guard ${guardOk ? 'accepted' : 'rejected'}: ${guardErr}`,
+      ).toBe(accept)
 
       const schema = buildModelAwareArgsSchema(
         fixture.method,
@@ -1961,7 +2528,8 @@ describe('filter/orderBy/projection parity (prisma-guard 1.33 runtime)', () => {
         '~standard': { validate: (x: unknown) => { issues?: unknown[] } }
       }
       const result = wrapped['~standard'].validate(fixture.body)
-      const mcpRejected = result.issues !== undefined && result.issues.length > 0
+      const mcpRejected =
+        result.issues !== undefined && result.issues.length > 0
       expect(
         mcpRejected,
         `MCP ${mcpRejected ? 'rejected' : 'accepted'}: ${JSON.stringify(result.issues)}`,

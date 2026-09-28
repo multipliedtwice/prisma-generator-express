@@ -258,6 +258,8 @@ export type SchemaFieldMeta = {
   isId?: boolean
   isUnique?: boolean
   isUpdatedAt?: boolean
+  /** Prisma @default / autoincrement — drives create-mode requiredness. */
+  hasDefaultValue?: boolean
   documentation?: string | null
 }
 
@@ -299,7 +301,10 @@ const SCALAR_JSON: Record<string, OperationSchemaObject> = {
   Decimal: {
     anyOf: [
       { type: 'number' },
-      { type: 'string', pattern: '^-?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)?$' },
+      {
+        type: 'string',
+        pattern: '^-?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)?$',
+      },
     ],
   },
   Boolean: { type: 'boolean' },
@@ -365,7 +370,9 @@ function scalarBaseSchema(
  * Json exposes equals/not; enums expose no string search and no ordered
  * comparisons; `mode` rides along with String search/equality operators.
  */
-export function allowedFilterOperators(field: SchemaFieldMeta): readonly string[] {
+export function allowedFilterOperators(
+  field: SchemaFieldMeta,
+): readonly string[] {
   if (field.kind !== 'scalar' && field.kind !== 'enum') return []
   // list membership comes FIRST (guard: getSupportedOperators checks
   // isList before type) — Bytes[] exposes has/hasSome/hasEvery/isEmpty/
@@ -403,12 +410,8 @@ function filterOperatorsSchema(
     // boolean, equals an array of items; in/notIn/not/search ops are
     // unsupported (verified runtime)
     return {
-      equals: field.isRequired
-        ? base
-        : { anyOf: [base, { type: 'null' }] },
-      has: field.isRequired
-        ? item
-        : { anyOf: [item, { type: 'null' }] },
+      equals: field.isRequired ? base : { anyOf: [base, { type: 'null' }] },
+      has: field.isRequired ? item : { anyOf: [item, { type: 'null' }] },
       hasSome: { type: 'array', items: item },
       hasEvery: { type: 'array', items: item },
       isEmpty: { type: 'boolean' },
@@ -501,7 +504,10 @@ function coercionSchema(
   return {
     anyOf: [
       base,
-      { type: 'string', pattern: '^-?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)?$' },
+      {
+        type: 'string',
+        pattern: '^-?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)?$',
+      },
     ],
   }
 }
@@ -556,10 +562,11 @@ function nestedNotFilterSchema(
   meta: SchemaModelMeta,
   field: SchemaFieldMeta,
 ): OperationSchemaObject {
-  const { not: _not, mode: _mode, ...operators } = filterOperatorsSchema(
-    meta,
-    field,
-  )
+  const {
+    not: _not,
+    mode: _mode,
+    ...operators
+  } = filterOperatorsSchema(meta, field)
   return {
     type: 'object',
     properties: operators,
@@ -711,7 +718,8 @@ function whereSchema(
       // a client-controlled to-one condition must not be sent empty;
       // forced-only conditions are merged server-side and may be empty
       const wrapperMin =
-        scanShapeClientState(nestedCfg).client && !scanShapeClientState(nestedCfg).forced
+        scanShapeClientState(nestedCfg).client &&
+        !scanShapeClientState(nestedCfg).forced
           ? { minProperties: 1 }
           : {}
       properties[key] = {
@@ -917,7 +925,6 @@ function orderBySchema(
   }
   return { anyOf: [single, { type: 'array', items: single }] }
 }
-
 
 function distinctSchema(
   meta: SchemaModelMeta,
@@ -1257,9 +1264,12 @@ function itemValueMatches(type: string, v: unknown): boolean {
  * MCP runtime refuses to register a tool exposing such a shape:
  *  - `where` must be a non-empty object (missing / empty / `where: true`
  *    are all guard-invalid),
- *  - every key must be a flat unique field or a compound selector key,
- *  - a flat unique field is configured with exactly `true`, a literal or
- *    a force() wrapper — never filter operators,
+ *  - at least one key must be a flat unique field or a compound selector
+ *    key; other scalar keys ride along as extended unique filters (guard
+ *    buildUniqueWhereSchema accepts them — the tenant-safe
+ *    `{ id: true, siteId: force(t) }` form); relations are invalid,
+ *  - a flat field is configured with exactly `true`, a literal or a
+ *    force() wrapper — never filter operators,
  *  - a compound selector is configured with an object carrying EVERY
  *    constraint field (guard: "Missing field ... in compound unique
  *    selector"), each `true`, a literal or a force() wrapper.
@@ -1277,9 +1287,11 @@ export function findUniqueWhereConfigProblem(
   if (keys.length === 0) {
     return 'findUnique where must cover at least one unique constraint'
   }
+  let covered = false
   for (const [key, val] of Object.entries(shapeWhere)) {
     const constraint = meta.compoundUniques.find((c) => c.selector === key)
     if (constraint) {
+      covered = true
       if (!isShapeObject(val) || isForcedShapeValue(val)) {
         return `compound selector "${key}" must be configured with an object of field configs`
       }
@@ -1308,13 +1320,32 @@ export function findUniqueWhereConfigProblem(
     const flatUnique =
       meta.uniqueFields.includes(key) &&
       meta.fields.some((f) => f.name === key && (f.isId || f.isUnique))
+    const keyField = fieldByName(meta, key)
     if (!flatUnique) {
-      return `"${key}" is not a unique field or compound selector of ${meta.name}`
+      // extended unique where (Prisma 5+, guard buildUniqueWhereSchema): a
+      // NON-unique scalar may ride beside a covering selector — the
+      // tenant-safe `{ id: true, siteId: force(tenant) }` form. Relations
+      // and unknown keys are guard-invalid.
+      if (
+        !keyField ||
+        (keyField.kind !== 'scalar' && keyField.kind !== 'enum')
+      ) {
+        return `"${key}" is not a scalar field or compound selector of ${meta.name}`
+      }
+      if (isShapeObject(val) && !isForcedShapeValue(val)) {
+        return `unique where "${key}" accepts only true or a forced value, not filter operators`
+      }
+      // guard parses it as a direct scalar with input coercion, nullable
+      // on optional fields — the same parse as forced data values
+      if (val !== true && !forcedDataValueMatches(meta, keyField, val)) {
+        return `forced value for "${key}" does not match the field type`
+      }
+      continue
     }
+    covered = true
     if (isShapeObject(val) && !isForcedShapeValue(val)) {
       return `unique where "${key}" accepts only true or a forced value, not filter operators`
     }
-    const keyField = fieldByName(meta, key)
     if (
       val !== true &&
       keyField &&
@@ -1322,6 +1353,9 @@ export function findUniqueWhereConfigProblem(
     ) {
       return `forced value for "${key}" does not match the field type`
     }
+  }
+  if (!covered) {
+    return `unique where must cover a unique constraint of ${meta.name} (a unique field or compound selector)`
   }
   return null
 }
@@ -1450,11 +1484,7 @@ export function filterWhereConfigProblem(
         if (negated && opVal !== true) {
           return `"mode" of "${key}" cannot be forced under a negating operator`
         }
-        if (
-          opVal !== true &&
-          opVal !== 'default' &&
-          opVal !== 'insensitive'
-        ) {
+        if (opVal !== true && opVal !== 'default' && opVal !== 'insensitive') {
           return `"mode" of "${key}" must be true, 'default' or 'insensitive'`
         }
         continue
@@ -1468,11 +1498,7 @@ export function filterWhereConfigProblem(
       }
       // `not` also accepts a nested filter object of plain values; every
       // other operator takes true or a forced value
-      if (
-        isShapeObject(opVal) &&
-        !isForcedShapeValue(opVal) &&
-        op !== 'not'
-      ) {
+      if (isShapeObject(opVal) && !isForcedShapeValue(opVal) && op !== 'not') {
         return `operator "${op}" of "${key}" accepts only true or a forced value`
       }
       if (!forcedOperatorValueMatches(meta, field, op, opVal)) {
@@ -1587,6 +1613,213 @@ export function argsShapeConfigProblem(
   }
   if (shape.skip !== undefined && shape.skip !== true) {
     return 'skip config must be true'
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Write operations (create / update / upsert / delete). The config validators
+// mirror prisma-guard 1.33 buildDataSchema + the unique-where mutation path
+// (source-read and runtime-verified): per-operation allowed shape keys, data
+// configs of true / literal / force() (never relation writes or inline
+// refines for MCP), and unique-selector wheres for update/upsert/delete.
+// ---------------------------------------------------------------------------
+
+const WRITE_OP_SHAPE_KEYS: Record<string, readonly string[]> = {
+  create: ['data', 'select', 'include'],
+  createMany: ['data'],
+  createManyAndReturn: ['data', 'select', 'include'],
+  update: ['where', 'data', 'select', 'include'],
+  updateMany: ['where', 'data'],
+  updateManyAndReturn: ['where', 'data', 'select', 'include'],
+  upsert: ['where', 'create', 'update', 'select', 'include'],
+  delete: ['where', 'select', 'include'],
+  deleteMany: ['where'],
+}
+
+/** Write ops whose `where` is a unique selector (guard UNIQUE_MUTATION_METHODS). */
+const UNIQUE_WHERE_WRITE_OPS = new Set(['update', 'upsert', 'delete'])
+/** Write ops whose `where` is a filter (guard BULK_MUTATION_METHODS). */
+const FILTER_WHERE_WRITE_OPS = new Set([
+  'updateMany',
+  'updateManyAndReturn',
+  'deleteMany',
+])
+/** Write ops carrying `data` (create-mode or update-mode). */
+const CREATE_DATA_WRITE_OPS = new Set([
+  'create',
+  'createMany',
+  'createManyAndReturn',
+])
+const UPDATE_DATA_WRITE_OPS = new Set([
+  'update',
+  'updateMany',
+  'updateManyAndReturn',
+])
+
+/**
+ * Whether a forced (literal or force()-wrapped) DATA value parses under
+ * guard's data field schema (source-read: buildFieldSchema = base type +
+ * wrapWithInputCoercion, .nullable() on optional fields). Beyond the
+ * where-side forms that means: DateTime accepts Date instances, BigInt
+ * accepts bigint, Bytes accepts Uint8Array, String/Int/Float accept their
+ * coerced forms, Json accepts any JSON value (plain objects included).
+ */
+function forcedDataValueMatches(
+  meta: SchemaModelMeta,
+  field: SchemaFieldMeta,
+  value: unknown,
+): boolean {
+  const v = isForcedShapeValue(value)
+    ? (value as { value: unknown }).value
+    : value
+  if (v === undefined) return false
+  if (v === null) return field.type === 'Json' || !field.isRequired
+  const itemOk = (x: unknown): boolean => {
+    if (field.kind === 'enum') return enumMember(meta, field, x)
+    switch (field.type) {
+      case 'DateTime':
+        return (
+          (x instanceof Date && !isNaN(x.getTime())) ||
+          (typeof x === 'string' && !isNaN(Date.parse(x)))
+        )
+      case 'BigInt':
+        return typeof x === 'bigint' || itemValueMatches('BigInt', x)
+      case 'Bytes':
+        return typeof x === 'string' || x instanceof Uint8Array
+      case 'Float':
+        // guard Float base is z.number().finite()
+        return (
+          coercedScalarMatches(field, x) &&
+          (typeof x !== 'number' || Number.isFinite(x))
+        )
+      case 'String':
+      case 'Int':
+        return coercedScalarMatches(field, x)
+      case 'Json':
+        return true
+      default:
+        return itemValueMatches(field.type, x)
+    }
+  }
+  if (field.isList) return Array.isArray(v) && v.every(itemOk)
+  return itemOk(v)
+}
+
+/**
+ * Validates one write data config (create / update / upsert's create+update)
+ * the way guard's buildDataSchema compiles it. MCP refuses — at registration,
+ * before any tool exists — the two config forms it cannot mirror in a static
+ * JSON Schema: relation writes and inline refine functions. Everything else
+ * must be guard-valid: known fields, true, a typed literal or force().
+ * Returns null when valid, else the problem description.
+ */
+export function dataConfigProblem(
+  meta: SchemaModelMeta,
+  dataConfig: unknown,
+  mode: 'create' | 'update',
+): string | null {
+  if (!isShapeObject(dataConfig)) {
+    return `${mode} data must be an object of field configs`
+  }
+  for (const [name, val] of Object.entries(dataConfig)) {
+    const field = fieldByName(meta, name)
+    if (!field) {
+      return `unknown field "${name}" in ${mode} data`
+    }
+    if (field.isUpdatedAt) {
+      return `updatedAt field "${name}" cannot be configured in ${mode} data`
+    }
+    if (field.kind === 'object') {
+      return `relation field "${name}" cannot be exposed as MCP ${mode} data — keep relation writes REST-only`
+    }
+    if (field.kind === 'unsupported') {
+      if (val === true || typeof val === 'function') {
+        return `unsupported field "${name}" cannot be client-controlled`
+      }
+      continue
+    }
+    if (typeof val === 'function') {
+      return `inline refine on "${name}" cannot be mirrored in an MCP ${mode} schema`
+    }
+    if (val === true) continue
+    // a plain object is a forced JSON literal on Json fields; anywhere else
+    // it is an operator/relation-style config guard cannot parse as data
+    if (
+      field.type !== 'Json' &&
+      isShapeObject(val) &&
+      !isForcedShapeValue(val)
+    ) {
+      return `"${name}" in ${mode} data accepts true, a literal or force(), not an object`
+    }
+    if (!forcedDataValueMatches(meta, field, val)) {
+      return `forced value for "${name}" does not match the field type`
+    }
+  }
+  return null
+}
+
+/**
+ * Validates the COMPLETE static shape of one write operation the way
+ * prisma-guard 1.33 compiles mutations: per-operation allowed keys, required
+ * keys (data for create/update families, where+create+update for upsert,
+ * where for every where-carrying op — guard refuses unique mutations without
+ * a unique where and bulk mutations without a where), unique-selector wheres
+ * for update/upsert/delete, filter wheres for the bulk ops, data configs,
+ * and the shared projection rules. Registration refuses a shape with any
+ * problem. Only STATIC shapes reach here: MCP refuses dynamic write shapes
+ * at tool creation. Returns null when valid, else the problem description.
+ */
+export function writeShapeConfigProblem(
+  meta: SchemaModelMeta,
+  operation: string,
+  shape: unknown,
+): string | null {
+  if (!isShapeObject(shape)) {
+    return `${operation} shape must be a static object`
+  }
+  const allowedKeys = WRITE_OP_SHAPE_KEYS[operation]
+  if (!allowedKeys) return `${operation} is not an MCP write operation`
+  for (const key of Object.keys(shape)) {
+    if (!allowedKeys.includes(key)) {
+      return `"${key}" is not a valid shape config key for ${operation}`
+    }
+  }
+  const requiredKeys =
+    operation === 'upsert'
+      ? ['where', 'create', 'update']
+      : allowedKeys.filter((k) => k === 'where' || k === 'data')
+  for (const key of requiredKeys) {
+    if (shape[key] === undefined) {
+      return `${operation} shape must define "${key}"`
+    }
+  }
+  if (UNIQUE_WHERE_WRITE_OPS.has(operation)) {
+    const problem = findUniqueWhereConfigProblem(meta, shape.where)
+    if (problem) return problem
+  }
+  if (FILTER_WHERE_WRITE_OPS.has(operation)) {
+    const problem = filterWhereConfigProblem(meta, shape.where)
+    if (problem) return problem
+  }
+  if (CREATE_DATA_WRITE_OPS.has(operation)) {
+    const problem = dataConfigProblem(meta, shape.data, 'create')
+    if (problem) return problem
+  }
+  if (UPDATE_DATA_WRITE_OPS.has(operation)) {
+    const problem = dataConfigProblem(meta, shape.data, 'update')
+    if (problem) return problem
+  }
+  if (operation === 'upsert') {
+    const createProblem = dataConfigProblem(meta, shape.create, 'create')
+    if (createProblem) return createProblem
+    const updateProblem = dataConfigProblem(meta, shape.update, 'update')
+    if (updateProblem) return updateProblem
+  }
+  for (const key of ['select', 'include'] as const) {
+    if (shape[key] === undefined) continue
+    const problem = projectionConfigProblem(meta, shape[key], key)
+    if (problem) return problem
   }
   return null
 }
@@ -1944,6 +2177,25 @@ export function uniqueSelectorWhereSchema(
       }
       requiredKeys.push(cu.selector)
     }
+    // extended unique filters: client-controlled NON-unique scalars beside
+    // the selector — optional, nullable on optional fields (guard parses
+    // them with .nullable() when the field is optional). Only when the
+    // config covers a unique constraint: without one the config is
+    // guard-invalid and nothing beyond the selectors is advertised.
+    const coversConstraint = [...shapeKeys].some(
+      (k) =>
+        meta.compoundUniques.some((c) => c.selector === k) ||
+        (meta.uniqueFields.includes(k) &&
+          meta.fields.some((f) => f.name === k && (f.isId || f.isUnique))),
+    )
+    for (const f of coversConstraint ? meta.fields : []) {
+      if (f.kind !== 'scalar' && f.kind !== 'enum') continue
+      if (properties[f.name] !== undefined) continue
+      if (meta.compoundUniques.some((c) => c.selector === f.name)) continue
+      if (shapeObj[f.name] !== true) continue
+      const base = scalarBaseSchema(meta, f)
+      properties[f.name] = f.isRequired ? base : nullableUnion(base)
+    }
   }
 
   const node: OperationSchemaObject = {
@@ -1978,7 +2230,10 @@ export function uniqueCursorSchema(
   meta: SchemaModelMeta,
   cursorCfg: unknown,
 ): OperationSchemaObject {
-  const cfg = isShapeObject(cursorCfg) && !isForcedShapeValue(cursorCfg) ? cursorCfg : undefined
+  const cfg =
+    isShapeObject(cursorCfg) && !isForcedShapeValue(cursorCfg)
+      ? cursorCfg
+      : undefined
   const properties: Record<string, OperationSchemaObject> = {}
   if (cfg) {
     for (const f of meta.fields) {
@@ -2133,7 +2388,11 @@ function countProjectionSchema(
   cfg: unknown,
 ): OperationSchemaObject {
   if (cfg === true) return { type: 'boolean', const: true }
-  if (isShapeObject(cfg) && !isForcedShapeValue(cfg) && isShapeObject(cfg.select)) {
+  if (
+    isShapeObject(cfg) &&
+    !isForcedShapeValue(cfg) &&
+    isShapeObject(cfg.select)
+  ) {
     const props: Record<string, OperationSchemaObject> = {}
     for (const f of meta.fields) {
       // _count counts LIST relations only (guard rejects to-one entries)
@@ -2364,4 +2623,146 @@ export function buildModelAwareArgsSchema(
   }
   if (required.length > 0) schema.required = required
   return schema
+}
+
+// ---------------------------------------------------------------------------
+// Model-aware WRITE argument schemas (MCP). data/create/update advertise ONLY
+// the client-controlled (`true`) fields of the guard data config — forced
+// values are server-owned and never client input. Nullability mirrors guard's
+// applyCreateUpdateNullability: optional fields accept null, required fields
+// never do; a required, default-less field stays mandatory in create data.
+// ---------------------------------------------------------------------------
+
+function nullableUnion(base: OperationSchemaObject): OperationSchemaObject {
+  // only an UNCONSTRAINED schema (Json: no type, no anyOf) already accepts
+  // null; BigInt/Decimal are typeless anyOf unions that must gain it
+  if (base.type === undefined && base.anyOf === undefined) return base
+  if (base.type === undefined && base.anyOf) {
+    return { ...base, anyOf: [...base.anyOf, { type: 'null' }] }
+  }
+  return { anyOf: [base, { type: 'null' }] }
+}
+
+function dataInputSchema(
+  meta: SchemaModelMeta,
+  dataConfig: unknown,
+  mode: 'create' | 'update',
+): OperationSchemaObject {
+  const cfg = isShapeObject(dataConfig) ? dataConfig : undefined
+  const properties: Record<string, OperationSchemaObject> = {}
+  const required: string[] = []
+  if (cfg) {
+    for (const field of meta.fields) {
+      if (cfg[field.name] !== true) continue
+      const base = scalarBaseSchema(meta, field)
+      properties[field.name] = field.isRequired ? base : nullableUnion(base)
+      if (mode === 'create' && field.isRequired && !field.hasDefaultValue) {
+        required.push(field.name)
+      }
+    }
+  }
+  const node: OperationSchemaObject = {
+    type: 'object',
+    properties,
+    additionalProperties: false,
+  }
+  if (required.length > 0) node.required = required
+  return node
+}
+
+export type WriteSchemaOperation =
+  | 'create'
+  | 'createMany'
+  | 'createManyAndReturn'
+  | 'update'
+  | 'updateMany'
+  | 'updateManyAndReturn'
+  | 'upsert'
+  | 'delete'
+  | 'deleteMany'
+
+/**
+ * The model-aware argument schema for one write operation under one STATIC
+ * guard shape (MCP refuses dynamic write shapes at tool creation — there is
+ * no opaque fallback). Only keys the shape declares are advertised:
+ *  - unique-where ops (update/upsert/delete) reuse the findUnique selector
+ *    surface, extended unique filters included;
+ *  - bulk ops (updateMany*, deleteMany) reuse the filter where surface; an
+ *    all-client where must carry at least one condition (guard refuses an
+ *    empty bulk where);
+ *  - `where` is optional only when fully forced — the runtime then injects
+ *    `where: {}` so the operation core's required-field check passes and
+ *    guard merges the forced selector;
+ *  - data/create/update are narrowed to the shape's client-controlled
+ *    fields; createMany* take a non-empty array of them plus
+ *    `skipDuplicates`;
+ *  - select/include reuse the projection builder.
+ */
+export function buildModelAwareWriteArgsSchema(
+  operation: WriteSchemaOperation,
+  meta: SchemaModelMeta,
+  shape: unknown,
+): OperationSchemaObject {
+  if (!isShapeObject(shape)) {
+    throw new Error(
+      operation + ': MCP write schemas require a static guard shape',
+    )
+  }
+  const properties: Record<string, OperationSchemaObject> = {}
+  const required: string[] = []
+  const shapeKeys = new Set(Object.keys(shape))
+
+  if (shapeKeys.has('where') && UNIQUE_WHERE_WRITE_OPS.has(operation)) {
+    properties.where = uniqueSelectorWhereSchema(meta, shape.where)
+    const whereNode = properties.where as {
+      required?: string[]
+      anyOf?: unknown[]
+    }
+    if (
+      (whereNode.required && whereNode.required.length > 0) ||
+      whereNode.anyOf
+    ) {
+      required.push('where')
+    }
+  }
+  if (shapeKeys.has('where') && FILTER_WHERE_WRITE_OPS.has(operation)) {
+    const node = whereSchema(meta, shape.where)
+    const state = scanShapeClientState(shape.where)
+    if (!state.forced) {
+      node.minProperties = 1
+      required.push('where')
+    }
+    properties.where = node
+  }
+  if (CREATE_DATA_WRITE_OPS.has(operation)) {
+    const item = dataInputSchema(meta, shape.data, 'create')
+    if (operation === 'create') {
+      properties.data = item
+    } else {
+      // guard: "expects data to be an array", "received empty data array"
+      properties.data = { type: 'array', items: item, minItems: 1 }
+      properties.skipDuplicates = { type: 'boolean' }
+    }
+    required.push('data')
+  }
+  if (UPDATE_DATA_WRITE_OPS.has(operation)) {
+    properties.data = dataInputSchema(meta, shape.data, 'update')
+    required.push('data')
+  }
+  if (operation === 'upsert') {
+    properties.create = dataInputSchema(meta, shape.create, 'create')
+    properties.update = dataInputSchema(meta, shape.update, 'update')
+    required.push('create', 'update')
+  }
+  for (const key of ['select', 'include'] as const) {
+    if (!shapeKeys.has(key)) continue
+    properties[key] = projectionSchema(meta, shape[key], key, 0)
+  }
+
+  return {
+    type: 'object',
+    properties,
+    required,
+    additionalProperties: false,
+  }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -71,6 +71,17 @@ model Ticket {
 
   @@index([siteId])
 }
+
+model Page {
+  id        String  @id @default(cuid())
+  siteId    String
+  slug      String
+  title     String
+  published Boolean @default(false)
+  views     BigInt?
+
+  @@unique([siteId, slug])
+}
 `
 
 const authInfo: AuthInfo = {
@@ -98,10 +109,121 @@ const routeConfig = () => ({
   guard: { variantHeader: 'x-api-variant' },
 })
 
+const TENANTS = ['tenant-a', 'tenant-b'] as const
+
+/**
+ * The CMS Page contract: every write is tenant-forced through per-tenant
+ * STATIC variants. Unique-where ops select by `id` WITH the forced siteId
+ * (extended unique where) or by the compound `siteId_slug` selector with the
+ * forced siteId; bulk ops filter on the forced siteId. A caller routed to
+ * tenant-b can therefore never reach a tenant-a row.
+ */
+function tenantPageShapes(t: string) {
+  const data = { slug: true, title: true, siteId: force(t) }
+  const scope = { siteId: { equals: force(t) } }
+  return {
+    findMany: { where: scope, take: { max: 50 } },
+    create: { data },
+    createMany: { data },
+    createManyAndReturn: {
+      data,
+      select: { id: true, slug: true, siteId: true },
+    },
+    update: {
+      where: { id: true, siteId: force(t) },
+      data: { title: true, published: true, views: true },
+    },
+    updateMany: {
+      where: { ...scope, slug: { startsWith: true } },
+      data: { published: true },
+    },
+    updateManyAndReturn: {
+      where: scope,
+      data: { published: true },
+      select: { id: true, siteId: true, published: true },
+    },
+    upsert: {
+      where: { siteId_slug: { siteId: force(t), slug: true } },
+      create: data,
+      update: { title: true },
+    },
+    delete: { where: { id: true, siteId: force(t) } },
+    deleteMany: { where: { ...scope, slug: { startsWith: true } } },
+  }
+}
+
+type OverrideCall = { transport: string; input: unknown; context: unknown }
+const overrideCalls: OverrideCall[] = []
+
+const PAGE_OPS = [
+  'findMany',
+  'create',
+  'createMany',
+  'createManyAndReturn',
+  'update',
+  'updateMany',
+  'updateManyAndReturn',
+  'upsert',
+  'delete',
+  'deleteMany',
+] as const
+
+/** The ONE Page route configuration both transports share. */
+const pageConfig = (transport: string) => {
+  const ops: Record<string, unknown> = {}
+  for (const op of PAGE_OPS) {
+    ops[op] = {
+      variants: Object.fromEntries(
+        TENANTS.map((t) => [t, { shape: tenantPageShapes(t)[op] }]),
+      ),
+      // update carries an operation override on BOTH transports: the
+      // override/context parity gate
+      ...(op === 'update'
+        ? {
+            override: async (o: {
+              input: unknown
+              context: unknown
+              core: () => Promise<unknown>
+            }) => {
+              overrideCalls.push({
+                transport,
+                input: o.input,
+                context: o.context,
+              })
+              return o.core()
+            },
+          }
+        : {}),
+    }
+  }
+  return {
+    addModelPrefix: false,
+    disableOpenApi: true,
+    queryBuilder: false,
+    guard: { variantHeader: 'x-api-variant' },
+    resolveContext: (req: express.Request) => ({
+      tenant: req.header('x-api-variant'),
+    }),
+    ...ops,
+  }
+}
+
+/** Verified principals the MCP test auth accepts (header x-principal). */
+const PRINCIPAL_CALLERS: Record<string, string> = {
+  'tenant-a': 'tenant-a',
+  'tenant-b': 'tenant-b',
+  // routed like tenant-a but denied every write by `authorize`
+  'tenant-a-readonly': 'tenant-a',
+}
+
 type Loaded = {
   restApp: express.Express
   mcpApp: express.Express
-  prisma: { $disconnect: () => Promise<void>; ticket: Record<string, unknown> }
+  prisma: {
+    $disconnect: () => Promise<void>
+    ticket: Record<string, unknown>
+    page: Record<string, unknown>
+  }
 }
 
 let loaded: Loaded | undefined
@@ -224,7 +346,7 @@ beforeAll(async () => {
     base as unknown as { $extends: (e: unknown) => unknown }
   ).$extends(
     (guardMod.guard as unknown as { extension: () => unknown }).extension(),
-  ) as { $disconnect: () => Promise<void>; ticket: Record<string, unknown> }
+  ) as Loaded['prisma']
   const deleteMany = prisma.ticket.deleteMany as () => Promise<unknown>
   const create = prisma.ticket.create as (args: {
     data: { title: string; siteId: string; hidden: boolean }
@@ -238,41 +360,68 @@ beforeAll(async () => {
   const routerMod = await dynamicImport<{
     TicketRouter: (config: unknown) => express.RequestHandler
   }>('api/Ticket/TicketRouter')
+  const pageRouterMod = await dynamicImport<{
+    PageRouter: (config: unknown) => express.RequestHandler
+  }>('api/Page/PageRouter')
   const restApp = express()
   restApp.use(express.json())
   restApp.use((req, _res, next) => {
     ;(req as unknown as { prisma: unknown }).prisma = prisma
     next()
   })
+  restApp.use('/pages', pageRouterMod.PageRouter(pageConfig('rest')))
   restApp.use(routerMod.TicketRouter(routeConfig()))
 
   // 4. MCP app: the emitted registry + mount glue equivalents
-  const mcpMod = await dynamicImport<{
-    ticketFindManyTool: (options: { config: unknown }) => {
-      model: string
-      operation: string
-      register: (server: McpServer, shared: unknown, authInfo: AuthInfo) => void
-    }
-  }>('api/Ticket/TicketMcp')
+  type Factory = (options: { config: unknown }) => unknown
+  const mcpMod = await dynamicImport<{ ticketFindManyTool: Factory }>(
+    'api/Ticket/TicketMcp',
+  )
+  const pageMcpMod =
+    await dynamicImport<Record<string, Factory>>('api/Page/PageMcp')
   const mcpRuntimeMod = await dynamicImport<{
     registerMcpTools: (
       server: McpServer,
       options: Record<string, unknown>,
     ) => void
+    McpAuthorizationError: new (message: string) => Error
   }>('api/mcpRuntime')
-  const { registerMcpTools } = mcpRuntimeMod
+  const { registerMcpTools, McpAuthorizationError } = mcpRuntimeMod
+  const resolveCaller = (info: AuthInfo) => PRINCIPAL_CALLERS[info?.clientId]
   const handler = createMcpHandler((ctx) => {
     const server = new McpServer({ name: 'parity-api', version: '1.0.0' })
+    const pageTools = PAGE_OPS.map((op) => {
+      const factory =
+        pageMcpMod['page' + op.charAt(0).toUpperCase() + op.slice(1) + 'Tool']
+      if (!factory) throw new Error('missing emitted factory for ' + op)
+      return factory({ config: pageConfig('mcp') })
+    })
     registerMcpTools(server, {
       prisma,
-      resolveCaller: (info: AuthInfo) =>
-        info?.clientId === 'tenant-a' ? 'tenant-a' : undefined,
-      authorize: () => undefined,
+      resolveCaller,
+      authorize: ({
+        principal,
+        operation,
+      }: {
+        principal: AuthInfo
+        operation: string
+      }) => {
+        if (
+          principal.clientId === 'tenant-a-readonly' &&
+          !operation.startsWith('find')
+        ) {
+          throw new McpAuthorizationError('read-only principal: writes denied')
+        }
+      },
+      resolveContext: (info: AuthInfo) => ({ tenant: resolveCaller(info) }),
       defaultLimit: 5,
       maxLimit: 25,
       maxResultBytes: 1_000_000,
       authInfo: ctx.authInfo,
-      tools: [mcpMod.ticketFindManyTool({ config: routeConfig() })],
+      tools: [
+        mcpMod.ticketFindManyTool({ config: routeConfig() }),
+        ...pageTools,
+      ],
     })
     return server
   })
@@ -280,7 +429,11 @@ beforeAll(async () => {
   const mcpApp = express()
   mcpApp.use(express.json())
   mcpApp.use((req, _res, next) => {
-    ;(req as unknown as { auth: AuthInfo }).auth = authInfo
+    const principal = req.header('x-principal') ?? 'tenant-a'
+    ;(req as unknown as { auth: AuthInfo }).auth = {
+      ...authInfo,
+      clientId: principal,
+    }
     next()
   })
   mcpApp.all('/mcp', (req, res) => void node(req, res, req.body))
@@ -317,25 +470,70 @@ async function restFindMany(
   return { status: res.status, body: await res.json() }
 }
 
+async function restPage(
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  path: string,
+  tenant: string,
+  body?: unknown,
+): Promise<{ status: number; body: unknown }> {
+  const res = await fetch(`http://127.0.0.1:${restPort}/pages${path}`, {
+    method,
+    headers: {
+      'x-api-variant': tenant,
+      'content-type': 'application/json',
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  const text = await res.text()
+  return { status: res.status, body: text ? JSON.parse(text) : undefined }
+}
+
+async function withClient<T>(
+  principal: string,
+  fn: (client: Client) => Promise<T>,
+): Promise<T> {
+  const client = new Client({ name: 'parity-client', version: '1.0.0' })
+  const transport = new StreamableHTTPClientTransport(
+    new URL(`http://127.0.0.1:${mcpPort}/mcp`),
+    { requestInit: { headers: { 'x-principal': principal } } },
+  )
+  await client.connect(transport)
+  try {
+    return await fn(client)
+  } finally {
+    await client.close()
+  }
+}
+
+async function mcpCall(
+  name: string,
+  args: Record<string, unknown>,
+  principal = 'tenant-a',
+): Promise<{
+  isError?: boolean
+  text: string
+}> {
+  return withClient(principal, async (client) => {
+    const result = await client.callTool({ name, arguments: args })
+    const block = (result.content as Array<{ type: string; text?: string }>)[0]
+    return { isError: result.isError === true, text: block?.text ?? '' }
+  })
+}
+
 async function mcpFindMany(args: Record<string, unknown>): Promise<{
   isError?: boolean
   text: string
 }> {
-  const client = new Client({ name: 'parity-client', version: '1.0.0' })
-  const transport = new StreamableHTTPClientTransport(
-    new URL(`http://127.0.0.1:${mcpPort}/mcp`),
-  )
-  await client.connect(transport)
-  try {
-    const result = await client.callTool({
-      name: 'ticket_find_many',
-      arguments: args,
-    })
-    const block = (result.content as Array<{ type: string; text?: string }>)[0]
-    return { isError: result.isError === true, text: block?.text ?? '' }
-  } finally {
-    await client.close()
-  }
+  return mcpCall('ticket_find_many', args)
+}
+
+async function mcpListTools(
+  principal = 'tenant-a',
+): Promise<Array<Record<string, unknown>>> {
+  return withClient(principal, async (client) => {
+    const listed = await client.listTools()
+    return listed.tools as unknown as Array<Record<string, unknown>>
+  })
 }
 
 describe('REST vs MCP parity on Postgres, guard active', () => {
@@ -408,19 +606,438 @@ describe('REST vs MCP parity on Postgres, guard active', () => {
     })
     expect(res.status).toBe(400)
 
-    // wrong caller on MCP: no tool registered at all (fail closed)
-    const client = new Client({ name: 'parity-client', version: '1.0.0' })
-    const transport = new StreamableHTTPClientTransport(
-      new URL(`http://127.0.0.1:${mcpPort}/mcp`),
+    // an unknown principal routes to NO variant: zero tools (fail closed)
+    expect(await mcpListTools('tenant-zz')).toEqual([])
+    // tenant-a: the Ticket read tool plus every Page tool
+    const names = (await mcpListTools('tenant-a')).map((t) => t.name)
+    expect(names).toEqual([
+      'ticket_find_many',
+      'page_find_many',
+      'page_create',
+      'page_create_many',
+      'page_create_many_and_return',
+      'page_update',
+      'page_update_many',
+      'page_update_many_and_return',
+      'page_upsert',
+      'page_delete',
+      'page_delete_many',
+    ])
+    // tenant-b has no Ticket variant, so only its Page tools register
+    expect((await mcpListTools('tenant-b')).map((t) => t.name)).toEqual(
+      names.filter((n) => n !== 'ticket_find_many'),
     )
-    await client.connect(transport)
-    try {
-      const listed = await client.listTools()
-      // the verified principal is tenant-a, so the tool IS listed; an
-      // unverified principal would get none — covered by unit tests
-      expect(listed.tools.map((t) => t.name)).toEqual(['ticket_find_many'])
-    } finally {
-      await client.close()
+  })
+})
+
+type PageRow = {
+  id: string
+  siteId: string
+  slug: string
+  title: string
+  published: boolean
+  views: bigint | null
+}
+
+type PageDelegate = {
+  deleteMany: () => Promise<unknown>
+  create: (a: { data: Record<string, unknown> }) => Promise<PageRow>
+  findMany: (a?: unknown) => Promise<PageRow[]>
+  count: (a?: unknown) => Promise<number>
+}
+
+function pageDelegate(): PageDelegate {
+  if (!loaded) throw new Error('parity stack not loaded')
+  return loaded.prisma.page as unknown as PageDelegate
+}
+
+/** Every row, ordered — the zero-write / isolation gates compare snapshots. */
+const snapshot = () =>
+  pageDelegate().findMany({ orderBy: [{ siteId: 'asc' }, { slug: 'asc' }] })
+
+async function seedPages(): Promise<{ a: PageRow; b: PageRow }> {
+  const a = await pageDelegate().create({
+    data: { siteId: 'tenant-a', slug: 'home', title: 'A home' },
+  })
+  const b = await pageDelegate().create({
+    data: { siteId: 'tenant-b', slug: 'home', title: 'B home' },
+  })
+  return { a, b }
+}
+
+const json = (r: { text: string }) =>
+  JSON.parse(r.text) as Record<string, unknown>
+
+describe('Page writes: REST vs MCP parity on Postgres, guard active', () => {
+  beforeEach(async () => {
+    await pageDelegate().deleteMany()
+    overrideCalls.length = 0
+  })
+
+  it('create: the agent creates a Page; forced siteId merged server-side on both transports', async () => {
+    const rest = await restPage('POST', '/', 'tenant-a', {
+      data: { slug: 'about', title: 'About (REST)' },
+    })
+    expect(rest.status).toBe(201)
+    expect(rest.body).toMatchObject({ siteId: 'tenant-a', slug: 'about' })
+
+    const mcp = await mcpCall('page_create', {
+      data: { slug: 'contact', title: 'Contact (MCP)' },
+    })
+    expect(mcp.isError).toBeFalsy()
+    expect(json(mcp)).toMatchObject({ siteId: 'tenant-a', slug: 'contact' })
+
+    // a client-sent tenant is refused on both: guard strict data (REST 400),
+    // closed tool schema (MCP)
+    const restEvil = await restPage('POST', '/', 'tenant-a', {
+      data: { slug: 'x', title: 'x', siteId: 'tenant-b' },
+    })
+    expect(restEvil.status).toBe(400)
+    const mcpEvil = await mcpCall('page_create', {
+      data: { slug: 'x', title: 'x', siteId: 'tenant-b' },
+    })
+    expect(mcpEvil.isError).toBe(true)
+    expect(await pageDelegate().count({ where: { siteId: 'tenant-b' } })).toBe(
+      0,
+    )
+  })
+
+  it('create conflict classifies identically (compound unique -> 409 both)', async () => {
+    await seedPages()
+    const rest = await restPage('POST', '/', 'tenant-a', {
+      data: { slug: 'home', title: 'dup' },
+    })
+    expect(rest.status).toBe(409)
+    const mcp = await mcpCall('page_create', {
+      data: { slug: 'home', title: 'dup' },
+    })
+    expect(mcp.isError).toBe(true)
+    expect(json(mcp).status).toBe(409)
+  })
+
+  it('createMany and createManyAndReturn: same counts and projections, all tenant-forced', async () => {
+    const rest = await restPage('POST', '/many', 'tenant-a', {
+      data: [
+        { slug: 'r1', title: 'r1' },
+        { slug: 'r2', title: 'r2' },
+      ],
+    })
+    expect(rest.status).toBe(201)
+    expect(rest.body).toEqual({ count: 2 })
+    const mcp = await mcpCall('page_create_many', {
+      data: [
+        { slug: 'm1', title: 'm1' },
+        { slug: 'm2', title: 'm2' },
+      ],
+    })
+    expect(mcp.isError).toBeFalsy()
+    expect(json(mcp)).toEqual({ count: 2 })
+
+    // the shape configures a projection; the body selects within it
+    const restRet = await restPage('POST', '/many/return', 'tenant-a', {
+      data: [{ slug: 'r3', title: 'r3' }],
+      select: { slug: true, siteId: true },
+    })
+    expect(restRet.status).toBe(201)
+    const mcpRet = await mcpCall('page_create_many_and_return', {
+      data: [{ slug: 'm3', title: 'm3' }],
+      select: { slug: true, siteId: true },
+    })
+    expect(mcpRet.isError).toBeFalsy()
+    expect(restRet.body).toEqual([{ slug: 'r3', siteId: 'tenant-a' }])
+    expect(JSON.parse(mcpRet.text)).toEqual([
+      { slug: 'm3', siteId: 'tenant-a' },
+    ])
+    expect(await pageDelegate().count({ where: { siteId: 'tenant-a' } })).toBe(
+      6,
+    )
+  })
+
+  it('update by id: same result, same override input and context on both transports', async () => {
+    const { a } = await seedPages()
+    const rest = await restPage('PUT', '/', 'tenant-a', {
+      where: { id: a.id },
+      data: { title: 'A (REST)', views: '42' },
+    })
+    expect(rest.status).toBe(200)
+    expect(rest.body).toMatchObject({
+      id: a.id,
+      title: 'A (REST)',
+      views: '42',
+    })
+
+    const mcp = await mcpCall('page_update', {
+      where: { id: a.id },
+      data: { title: 'A (MCP)', views: null },
+    })
+    expect(mcp.isError).toBeFalsy()
+    expect(json(mcp)).toMatchObject({ id: a.id, title: 'A (MCP)', views: null })
+
+    // the operation override ran once per transport with the same input
+    // keys and the same resolved application context
+    expect(overrideCalls.map((c) => c.transport)).toEqual(['rest', 'mcp'])
+    expect(overrideCalls[0]?.context).toEqual({ tenant: 'tenant-a' })
+    expect(overrideCalls[1]?.context).toEqual({ tenant: 'tenant-a' })
+    const keysOf = (v: unknown) =>
+      Object.keys(typeof v === 'object' && v !== null ? v : {}).sort()
+    expect(keysOf(overrideCalls[0]?.input)).toEqual(
+      keysOf(overrideCalls[1]?.input),
+    )
+  })
+
+  it('updateMany / updateManyAndReturn touch only the caller tenant', async () => {
+    await seedPages()
+    const rest = await restPage('PUT', '/many', 'tenant-a', {
+      where: { slug: { startsWith: 'h' } },
+      data: { published: true },
+    })
+    expect(rest.status).toBe(200)
+    expect(rest.body).toEqual({ count: 1 })
+
+    const mcp = await mcpCall(
+      'page_update_many',
+      { where: { slug: { startsWith: 'h' } }, data: { published: true } },
+      'tenant-b',
+    )
+    expect(mcp.isError).toBeFalsy()
+    expect(json(mcp)).toEqual({ count: 1 })
+
+    const ret = await mcpCall(
+      'page_update_many_and_return',
+      { where: {}, data: { published: false } },
+      'tenant-b',
+    )
+    expect(ret.isError).toBeFalsy()
+    expect(JSON.parse(ret.text)).toEqual([
+      expect.objectContaining({ siteId: 'tenant-b', published: false }),
+    ])
+    const rows = await snapshot()
+    expect(rows.map((r) => [r.siteId, r.published])).toEqual([
+      ['tenant-a', true],
+      ['tenant-b', false],
+    ])
+  })
+
+  it('upsert: update path and create path; the compound selector keeps tenants apart', async () => {
+    await seedPages()
+    const restUpd = await restPage('PATCH', '/', 'tenant-a', {
+      where: { siteId_slug: { slug: 'home' } },
+      create: { slug: 'home', title: 'ignored' },
+      update: { title: 'A home v2' },
+    })
+    expect(restUpd.status).toBe(200)
+    expect(restUpd.body).toMatchObject({
+      siteId: 'tenant-a',
+      title: 'A home v2',
+    })
+
+    const mcpUpd = await mcpCall(
+      'page_upsert',
+      {
+        where: { siteId_slug: { slug: 'home' } },
+        create: { slug: 'home', title: 'ignored' },
+        update: { title: 'B home v2' },
+      },
+      'tenant-b',
+    )
+    expect(mcpUpd.isError).toBeFalsy()
+    expect(json(mcpUpd)).toMatchObject({
+      siteId: 'tenant-b',
+      title: 'B home v2',
+    })
+
+    const mcpIns = await mcpCall('page_upsert', {
+      where: { siteId_slug: { slug: 'blog' } },
+      create: { slug: 'blog', title: 'Blog' },
+      update: { title: 'ignored' },
+    })
+    expect(mcpIns.isError).toBeFalsy()
+    expect(json(mcpIns)).toMatchObject({ siteId: 'tenant-a', slug: 'blog' })
+
+    const rows = await snapshot()
+    expect(rows.map((r) => [r.siteId, r.slug, r.title])).toEqual([
+      ['tenant-a', 'blog', 'Blog'],
+      ['tenant-a', 'home', 'A home v2'],
+      ['tenant-b', 'home', 'B home v2'],
+    ])
+  })
+
+  it('delete and deleteMany: same result, 404 parity, only the caller tenant', async () => {
+    const { a, b } = await seedPages()
+    const rest = await restPage('DELETE', '/', 'tenant-a', {
+      where: { id: a.id },
+    })
+    expect(rest.status).toBe(200)
+    expect(rest.body).toMatchObject({ id: a.id })
+    const restAgain = await restPage('DELETE', '/', 'tenant-a', {
+      where: { id: a.id },
+    })
+    expect(restAgain.status).toBe(404)
+
+    const mcp = await mcpCall(
+      'page_delete',
+      { where: { id: b.id } },
+      'tenant-b',
+    )
+    expect(mcp.isError).toBeFalsy()
+    expect(json(mcp)).toMatchObject({ id: b.id })
+    const mcpAgain = await mcpCall(
+      'page_delete',
+      { where: { id: b.id } },
+      'tenant-b',
+    )
+    expect(mcpAgain.isError).toBe(true)
+    expect(json(mcpAgain).status).toBe(404)
+
+    await seedPages()
+    const many = await mcpCall(
+      'page_delete_many',
+      { where: { slug: { startsWith: '' } } },
+      'tenant-b',
+    )
+    expect(many.isError).toBeFalsy()
+    expect(json(many)).toEqual({ count: 1 })
+    expect((await snapshot()).map((r) => r.siteId)).toEqual(['tenant-a'])
+  })
+})
+
+describe('Page writes: cross-tenant attacks change nothing', () => {
+  beforeEach(async () => {
+    await pageDelegate().deleteMany()
+  })
+
+  it('tenant-b cannot update or delete a tenant-a page by id (404 on both transports)', async () => {
+    const { a } = await seedPages()
+    const before = await snapshot()
+
+    const restUpd = await restPage('PUT', '/', 'tenant-b', {
+      where: { id: a.id },
+      data: { title: 'pwned' },
+    })
+    expect(restUpd.status).toBe(404)
+    const mcpUpd = await mcpCall(
+      'page_update',
+      { where: { id: a.id }, data: { title: 'pwned' } },
+      'tenant-b',
+    )
+    expect(mcpUpd.isError).toBe(true)
+    expect(json(mcpUpd).status).toBe(404)
+
+    const restDel = await restPage('DELETE', '/', 'tenant-b', {
+      where: { id: a.id },
+    })
+    expect(restDel.status).toBe(404)
+    const mcpDel = await mcpCall(
+      'page_delete',
+      { where: { id: a.id } },
+      'tenant-b',
+    )
+    expect(mcpDel.isError).toBe(true)
+    expect(json(mcpDel).status).toBe(404)
+
+    // a client-sent siteId is not an input at all
+    const mcpSpoof = await mcpCall(
+      'page_update',
+      { where: { id: a.id, siteId: 'tenant-a' }, data: { title: 'pwned' } },
+      'tenant-b',
+    )
+    expect(mcpSpoof.isError).toBe(true)
+
+    expect(await snapshot()).toEqual(before)
+  })
+
+  it('tenant-b bulk writes and upserts never reach tenant-a rows', async () => {
+    await seedPages()
+    const tenantARows = async () =>
+      (await snapshot()).filter((r) => r.siteId === 'tenant-a')
+    const before = await tenantARows()
+
+    for (const [name, args] of [
+      [
+        'page_update_many',
+        { where: { slug: { startsWith: '' } }, data: { published: true } },
+      ],
+      ['page_update_many_and_return', { where: {}, data: { published: true } }],
+      [
+        'page_upsert',
+        {
+          where: { siteId_slug: { slug: 'home' } },
+          create: { slug: 'home', title: 'x' },
+          update: { title: 'pwned' },
+        },
+      ],
+      ['page_delete_many', { where: { slug: { startsWith: '' } } }],
+    ] as const) {
+      const result = await mcpCall(name, args, 'tenant-b')
+      expect(result.isError, name).toBeFalsy()
     }
+    expect(await tenantARows()).toEqual(before)
+  })
+})
+
+describe('Page writes: authorization denial performs zero writes', () => {
+  beforeEach(async () => {
+    await pageDelegate().deleteMany()
+  })
+
+  it('a principal denied by authorize gets isError and the database is unchanged', async () => {
+    const { a } = await seedPages()
+    const before = await snapshot()
+    const principal = 'tenant-a-readonly'
+
+    const calls: Array<[string, Record<string, unknown>]> = [
+      ['page_create', { data: { slug: 'new', title: 'new' } }],
+      ['page_create_many', { data: [{ slug: 'n1', title: 'n1' }] }],
+      ['page_create_many_and_return', { data: [{ slug: 'n2', title: 'n2' }] }],
+      ['page_update', { where: { id: a.id }, data: { title: 'pwned' } }],
+      [
+        'page_update_many',
+        { where: { slug: { startsWith: '' } }, data: { published: true } },
+      ],
+      ['page_update_many_and_return', { where: {}, data: { published: true } }],
+      [
+        'page_upsert',
+        {
+          where: { siteId_slug: { slug: 'home' } },
+          create: { slug: 'home', title: 'x' },
+          update: { title: 'pwned' },
+        },
+      ],
+      ['page_delete', { where: { id: a.id } }],
+      ['page_delete_many', { where: { slug: { startsWith: '' } } }],
+    ]
+    for (const [name, args] of calls) {
+      const result = await mcpCall(name, args, principal)
+      expect(result.isError, name).toBe(true)
+      expect(json(result).message, name).toBe(
+        'read-only principal: writes denied',
+      )
+    }
+    expect(await snapshot()).toEqual(before)
+
+    // reads stay allowed for the same principal
+    const read = await mcpCall('page_find_many', {}, principal)
+    expect(read.isError).toBeFalsy()
+  })
+
+  it('write annotations ride on the wire exactly as the metadata states', async () => {
+    const tools = await mcpListTools('tenant-a')
+    const hints = Object.fromEntries(tools.map((t) => [t.name, t.annotations]))
+    const destructive = {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+    }
+    const plain = {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    }
+    expect(hints.page_delete).toEqual(destructive)
+    expect(hints.page_delete_many).toEqual(destructive)
+    expect(hints.page_create).toEqual(plain)
+    expect(hints.page_create_many).toEqual(plain)
+    expect(hints.page_update_many_and_return).toEqual(plain)
+    expect(hints.page_upsert).toEqual({ ...plain, idempotentHint: true })
   })
 })

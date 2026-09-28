@@ -140,7 +140,9 @@ describe('mcp generation gates (full runGenerate)', () => {
         file + ' references the MCP SDK',
       ).toBe(false)
       expect(
-        /registerMcpTools|createMcpReadTool|McpServer/.test(text),
+        /registerMcpTools|createMcpReadTool|createMcpWriteTool|McpServer/.test(
+          text,
+        ),
         file + ' references MCP APIs',
       ).toBe(false)
     }
@@ -180,10 +182,46 @@ describe('mcp generation gates (full runGenerate)', () => {
     expect(userMcp).toContain("from '../Post/PostMetadata'")
     expect(userMcp).toContain('userFindManyTool')
 
+    // every guarded write op has a factory beside the reads; delete binds
+    // the deleteUnique core (Prisma's delegate method name)
+    for (const op of [
+      'Create',
+      'CreateMany',
+      'CreateManyAndReturn',
+      'Update',
+      'UpdateMany',
+      'UpdateManyAndReturn',
+      'Upsert',
+      'Delete',
+      'DeleteMany',
+    ]) {
+      expect(userMcp).toContain('export function user' + op + 'Tool')
+    }
+    expect(userMcp).toContain('createMcpWriteTool')
+    expect(userMcp).toMatch(/core\.deleteUnique,/)
+    // updateEach bypasses guard shapes: no MCP factory
+    expect(userMcp).not.toContain('userUpdateEachTool')
+
     // the registry requires a verified principal
     const runtime = await readFile(resolve(onDir, 'mcpRuntime.ts'), 'utf8')
     expect(runtime).toContain("'@modelcontextprotocol/server'")
     expect(runtime).not.toContain('@modelcontextprotocol/sdk')
+  })
+
+  it('every write factory carries the generation writeStrategy; reads carry none', async () => {
+    for (const strategy of ['regular', 'throwOnNonReturning', 'forceReturn']) {
+      const dir = await generateInto({
+        target: 'express',
+        mcp: true,
+        writeStrategy: strategy,
+      })
+      const userMcp = await readFile(resolve(dir, 'User/UserMcp.ts'), 'utf8')
+      const tagged = userMcp.match(/writeStrategy: '([A-Za-z]+)'/g) ?? []
+      // nine guarded write factories, each tagged with THIS strategy
+      expect(tagged).toEqual(
+        Array.from({ length: 9 }, () => "writeStrategy: '" + strategy + "'"),
+      )
+    }
   })
 
   it('mcp=true plus dropGuard=true fails generation inside runGenerate', async () => {

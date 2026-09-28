@@ -33,11 +33,16 @@ const TSCONFIG = `{
 // pattern must typecheck against the emitted artifact with a REAL route
 // config — no `declare const` placeholders. Values mirror the README example.
 const GUIDE_CONSUMER = `import { McpServer, type AuthInfo } from '@modelcontextprotocol/server'
+import { force } from 'prisma-guard'
 import { registerMcpToolsOnServer } from './mcp'
 import { McpAuthorizationError } from './mcpRuntime'
 import {
   articleFindManyTool,
   articleFindUniqueTool,
+  articleCreateTool,
+  articleUpdateTool,
+  articleUpsertTool,
+  articleDeleteTool,
 } from './Article/ArticleMcp'
 import type { ArticleRouteConfig } from './Article/ArticleRouter'
 import type { PrismaClientLike } from './routeConfig'
@@ -54,6 +59,29 @@ const userConfig: ArticleRouteConfig = {
       where: { site_id: 'tenant-a' },
     },
   },
+  create: {
+    shape: {
+      data: { id: true, site_id: force('tenant-a') },
+    },
+  },
+  update: {
+    shape: {
+      where: { id: true },
+      data: { site_id: true },
+    },
+  },
+  upsert: {
+    shape: {
+      where: { id: true },
+      create: { id: true, site_id: true },
+      update: { site_id: true },
+    },
+  },
+  delete: {
+    shape: {
+      where: { id: true },
+    },
+  },
 }
 
 const prisma: PrismaClientLike = {}
@@ -64,6 +92,10 @@ const buildServer = (authInfo: AuthInfo): McpServer => {
     tools: [
       articleFindManyTool({ config: userConfig }),
       articleFindUniqueTool({ config: userConfig }),
+      articleCreateTool({ config: userConfig }),
+      articleUpdateTool({ config: userConfig }),
+      articleUpsertTool({ config: userConfig }),
+      articleDeleteTool({ config: userConfig }),
     ],
     resolveCaller: (info) => info.clientId,
     authorize: ({ principal }) => {

@@ -1,6 +1,8 @@
 import type { DMMF } from '@prisma/generator-helper'
 import type { ImportStyle } from '../utils/resolveImportStyle'
 import { importExt } from '../utils/importExt'
+import { OPERATION_METADATA } from '../copy/operationDefinitions'
+import type { WriteStrategy } from '../constants'
 
 const MCP_OPS = [
   { name: 'findMany', coreName: 'findMany' },
@@ -9,6 +11,14 @@ const MCP_OPS = [
   { name: 'count', coreName: 'count' },
   { name: 'findManyPaginated', coreName: 'findManyPaginated' },
 ] as const
+
+/**
+ * Every guarded write op from the shared metadata. `updateEach` is excluded:
+ * it bypasses guard shapes, so it has no MCP factory.
+ */
+const MCP_WRITE_OPS = OPERATION_METADATA.filter(
+  (m) => (m.kind === 'write' || m.kind === 'batch') && m.name !== 'updateEach',
+).map((m) => ({ name: m.name, coreName: m.coreName }))
 
 /** Matches MAX_PROJECTION_DEPTH in operationSchemas.ts. */
 const MAX_PROJECTION_DEPTH = 4
@@ -51,11 +61,12 @@ function transitiveRelations(
 }
 
 /**
- * Per-model MCP tool factories: one named export per exposed operation, each
- * returning a `McpToolContribution` the application passes to
- * `registerMcpTools`. Importing only the operations you expose is the same
- * static assembly boundary the Hono parts use — unselected operations never
- * enter the module graph.
+ * Per-model MCP tool factories: one named export per exposed operation (five
+ * reads plus every guarded write), each returning a
+ * `McpToolContribution` the application passes to `registerMcpTools`.
+ * Importing only the operations you expose is the same static assembly
+ * boundary the Hono parts use — unselected operations never enter the module
+ * graph, and write tools exist ONLY where application code imports them.
  *
  * Schema narrowing is model-aware and transitive: each tool carries this
  * model's metadata plus the metadata of every model reachable through its
@@ -66,10 +77,13 @@ export function generateModelMcp({
   model,
   allModels,
   importStyle,
+  writeStrategy,
 }: {
   model: DMMF.Model
   allModels: readonly DMMF.Model[]
   importStyle: ImportStyle
+  /** Same value the operation cores were generated with. */
+  writeStrategy: WriteStrategy
 }): string {
   const ext = importExt(importStyle)
   const modelName = model.name
@@ -120,12 +134,14 @@ export function generateModelMcp({
     })
     .join(',\n')
 
-  const factories = MCP_OPS.map(
-    (op) => `
+  const writeNames = new Set(MCP_WRITE_OPS.map((op) => op.name))
+  const factories = [...MCP_OPS, ...MCP_WRITE_OPS]
+    .map(
+      (op) => `
 export function ${lower}${cap(op.name)}Tool<TCtx = unknown, TPrisma extends PrismaClientLike = PrismaClientLike>(options: {
   config: ${modelName}RouteConfig<TCtx, TPrisma>
 }): McpToolContribution {
-  return createMcpReadTool({
+  return ${writeNames.has(op.name) ? 'createMcpWriteTool' : 'createMcpReadTool'}({
     model: '${modelName}',
     operation: '${op.name}',
     config: options.config as unknown as Record<string, unknown>,
@@ -136,17 +152,24 @@ export function ${lower}${cap(op.name)}Tool<TCtx = unknown, TPrisma extends Pris
       (f) => f.name,
     ),
     compoundUniques: compoundUniques,
-    modelIndex: modelIndex,
+    modelIndex: modelIndex,${
+      writeNames.has(op.name)
+        ? `
+    writeStrategy: '${writeStrategy}',`
+        : ''
+    }
   })
 }
 `,
-  ).join('\n')
+    )
+    .join('\n')
 
   return `import * as core from './${modelName}Core${ext}'
 import type { ${modelName}RouteConfig } from './${modelName}Router${ext}'
 import type { PrismaClientLike } from '../routeConfig.target${ext}'
 import {
   createMcpReadTool,
+  createMcpWriteTool,
   type McpToolContribution,
   type SchemaModelMeta,
 } from '../mcpRuntime${ext}'
