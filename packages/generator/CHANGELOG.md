@@ -1,3 +1,10 @@
+## [1.69.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.69.0...v1.69.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* **hono:** import the hook and pagination types guarded route configs use ([27424f9](https://github.com/multipliedtwice/prisma-generator-express/commit/27424f9dfa6d89392a982ebee917019bca823080))
+
 # [1.69.0](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.68.0...v1.69.0) (2026-09-28)
 
 
