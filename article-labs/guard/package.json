@@ -17,7 +17,7 @@
   "dependencies": {
     "@prisma/client": "6.19.3",
     "prisma": "6.19.3",
-    "prisma-guard": "1.33.0",
+    "prisma-guard": "1.36.0",
     "zod": "4.4.3"
   },
   "overrides": {
