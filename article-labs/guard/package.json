@@ -24,7 +24,7 @@
     "deepmerge-ts": "8.0.2"
   },
   "devDependencies": {
-    "@prisma/internals": "6.19.3",
+    "@prisma/internals": "7.10.1",
     "tsx": "4.23.8"
   }
 }
