@@ -11,6 +11,7 @@ import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { readmeQuickstartSchema } from './docsSnippet'
+import { ownedPostgresUrl } from './ownedPostgresUrl'
 
 /**
  * The README MCP quickstart, executed against the REAL stack: prisma 6 +
@@ -20,9 +21,7 @@ import { readmeQuickstartSchema } from './docsSnippet'
  * SDK client. The snippet in README.md mirrors this test.
  */
 
-const DATABASE_URL =
-  process.env.PARITY_DATABASE_URL ??
-  'postgresql://postgres:parity@127.0.0.1:55433/parity'
+const DATABASE_URL = ownedPostgresUrl(process.env.PARITY_DATABASE_URL)
 
 const TSC = resolve(
   __dirname,

@@ -19,7 +19,7 @@ jobs:
           POSTGRES_PASSWORD: parity
           POSTGRES_DB: parity
         ports:
-          - 55433:5432
+          - 55439:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
@@ -48,7 +48,7 @@ jobs:
       - name: Unit tests with coverage
         working-directory: packages/generator
         env:
-          PARITY_DATABASE_URL: postgresql://postgres:parity@127.0.0.1:55433/parity
+          PARITY_DATABASE_URL: postgresql://postgres:parity@127.0.0.1:55439/parity
         run: npx vitest run --coverage
       - name: Prettier check
         working-directory: packages/generator

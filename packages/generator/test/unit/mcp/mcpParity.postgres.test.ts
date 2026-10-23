@@ -21,6 +21,7 @@ import {
   generateWithArticleGuard,
   importFrom,
 } from './articleGuardStack'
+import { ownedPostgresUrl } from './ownedPostgresUrl'
 /**
  * REST versus MCP parity on a REAL Postgres, with the prisma-guard extension
  * ACTIVE — the guard-dropped SQLite harness cannot substitute for this gate.
@@ -30,9 +31,7 @@ import {
  * pagination behaviour, operation core result and classified error.
  */
 
-const DATABASE_URL =
-  process.env.PARITY_DATABASE_URL ??
-  'postgresql://postgres:parity@127.0.0.1:55433/parity'
+const DATABASE_URL = ownedPostgresUrl(process.env.PARITY_DATABASE_URL)
 
 const WORK_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
