@@ -3885,7 +3885,7 @@ __metadata:
     express: ^5.0.0
     postgres: ^3.4.4
     prisma: ^6.16.0
-    prisma-guard: ^1.0.0
+    prisma-guard: ^1.36.0
     prisma-query-builder-ui: ^1.1.0
     prisma-sql: ^1.0.0
     tsx: ^4.21.0
@@ -7474,7 +7474,7 @@ __metadata:
     pino-pretty: ^13.0.0
     prettier: 3.6.2
     prisma: 7.10.1
-    prisma-guard: 1.33.0
+    prisma-guard: 1.36.0
     semantic-release: ^25.0.9
     typescript: 5.9.3
     vitest: ^4.1.12
@@ -7512,9 +7512,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"prisma-guard@npm:1.33.0":
-  version: 1.33.0
-  resolution: "prisma-guard@npm:1.33.0"
+"prisma-guard@npm:1.36.0, prisma-guard@npm:^1.36.0":
+  version: 1.36.0
+  resolution: "prisma-guard@npm:1.36.0"
   dependencies:
     "@prisma/generator-helper": ^6.0.0 || ^7.0.0
     get-tsconfig: ^4.14.0
@@ -7523,22 +7523,7 @@ __metadata:
     zod: ^4.0.0
   bin:
     prisma-guard: dist/generator/index.js
-  checksum: 61ddc482dd8b78552c3de63285e542807d006d8bdf2445c10e128cdf7d663991e23217c5dd21f62a4c2a40e211048edc3a330efbd40ddf9da750d5559e8e9439
-  languageName: node
-  linkType: hard
-
-"prisma-guard@npm:^1.0.0":
-  version: 1.28.1
-  resolution: "prisma-guard@npm:1.28.1"
-  dependencies:
-    "@prisma/generator-helper": ^6.0.0 || ^7.0.0
-    get-tsconfig: ^4.14.0
-  peerDependencies:
-    "@prisma/client": ^6.0.0 || ^7.0.0
-    zod: ^4.0.0
-  bin:
-    prisma-guard: dist/generator/index.js
-  checksum: 8023bb7c6d8dd58a4e638988ec4f6fc9b94b8d9c64f907be19acecbc20ed5b6458c99c5732c1e1920d47c5fb43f62299998d16f6a90fdb649f6f1a10f6e01b6c
+  checksum: 81e0d2931a6a4f6198d04b489ccbdecfd0a59887d892e468cdbb5c537c81f1a0af80aead6f20ee0802fabc39439ddb2cd3b9af21dae2095c1863cab577b3d4bc
   languageName: node
   linkType: hard
 
