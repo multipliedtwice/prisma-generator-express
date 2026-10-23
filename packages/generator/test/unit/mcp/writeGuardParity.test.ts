@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { createGuard, force } from 'prisma-guard'
+import {
+  createGuard,
+  force,
+  ShapeError,
+  type GuardConfig,
+  type TypeMap,
+} from 'prisma-guard'
 import { fromJsonSchema } from '@modelcontextprotocol/server'
 import {
   buildModelAwareWriteArgsSchema,
@@ -12,11 +18,12 @@ import {
 
 /**
  * DIFFERENTIAL WRITE PARITY — every forced data-config fixture is compiled by
- * the REAL prisma-guard 1.33 runtime (`guard(shape).create(...)` against a
- * recording delegate) and by `dataConfigProblem`. Contract per fixture:
+ * the REAL prisma-guard 1.36 runtime (`prisma.model.guard(shape).create(...)`
+ * against a recording delegate) and by `dataConfigProblem`. Contract per fixture:
  * guard accepts <-> the MCP validator accepts. A stricter validator would
  * refuse a valid shape at registration; a looser one would register a tool
- * guard rejects on every call.
+ * guard rejects on every call. Prisma calls the all-model extension with the
+ * delegate's model name; invoke that public callback shape here too.
  */
 
 type GuardFieldMeta = {
@@ -40,6 +47,43 @@ type Fixture = {
 }
 
 const COLORS = ['RED', 'GREEN']
+
+type GuardMethods = Record<string, (body: unknown) => unknown>
+
+type GuardModelExtension = {
+  $allModels: {
+    guard: (
+      this: { $name: string; $parent: { w: GuardMethods } },
+      shape: unknown,
+    ) => GuardMethods
+  }
+}
+
+function createFixtureGuard<TModels extends TypeMap>(
+  config: GuardConfig & { typeMap: TModels },
+) {
+  return createGuard<TModels, string, GuardModelExtension>(config)
+}
+
+function invokeGuard(
+  guard: { extension: () => { model: GuardModelExtension } },
+  delegate: GuardMethods,
+  shape: unknown,
+): GuardMethods {
+  return guard
+    .extension()
+    .model.$allModels.guard.call(
+      { $name: 'W', $parent: { w: delegate } },
+      shape,
+    )
+}
+
+function isExpectedGuardRejection(error: unknown): boolean {
+  return (
+    error instanceof ShapeError ||
+    (error instanceof Error && error.name === 'ZodError')
+  )
+}
 
 const FIXTURES: Fixture[] = [
   {
@@ -186,7 +230,7 @@ function guardAccepts(fx: Fixture): boolean {
     isUpdatedAt: false,
     ...(fx.isEnum ? { isEnum: true } : {}),
   }
-  const guard = createGuard({
+  const guard = createFixtureGuard({
     scopeMap: {},
     typeMap: {
       W: {
@@ -208,31 +252,15 @@ function guardAccepts(fx: Fixture): boolean {
     uniqueMap: { W: [{ selector: 'id', fields: ['id'] }] },
     zodDefaults: {},
   })
-  const ext = guard.extension() as unknown as {
-    model: {
-      w: {
-        guard: (
-          this: unknown,
-          shape: unknown,
-        ) => {
-          create: (body: unknown) => unknown
-        }
-      }
-    }
-  }
   const delegate = { create: (args: unknown) => args }
   try {
-    ext.model.w.guard
-      .call(
-        { $parent: { w: delegate } },
-        {
-          data: { v: fx.value },
-        },
-      )
-      .create({ data: {} })
+    invokeGuard(guard, delegate, { data: { v: fx.value } }).create({
+      data: {},
+    })
     return true
-  } catch {
-    return false
+  } catch (error) {
+    if (isExpectedGuardRejection(error)) return false
+    throw error
   }
 }
 
@@ -266,7 +294,7 @@ function mcpAccepts(fx: Fixture): boolean {
   return dataConfigProblem(meta, { v: fx.value }, 'create') === null
 }
 
-describe('forced write data configs: MCP validator vs prisma-guard 1.33', () => {
+describe('forced write data configs: MCP validator vs prisma-guard 1.36', () => {
   for (const fx of FIXTURES) {
     it(fx.label, () => {
       expect(mcpAccepts(fx)).toBe(guardAccepts(fx))
@@ -339,7 +367,7 @@ describe('create data client input: MCP schema never more permissive than guard'
   const shape = { data: { a: true, b: true, c: true, n: true } }
 
   function guardCreate(body: unknown): boolean {
-    const guard = createGuard({
+    const guard = createFixtureGuard({
       scopeMap: {},
       typeMap,
       enumMap: {},
@@ -348,23 +376,12 @@ describe('create data client input: MCP schema never more permissive than guard'
       uniqueMap: { W: [{ selector: 'id', fields: ['id'] }] },
       zodDefaults: {},
     })
-    const ext = guard.extension() as unknown as {
-      model: {
-        w: {
-          guard: (
-            this: unknown,
-            s: unknown,
-          ) => { create: (b: unknown) => unknown }
-        }
-      }
-    }
     try {
-      ext.model.w.guard
-        .call({ $parent: { w: { create: (x: unknown) => x } } }, shape)
-        .create(body)
+      invokeGuard(guard, { create: (x: unknown) => x }, shape).create(body)
       return true
-    } catch {
-      return false
+    } catch (error) {
+      if (isExpectedGuardRejection(error)) return false
+      throw error
     }
   }
 
@@ -466,7 +483,7 @@ describe('create data client input: MCP schema never more permissive than guard'
  * findUniqueWhereConfigProblem, including the extended form that carries a
  * forced tenant beside the unique selector.
  */
-describe('unique-where configs: MCP validator vs prisma-guard 1.33', () => {
+describe('unique-where configs: MCP validator vs prisma-guard 1.36', () => {
   const typeMap = {
     W: {
       id: {
@@ -575,7 +592,7 @@ describe('unique-where configs: MCP validator vs prisma-guard 1.33', () => {
     method: UniqueMethod,
     where: Record<string, unknown>,
   ): boolean {
-    const guard = createGuard({
+    const guard = createFixtureGuard({
       scopeMap: {},
       typeMap,
       enumMap: {},
@@ -601,16 +618,6 @@ describe('unique-where configs: MCP validator vs prisma-guard 1.33', () => {
           .parse({ where: body })
         return true
       }
-      const ext = guard.extension() as unknown as {
-        model: {
-          w: {
-            guard: (
-              this: unknown,
-              s: unknown,
-            ) => Record<UniqueMethod, (b: unknown) => unknown>
-          }
-        }
-      }
       const delegate = { [method]: (x: unknown) => x }
       const shape =
         method === 'delete'
@@ -632,12 +639,11 @@ describe('unique-where configs: MCP validator vs prisma-guard 1.33', () => {
                 create: { email: 'e', siteId: 's' },
                 update: { notes: 'n' },
               }
-      ext.model.w.guard
-        .call({ $parent: { w: delegate } }, shape)
-        [method](request)
+      invokeGuard(guard, delegate, shape)[method](request)
       return true
-    } catch {
-      return false
+    } catch (error) {
+      if (isExpectedGuardRejection(error)) return false
+      throw error
     }
   }
 
@@ -734,7 +740,7 @@ describe('writeStrategy: shape tables vs the guard method the core invokes', () 
     shape: Record<string, unknown>,
     body: Record<string, unknown>,
   ): boolean {
-    const guard = createGuard({
+    const guard = createFixtureGuard({
       scopeMap: {},
       typeMap,
       enumMap: {},
@@ -743,26 +749,14 @@ describe('writeStrategy: shape tables vs the guard method the core invokes', () 
       uniqueMap: { W: [{ selector: 'id', fields: ['id'] }] },
       zodDefaults: {},
     })
-    const ext = guard.extension() as unknown as {
-      model: {
-        w: {
-          guard: (
-            this: unknown,
-            s: unknown,
-          ) => Record<string, (b: unknown) => unknown>
-        }
-      }
-    }
     const delegate = { [method]: (x: unknown) => x }
     try {
-      const methods = ext.model.w.guard.call(
-        { $parent: { w: delegate } },
-        shape,
-      )
-      methods[method]?.(body)
+      const methods = invokeGuard(guard, delegate, shape)
+      methods[method](body)
       return true
-    } catch {
-      return false
+    } catch (error) {
+      if (isExpectedGuardRejection(error)) return false
+      throw error
     }
   }
 

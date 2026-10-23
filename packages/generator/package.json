@@ -76,6 +76,7 @@
     "@modelcontextprotocol/express": "^2.0.2",
     "@modelcontextprotocol/node": "^2.1.1",
     "@modelcontextprotocol/server": "^2.3.1",
+    "@prisma/adapter-better-sqlite3": "7.10.1",
     "@prisma/client": "7.10.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "24.7.2",
@@ -95,7 +96,7 @@
     "semantic-release": "^25.0.9",
     "typescript": "5.9.3",
     "vitest": "^4.1.12",
-    "zod": "^4.0.0"
+    "zod": "^4.6.7"
   },
   "homepage": "https://github.com/multipliedtwice/prisma-generator-express",
   "repository": {
