@@ -20,6 +20,9 @@
     "prisma-guard": "1.33.0",
     "zod": "4.4.3"
   },
+  "overrides": {
+    "deepmerge-ts": "8.0.2"
+  },
   "devDependencies": {
     "@prisma/internals": "6.19.3",
     "tsx": "4.23.8"

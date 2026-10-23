@@ -12,10 +12,13 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
-    "express": "5.1.0",
+    "express": "5.3.0",
     "prisma-generator-express": "1.64.4",
     "prisma-guard": "1.33.0",
     "zod": "4.4.3"
+  },
+  "overrides": {
+    "deepmerge-ts": "8.0.2"
   },
   "devDependencies": {
     "@types/express": "5.0.3",

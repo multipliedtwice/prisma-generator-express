@@ -85,8 +85,8 @@ jobs:
       - name: Pin Prisma 6 (lockfile-wide, CI-only mutation; also flips demo workspace — irrelevant here)
         if: matrix.prisma == '6'
         run: |
-          yarn set resolution "prisma@npm:7.5.0" "npm:^6.16.2"
-          yarn set resolution "@prisma/client@npm:7.5.0" "npm:^6.16.2"
+          yarn set resolution "prisma@npm:7.10.1" "npm:^6.16.2"
+          yarn set resolution "@prisma/client@npm:7.10.1" "npm:^6.16.2"
           yarn install
       - name: prisma generate (fixture)
         working-directory: packages/generator
