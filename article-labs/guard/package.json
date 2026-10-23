@@ -25,6 +25,6 @@
   },
   "devDependencies": {
     "@prisma/internals": "6.19.3",
-    "tsx": "4.23.8"
+    "tsx": "4.23.15"
   }
 }
