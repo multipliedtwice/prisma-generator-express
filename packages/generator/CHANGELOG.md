@@ -1,3 +1,10 @@
+## [1.69.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.69.1...v1.69.2) (2026-10-23)
+
+
+### Bug Fixes
+
+* update Postgres port in CI config and tests; add ownedPostgresUrl utility ([9769c5a](https://github.com/multipliedtwice/prisma-generator-express/commit/9769c5a03e1a9cab68c30540f31f63c9f53c90fe))
+
 ## [1.69.1](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.69.0...v1.69.1) (2026-09-29)
 
 
