@@ -111,10 +111,10 @@ export async function getExtendedClient(
       'PrismaClient not found on request. Set req.prisma in middleware.',
     )
   }
-  await ensurePrismaSqlReady()
-  if (!_speedExtension) return base
   const connector = (ctx.postgres ?? ctx.sqlite) as object | undefined
   if (!connector) return base
+  await ensurePrismaSqlReady()
+  if (!_speedExtension) return base
   const innerMap = _extendedClients.get(connector)
   if (innerMap) {
     const cached = innerMap.get(base as unknown as object)

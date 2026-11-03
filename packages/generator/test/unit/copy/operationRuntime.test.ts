@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { HttpError } from '../../../src/copy/errorMapper'
 import {
   getDelegate,
@@ -6,6 +6,42 @@ import {
   transformResult,
   validateBody,
 } from '../../../src/copy/operationRuntime'
+
+describe('getExtendedClient', () => {
+  it('defers the optional import without a connector and reuses the later extension', async () => {
+    vi.resetModules()
+    const extension = { name: 'speed' }
+    const speedExtension = vi.fn(() => extension)
+    const load = vi.fn(() => ({ speedExtension }))
+    vi.doMock('prisma-sql', load)
+    try {
+      const { getExtendedClient } = await import(
+        '../../../src/copy/operationRuntime'
+      )
+      const extended = { name: 'extended' }
+      const base = { $extends: vi.fn(() => extended) }
+      expect(await getExtendedClient({ prisma: base })).toBe(base)
+      expect(load).not.toHaveBeenCalled()
+      expect(speedExtension).not.toHaveBeenCalled()
+      expect(base.$extends).not.toHaveBeenCalled()
+
+      const sqlite = {}
+      expect(await getExtendedClient({ prisma: base, sqlite })).toBe(extended)
+      expect(await getExtendedClient({ prisma: base, sqlite })).toBe(extended)
+      expect(load).toHaveBeenCalledTimes(1)
+      expect(speedExtension).toHaveBeenCalledTimes(1)
+      expect(speedExtension).toHaveBeenCalledWith({
+        postgres: undefined,
+        sqlite,
+        debug: process.env.DEBUG === 'true',
+      })
+      expect(base.$extends).toHaveBeenCalledExactlyOnceWith(extension)
+    } finally {
+      vi.doUnmock('prisma-sql')
+      vi.resetModules()
+    }
+  })
+})
 
 describe('getDelegate', () => {
   it('returns an existing delegate', () => {
