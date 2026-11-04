@@ -1,3 +1,10 @@
+## [1.69.3](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.69.2...v1.69.3) (2026-11-04)
+
+
+### Performance Improvements
+
+* skip optional SQL load without connector ([c06871a](https://github.com/multipliedtwice/prisma-generator-express/commit/c06871a65d75204d398578acd85454881254e54b))
+
 ## [1.69.2](https://github.com/multipliedtwice/prisma-generator-express/compare/v1.69.1...v1.69.2) (2026-10-23)
 
 
