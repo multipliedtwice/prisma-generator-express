@@ -2998,17 +2998,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"better-sqlite3@npm:^12.5.0":
-  version: 12.8.0
-  resolution: "better-sqlite3@npm:12.8.0"
-  dependencies:
-    bindings: ^1.5.0
-    node-gyp: latest
-    prebuild-install: ^7.1.1
-  checksum: 0dcb50de9b6fd12f0342b5de8aa5156d3d9b597e6b716c3d583f8f3a2b31d7111b26e87eae51c9438174a363d13c70e70508060ca22b77eda78206f4ac89bdbc
-  languageName: node
-  linkType: hard
-
 "better-sqlite3@npm:^12.6.0":
   version: 12.11.1
   resolution: "better-sqlite3@npm:12.11.1"
@@ -3017,6 +3006,16 @@ __metadata:
     node-gyp: latest
     prebuild-install: ^7.1.1
   checksum: 2bc5a7faa2fc2d4b7e0e2cdec2bb683d4df0a77b1deac512d79b93525ef7e06e4a3fcc7c511662c348d64cf9541e7dcc5b65d2f15d88a3a4aa74259f84cb8f0b
+  languageName: node
+  linkType: hard
+
+"better-sqlite3@npm:^13.0.3":
+  version: 13.0.3
+  resolution: "better-sqlite3@npm:13.0.3"
+  dependencies:
+    node-addon-api: ^8.0.0
+    node-gyp: latest
+  checksum: 1c43a2c815c5ee5853be5971c1f0c37dbbe54aeb5566365351f196ce41aa0758162dddfed8d780a1ac82e4f4455944a918e50d0540b50aec59cc4df30e8275a0
   languageName: node
   linkType: hard
 
@@ -6450,6 +6449,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"node-addon-api@npm:^8.0.0":
+  version: 8.9.2
+  resolution: "node-addon-api@npm:8.9.2"
+  dependencies:
+    node-gyp: latest
+  checksum: 820b3099b7d27c555fd9d98c986feab52d7eaf2e4dac1bce927857368baa0f2a3f31db5bd5112acd45222fd33a453b3baf8bf78771a0643a4b712e09a33f0fdf
+  languageName: node
+  linkType: hard
+
 "node-emoji@npm:^2.2.0":
   version: 2.2.0
   resolution: "node-emoji@npm:2.2.0"
@@ -7463,7 +7471,7 @@ __metadata:
     "@types/node": 24.7.2
     "@types/prettier": 3.0.0
     "@vitest/coverage-v8": ^4.1.12
-    better-sqlite3: ^12.5.0
+    better-sqlite3: ^13.0.3
     esbuild: ^0.28.2
     express: ^5.2.1
     fast-xml-parser: ^5.3.3
