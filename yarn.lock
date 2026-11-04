@@ -1242,6 +1242,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@prisma/adapter-better-sqlite3@npm:7.10.1":
+  version: 7.10.1
+  resolution: "@prisma/adapter-better-sqlite3@npm:7.10.1"
+  dependencies:
+    "@prisma/driver-adapter-utils": 7.10.1
+    better-sqlite3: ^12.6.0
+  checksum: 6697bde6850e516e0c4d76c493e6ff378dd0e37e91f70b82199f603c8c605734609d87d28c1d0e6d47ba7ba0147e9f4b69717161f47059c1f4fc2f66abbac851
+  languageName: node
+  linkType: hard
+
 "@prisma/adapter-better-sqlite3@npm:^7.3.0":
   version: 7.8.0
   resolution: "@prisma/adapter-better-sqlite3@npm:7.8.0"
@@ -3885,12 +3895,12 @@ __metadata:
     express: ^5.0.0
     postgres: ^3.4.4
     prisma: ^6.16.0
-    prisma-guard: ^1.0.0
+    prisma-guard: ^1.36.0
     prisma-query-builder-ui: ^1.1.0
     prisma-sql: ^1.0.0
     tsx: ^4.21.0
     typescript: 5.9.3
-    zod: ^3.23.0
+    zod: ^4.6.7
   languageName: unknown
   linkType: soft
 
@@ -7457,6 +7467,7 @@ __metadata:
     "@modelcontextprotocol/express": ^2.0.2
     "@modelcontextprotocol/node": ^2.1.1
     "@modelcontextprotocol/server": ^2.3.1
+    "@prisma/adapter-better-sqlite3": 7.10.1
     "@prisma/client": 7.10.1
     "@prisma/generator-helper": 7.10.1
     "@types/better-sqlite3": ^7.6.13
@@ -7474,12 +7485,12 @@ __metadata:
     pino-pretty: ^13.0.0
     prettier: 3.6.2
     prisma: 7.10.1
-    prisma-guard: 1.33.0
+    prisma-guard: 1.36.0
     semantic-release: ^25.0.9
     typescript: 5.9.3
     vitest: ^4.1.12
     yaml: ^2.9.0
-    zod: ^4.0.0
+    zod: ^4.6.7
   peerDependencies:
     "@modelcontextprotocol/node": ^2.0.0
     "@modelcontextprotocol/server": ^2.0.0
@@ -7512,9 +7523,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"prisma-guard@npm:1.33.0":
-  version: 1.33.0
-  resolution: "prisma-guard@npm:1.33.0"
+"prisma-guard@npm:1.36.0, prisma-guard@npm:^1.36.0":
+  version: 1.36.0
+  resolution: "prisma-guard@npm:1.36.0"
   dependencies:
     "@prisma/generator-helper": ^6.0.0 || ^7.0.0
     get-tsconfig: ^4.14.0
@@ -7523,22 +7534,7 @@ __metadata:
     zod: ^4.0.0
   bin:
     prisma-guard: dist/generator/index.js
-  checksum: 61ddc482dd8b78552c3de63285e542807d006d8bdf2445c10e128cdf7d663991e23217c5dd21f62a4c2a40e211048edc3a330efbd40ddf9da750d5559e8e9439
-  languageName: node
-  linkType: hard
-
-"prisma-guard@npm:^1.0.0":
-  version: 1.28.1
-  resolution: "prisma-guard@npm:1.28.1"
-  dependencies:
-    "@prisma/generator-helper": ^6.0.0 || ^7.0.0
-    get-tsconfig: ^4.14.0
-  peerDependencies:
-    "@prisma/client": ^6.0.0 || ^7.0.0
-    zod: ^4.0.0
-  bin:
-    prisma-guard: dist/generator/index.js
-  checksum: 8023bb7c6d8dd58a4e638988ec4f6fc9b94b8d9c64f907be19acecbc20ed5b6458c99c5732c1e1920d47c5fb43f62299998d16f6a90fdb649f6f1a10f6e01b6c
+  checksum: 81e0d2931a6a4f6198d04b489ccbdecfd0a59887d892e468cdbb5c537c81f1a0af80aead6f20ee0802fabc39439ddb2cd3b9af21dae2095c1863cab577b3d4bc
   languageName: node
   linkType: hard
 
@@ -9609,16 +9605,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.23.0":
-  version: 3.25.76
-  resolution: "zod@npm:3.25.76"
-  checksum: c9a403a62b329188a5f6bd24d5d935d2bba345f7ab8151d1baa1505b5da9f227fb139354b043711490c798e91f3df75991395e40142e6510a4b16409f302b849
-  languageName: node
-  linkType: hard
-
-"zod@npm:^4.0.0, zod@npm:^4.2.0":
-  version: 4.6.5
-  resolution: "zod@npm:4.6.5"
-  checksum: bc73aaee52bc9137bae3f5bf9b49f4475223c24be86d81881856dd26696cb693d1a3f51d9cf5c86c6f9b081316557673806d00ab3a0f244c9576ff39a11ae6ea
+"zod@npm:^4.2.0, zod@npm:^4.6.7":
+  version: 4.6.7
+  resolution: "zod@npm:4.6.7"
+  checksum: 6801f5067dd43204d5ed2b4f2f0d09f891365ecfdd385877901e42f6f6ebf67e8943b385c71eaba53081029dd21f4740f16c91497a06f95195e209bffef92056
   languageName: node
   linkType: hard

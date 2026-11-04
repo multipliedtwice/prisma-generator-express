@@ -1,5 +1,5 @@
 # Verified behavior of prisma-guard, recorded by article-labs/guard/write-results.mjs.
-# Versions (exact, see package.json + package-lock.json): prisma-guard 1.33.0, zod 4.4.3, prisma 6.19.3, @prisma/client 6.19.3
+# Versions (exact, see package.json + package-lock.json): prisma-guard 1.33.0, zod 4.6.7, prisma 6.19.3, @prisma/client 6.19.3
 # Schemas: Nursery(@scope-root) -> Plant, Order; Customer; OrderItem  |  Organizer(@scope-root) -> Event -> Ticket
 # Reproduce from a clean checkout: npm ci && npm run generate && npm run results
 #
@@ -262,7 +262,7 @@ THROW reserved key as a caller name, extension entry point
 === FORCED MERGE STRATEGY ===
 THROW forced NOT plus client NOT
       -> ShapeError status=400
-      -> Invalid query on model "Plant": where.NOT: No matching variant (branch 1: [Unrecognized key(s): name] | branch 2: [Expected array])
+      -> Invalid query on model "Plant": where.NOT: Unrecognized key(s): name
 PASS  forced value AND-wrapped when the client filters another field
       -> {"where":{"AND":[{"name":{"contains":"fern"}},{"isPublished":{"equals":true}}]}}
 PASS  forced value inline-merged when the client touches the same field
@@ -469,8 +469,8 @@ AGREE   forced NOT, client filters outside NOT
         parse    -> {"where":{"venue":{"contains":"hall"},"NOT":{"isCancelled":{"equals":true}}}}
         delegate -> {"where":{"venue":{"contains":"hall"},"NOT":{"isCancelled":{"equals":true}}}}
 AGREE   CONTROL — client NOT against a wholly forced NOT
-        parse    -> THROW ShapeError status=400: Invalid query on model "Event": where.NOT: No matching variant (branch 1: [Unrecognized key(s): venue] | branch 2: [Expected array])
-        delegate -> THROW ShapeError status=400: Invalid query on model "Event": where.NOT: No matching variant (branch 1: [Unrecognized key(s): venue] | branch 2: [Expected array])
+        parse    -> THROW ShapeError status=400: Invalid query on model "Event": where.NOT: Unrecognized key(s): venue
+        delegate -> THROW ShapeError status=400: Invalid query on model "Event": where.NOT: Unrecognized key(s): venue
 
 === A3 §7b — are forced relation filters lifted? ===
 AGREE   forced value inside some(), client sends nothing
@@ -652,7 +652,7 @@ PASS  to-one relation in select, no forced where possible
       -> {}
 THROW orderBy field not in shape
       -> ShapeError status=400
-      -> Invalid query on model "Plant": orderBy: No matching variant (branch 1: [Unrecognized key(s): priceCents] | branch 2: [Expected array])
+      -> Invalid query on model "Plant": orderBy: Unrecognized key(s): priceCents; orderBy: orderBy must specify at least one field
 PASS  orderBy allowed
       -> {"orderBy":{"name":"desc"}}
 THROW skip not enabled in shape
@@ -672,3 +672,4 @@ PASS  context-dependent shape
 THROW context-dependent shape, ctx missing
       -> PolicyError status=403
       -> Context required for shape function
+
